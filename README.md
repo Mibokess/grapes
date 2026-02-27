@@ -63,15 +63,21 @@ No counter file needed — the folder names *are* the counter.
 
 Issues support unlimited nesting via the `parent` field. The folder structure stays flat — nesting is a data relationship, not a filesystem relationship. Moving a sub-issue means editing one line.
 
-## Web UI
+## TUI
 
-A lightweight web app reads `.grapes/` and renders:
+A terminal UI built with Go and the [Charm](https://charm.sh) ecosystem (Bubble Tea, Bubbles, Glamour, Lip Gloss):
 
-- **Board view** — Kanban columns by status
-- **List view** — Sortable/filterable table
-- **Detail view** — Full issue with comments
+```sh
+go run .
+```
 
-The UI is read-heavy, write-light. The primary write path is the agent editing files directly.
+Three views:
+
+- **Board view** — Kanban columns by status (`hjkl`/arrows to navigate, `Enter` to open)
+- **List view** — Sortable/filterable table (`L` from board, `/` to filter)
+- **Detail view** — Full issue with rendered markdown (`Enter` on any issue, `Esc` to go back)
+
+The TUI is read-only. The primary write path is agents editing files directly.
 
 ## Inspiration
 

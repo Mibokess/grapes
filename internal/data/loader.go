@@ -1,0 +1,173 @@
+package data
+
+import (
+	"fmt"
+	"os"
+	"path/filepath"
+	"regexp"
+	"sort"
+	"strconv"
+	"strings"
+	"time"
+
+	"gopkg.in/yaml.v3"
+)
+
+// commentHeader matches "### author — YYYY-MM-DD" (em-dash only).
+var commentHeader = regexp.MustCompile(`^### (\S+) \x{2014} (\d{4}-\d{2}-\d{2})$`)
+
+// meta is the on-disk YAML structure.
+type meta struct {
+	Title    string   `yaml:"title"`
+	Status   string   `yaml:"status"`
+	Priority string   `yaml:"priority"`
+	Assignee string   `yaml:"assignee"`
+	Labels   []string `yaml:"labels"`
+	Parent   *int     `yaml:"parent,omitempty"`
+	Created  string   `yaml:"created"`
+	Updated  string   `yaml:"updated"`
+}
+
+// FindIssuesDir walks up from startDir looking for a .grapes/ directory.
+func FindIssuesDir(startDir string) (string, error) {
+	dir, err := filepath.Abs(startDir)
+	if err != nil {
+		return "", err
+	}
+	for {
+		candidate := filepath.Join(dir, ".grapes")
+		if info, err := os.Stat(candidate); err == nil && info.IsDir() {
+			return candidate, nil
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			return "", fmt.Errorf(".grapes/ directory not found (searched up from %s)", startDir)
+		}
+		dir = parent
+	}
+}
+
+// LoadAllIssues scans the .grapes/ directory and returns all issues with
+// parent→children relationships built. Content and comments are loaded too.
+func LoadAllIssues(dir string) ([]Issue, error) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil, fmt.Errorf("reading %s: %w", dir, err)
+	}
+
+	var issues []Issue
+	childrenMap := make(map[int][]int) // parent ID → child IDs
+
+	for _, e := range entries {
+		if !e.IsDir() {
+			continue
+		}
+		id, err := strconv.Atoi(e.Name())
+		if err != nil {
+			continue // skip non-numeric directories
+		}
+		issue, err := loadIssueMeta(dir, id)
+		if err != nil {
+			continue // skip malformed issues gracefully
+		}
+		// Load content and comments
+		issue.Content = readFileOr(filepath.Join(dir, e.Name(), "content.md"), "")
+		issue.Comments = ParseComments(readFileOr(filepath.Join(dir, e.Name(), "comments.md"), ""))
+
+		issues = append(issues, issue)
+		if issue.Parent != nil {
+			childrenMap[*issue.Parent] = append(childrenMap[*issue.Parent], id)
+		}
+	}
+
+	// Wire up children
+	for i := range issues {
+		if kids, ok := childrenMap[issues[i].ID]; ok {
+			sort.Ints(kids)
+			issues[i].Children = kids
+		}
+	}
+
+	sort.Slice(issues, func(i, j int) bool {
+		return issues[i].ID < issues[j].ID
+	})
+
+	return issues, nil
+}
+
+func loadIssueMeta(dir string, id int) (Issue, error) {
+	path := filepath.Join(dir, strconv.Itoa(id), "meta.yaml")
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return Issue{}, err
+	}
+	var m meta
+	if err := yaml.Unmarshal(raw, &m); err != nil {
+		return Issue{}, fmt.Errorf("parsing %s: %w", path, err)
+	}
+
+	created := parseDate(m.Created)
+	updated := parseDate(m.Updated)
+
+	return Issue{
+		ID:       id,
+		Title:    m.Title,
+		Status:   Status(m.Status),
+		Priority: Priority(m.Priority),
+		Assignee: m.Assignee,
+		Labels:   m.Labels,
+		Parent:   m.Parent,
+		Created:  created,
+		Updated:  updated,
+	}, nil
+}
+
+func parseDate(s string) time.Time {
+	t, err := time.Parse("2006-01-02", s)
+	if err != nil {
+		return time.Time{}
+	}
+	return t
+}
+
+func readFileOr(path, fallback string) string {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return fallback
+	}
+	return string(data)
+}
+
+// ParseComments parses comments.md using strict "### author — YYYY-MM-DD" headers.
+func ParseComments(raw string) []Comment {
+	if strings.TrimSpace(raw) == "" {
+		return nil
+	}
+
+	lines := strings.Split(raw, "\n")
+	var comments []Comment
+	var current *Comment
+
+	for _, line := range lines {
+		if m := commentHeader.FindStringSubmatch(line); m != nil {
+			// Save previous comment
+			if current != nil {
+				current.Body = strings.TrimSpace(current.Body)
+				comments = append(comments, *current)
+			}
+			current = &Comment{
+				Author: m[1],
+				Date:   m[2],
+			}
+		} else if current != nil {
+			current.Body += line + "\n"
+		}
+	}
+	// Don't forget the last comment
+	if current != nil {
+		current.Body = strings.TrimSpace(current.Body)
+		comments = append(comments, *current)
+	}
+
+	return comments
+}

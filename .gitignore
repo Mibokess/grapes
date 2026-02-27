@@ -1,7 +1,5 @@
-# Python
-__pycache__/
-*.pyc
-.venv/
+# Go
+grapes
 
 # OS
 .DS_Store
