@@ -1,6 +1,11 @@
 package tui
 
 import (
+	"os"
+	"path/filepath"
+	"strconv"
+	"time"
+
 	"github.com/Mibokess/grapes/internal/data"
 	"github.com/Mibokess/grapes/internal/tui/board"
 	"github.com/Mibokess/grapes/internal/tui/common"
@@ -9,6 +14,7 @@ import (
 	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/fsnotify/fsnotify"
 )
 
 type Model struct {
@@ -18,6 +24,7 @@ type Model struct {
 	height     int
 	screen     common.Screen
 	prevScreen common.Screen
+	watcher    *fsnotify.Watcher
 
 	board  board.Model
 	list   list.Model
@@ -25,17 +32,79 @@ type Model struct {
 }
 
 func NewModel(issues []data.Issue, issuesDir string) Model {
+	w, _ := fsnotify.NewWatcher()
+	if w != nil {
+		addWatchDirs(w, issuesDir)
+	}
+
 	return Model{
 		issues:    issues,
 		issuesDir: issuesDir,
 		screen:    common.ScreenBoard,
 		board:     board.New(issues),
 		list:      list.New(issues),
+		watcher:   w,
+	}
+}
+
+// addWatchDirs watches the issues directory and all numeric subdirectories.
+func addWatchDirs(w *fsnotify.Watcher, issuesDir string) {
+	w.Add(issuesDir)
+	entries, err := os.ReadDir(issuesDir)
+	if err != nil {
+		return
+	}
+	for _, e := range entries {
+		if !e.IsDir() {
+			continue
+		}
+		if _, err := strconv.Atoi(e.Name()); err != nil {
+			continue
+		}
+		w.Add(filepath.Join(issuesDir, e.Name()))
+	}
+}
+
+// watchCmd blocks on the fsnotify watcher and returns a RefreshMsg when files change.
+// It debounces rapid events by draining for 100ms after the first event.
+func (m Model) watchCmd() tea.Cmd {
+	if m.watcher == nil {
+		return nil
+	}
+	w := m.watcher
+	return func() tea.Msg {
+		for {
+			select {
+			case _, ok := <-w.Events:
+				if !ok {
+					return nil
+				}
+				// Debounce: drain events for 100ms
+				timer := time.NewTimer(100 * time.Millisecond)
+			drain:
+				for {
+					select {
+					case _, ok := <-w.Events:
+						if !ok {
+							timer.Stop()
+							return nil
+						}
+					case <-timer.C:
+						break drain
+					}
+				}
+				return common.RefreshMsg{}
+			case _, ok := <-w.Errors:
+				if !ok {
+					return nil
+				}
+			}
+		}
 	}
 }
 
 func (m Model) Init() tea.Cmd {
-	return tea.Batch(m.board.Init(), m.list.Init())
+	return tea.Batch(m.board.Init(), m.list.Init(), m.watchCmd())
 }
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -86,12 +155,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case common.RefreshMsg:
 		issues, err := data.LoadAllIssues(m.issuesDir)
 		if err != nil {
-			return m, nil
+			return m, m.watchCmd()
 		}
 		m.issues = issues
 		m.board = m.board.SetIssues(issues)
 		m.list = m.list.SetIssues(issues)
-		return m, nil
+		// Re-sync watched dirs (picks up new issue folders) and keep watching
+		if m.watcher != nil {
+			addWatchDirs(m.watcher, m.issuesDir)
+		}
+		return m, m.watchCmd()
 	}
 
 	// Delegate to active screen
