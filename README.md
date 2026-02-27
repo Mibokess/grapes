@@ -1,6 +1,6 @@
 # Grapes
 
-A file-based issue tracker designed for AI agents. Issues are plain files in a `.issues/` folder — no database, no CLI tool, no API. Agents manipulate issues directly using standard file tools (grep, edit, read, write). A web UI provides board visualization.
+A file-based issue tracker designed for AI agents. Issues are plain files in a `.grapes/` folder — no database, no CLI tool, no API. Agents manipulate issues directly using standard file tools (grep, edit, read, write). A web UI provides board visualization.
 
 ## Why
 
@@ -13,7 +13,7 @@ A file-based issue tracker designed for AI agents. Issues are plain files in a `
 Each issue is a numbered folder with three files:
 
 ```
-.issues/
+.grapes/
   42/
     meta.yaml       # status, priority, assignee, labels, dates
     content.md      # issue description
@@ -46,16 +46,16 @@ updated: 2026-02-27
 ### Querying
 
 ```sh
-grep -rl "status: todo" .issues/*/meta.yaml       # issues by status
-grep -rl "assignee: alice" .issues/*/meta.yaml     # issues by assignee
-grep -rl "login bug" .issues/*/content.md          # full-text search
-grep -rl "parent: 40" .issues/*/meta.yaml          # children of issue 40
+grep -rl "status: todo" .grapes/*/meta.yaml       # issues by status
+grep -rl "assignee: alice" .grapes/*/meta.yaml     # issues by assignee
+grep -rl "login bug" .grapes/*/content.md          # full-text search
+grep -rl "parent: 40" .grapes/*/meta.yaml          # children of issue 40
 ```
 
 ### Creating an Issue
 
-1. Find the next ID: `ls .issues/ | sort -n | tail -1`
-2. Create `.issues/<next>/` with `meta.yaml`, `content.md`, `comments.md`
+1. Find the next ID: `ls .grapes/ | sort -n | tail -1`
+2. Create `.grapes/<next>/` with `meta.yaml`, `content.md`, `comments.md`
 
 No counter file needed — the folder names *are* the counter.
 
@@ -65,7 +65,7 @@ Issues support unlimited nesting via the `parent` field. The folder structure st
 
 ## Web UI
 
-A lightweight web app reads `.issues/` and renders:
+A lightweight web app reads `.grapes/` and renders:
 
 - **Board view** — Kanban columns by status
 - **List view** — Sortable/filterable table

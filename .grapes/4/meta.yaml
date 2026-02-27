@@ -1,0 +1,7 @@
+title: Detail view loads all issues twice to render one issue
+status: todo
+priority: medium
+assignee: ""
+labels: [perf, tui, data]
+created: 2026-02-27
+updated: 2026-02-27

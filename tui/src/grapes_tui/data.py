@@ -1,4 +1,4 @@
-"""Issue data loading — reads .issues/ directory."""
+"""Issue data loading — reads .grapes/ directory."""
 
 from __future__ import annotations
 
@@ -49,14 +49,14 @@ class Issue:
 
 
 def find_issues_dir() -> Path:
-    """Find .issues/ directory by walking up from this file's location."""
+    """Find .grapes/ directory by walking up from this file's location."""
     d = Path(__file__).resolve().parent
     for _ in range(10):
-        candidate = d / ".issues"
+        candidate = d / ".grapes"
         if candidate.is_dir():
             return candidate
         d = d.parent
-    raise FileNotFoundError("Could not find .issues/ directory")
+    raise FileNotFoundError("Could not find .grapes/ directory")
 
 
 def load_all_issues(issues_dir: Path | None = None) -> list[Issue]:

@@ -1,0 +1,7 @@
+title: "find_issues_dir() searches from package location, not working directory"
+status: todo
+priority: high
+assignee: ""
+labels: [bug, data, usability]
+created: 2026-02-27
+updated: 2026-02-27

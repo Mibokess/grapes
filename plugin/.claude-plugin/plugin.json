@@ -1,0 +1,11 @@
+{
+  "name": "grapes",
+  "version": "0.1.0",
+  "description": "File-based issue tracking skills for Claude Code. Teaches AI agents how to create, read, update, close, and search issues stored as plain files in .grapes/",
+  "author": {
+    "name": "Mike Boss"
+  },
+  "repository": "https://github.com/mboss/grapes",
+  "license": "MIT",
+  "keywords": ["issue-tracking", "file-based", "ai-agent", "project-management"]
+}
