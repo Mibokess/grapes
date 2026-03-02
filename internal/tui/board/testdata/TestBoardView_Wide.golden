@@ -1,0 +1,16 @@
+  ○ BACKLOG (1)                   ◌ TODO (1)                      ◑ IN_PROGRESS (2)               ● DONE (2)                      × CANCELLED (1)              
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+╭───────────────────────────╮   ╭───────────────────────────╮   ╭───────────────────────────╮   ╭───────────────────────────╮   ╭───────────────────────────╮  
+│ #3                        │   │ #2                        │   │ #1 !                      │   │ #4                        │   │ #7                        │  
+│ Add dark mode support     │   │ Fix dashboard loading     │   │ Implement user            │   │ Write API documentation   │   │ Remove deprecated v1 API  │  
+│                           │   │ performance               │   │ authentication            │   │                           │   │ endpoints                 │  
+│ frontend  design          │   │ performance  frontend     │   │ backend  security         │   │ docs                      │   │                           │  
+│ Created Feb 10 09:00      │   │ Created Feb 1 12:00       │   │ Created Jan 15 10:00      │   │ Created Mar 1 14:00       │   │ Created Jan 15 10:00      │  
+╰───────────────────────────╯   ╰───────────────────────────╯   ╰───────────────────────────╯   ╰───────────────────────────╯   ╰───────────────────────────╯  
+                                                                ╭───────────────────────────╮   ╭───────────────────────────╮                                  
+                                                                │ #6 !                      │   │ #5 !                      │                                  
+                                                                │ Implement token refresh   │   │ Implement login endpoint  │                                  
+                                                                │                           │   │                           │                                  
+                                                                │ backend                   │   │ backend                   │                                  
+                                                                │ Created Mar 5 08:00       │   │ Created Mar 5 08:00       │                                  
+                                                                ╰───────────────────────────╯   ╰───────────────────────────╯                                  

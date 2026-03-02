@@ -12,7 +12,7 @@ user-invokable: false
 Read .grapes/<id>/meta.yaml
 ```
 
-This is ~8 lines. Enough for status, priority, assignee, labels, and title.
+This is ~7 lines. Enough for status, priority, labels, and title.
 
 ## Full Description
 

@@ -1,0 +1,18 @@
+  ○ BACKLOG (1)          ◌ TODO (1)             ◑ IN_PROGRESS (2)   
+━━━━━━━━━━━━━━━━━━━━━━ ━━━━━━━━━━━━━━━━━━━━━━ ━━━━━━━━━━━━━━━━━━━━━━
+╭──────────────────╮   ╭──────────────────╮   ╭──────────────────╮  
+│ #3               │   │ #2               │   │ #1 !             │  
+│ Add dark mode    │   │ Fix dashboard    │   │ Implement user   │  
+│ support          │   │ loading perfo... │   │ authentication   │  
+│ frontend  design │   │ performance      │   │ backend          │  
+│ Created Feb 10   │   │ Created Feb 1    │   │ Created Jan 15   │  
+│ 09:00            │   │ 12:00            │   │ 10:00            │  
+╰──────────────────╯   ╰──────────────────╯   ╰──────────────────╯  
+                                              ╭──────────────────╮  
+                                              │ #6 !             │  
+                                              │ Implement token  │  
+                                              │ refresh          │  
+                                              │ backend          │  
+                                              │ Created Mar 5    │  
+                                              │ 08:00            │  
+                                              ╰──────────────────╯  

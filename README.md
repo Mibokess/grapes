@@ -15,7 +15,7 @@ Each issue is a numbered folder with three files:
 ```
 .grapes/
   42/
-    meta.yaml       # status, priority, assignee, labels, dates
+    meta.yaml       # status, priority, labels, dates
     content.md      # issue description
     comments.md     # append-only comment log
 ```
@@ -26,7 +26,6 @@ Each issue is a numbered folder with three files:
 title: Fix login redirect loop
 status: todo
 priority: high
-assignee: alice
 labels: [bug, auth]
 parent: 40
 created: 2026-02-27
@@ -39,7 +38,6 @@ updated: 2026-02-27
 |-------|--------|
 | `status` | `backlog`, `todo`, `in_progress`, `done`, `cancelled` |
 | `priority` | `urgent`, `high`, `medium`, `low` |
-| `assignee` | freeform |
 | `labels` | freeform tags |
 | `parent` | ID of parent issue (omit for top-level) |
 
@@ -47,7 +45,6 @@ updated: 2026-02-27
 
 ```sh
 grep -rl "status: todo" .grapes/*/meta.yaml       # issues by status
-grep -rl "assignee: alice" .grapes/*/meta.yaml     # issues by assignee
 grep -rl "login bug" .grapes/*/content.md          # full-text search
 grep -rl "parent: 40" .grapes/*/meta.yaml          # children of issue 40
 ```

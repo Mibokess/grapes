@@ -1,0 +1,18 @@
+ ID     Title                   Status         Priority   Labels          
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ 1      Implement user authen…  ◑ in_progress   ! high    backend secu
+ 2      Fix dashboard loading…  ◌ todo         !! urgent  performance 
+ 3      Add dark mode support   ○ backlog       · medium  frontend des
+ 4      Write API documentati…  ● done            low     docs        
+ 5      Implement login endpo…  ● done          ! high    backend     
+ 6      Implement token refre…  ◑ in_progress   ! high    backend     
+ 7      Remove deprecated v1 …  × cancelled       low                 
+                                                                      
+                                                                      
+                                                                      
+                                                                      
+                                                                      
+                                                                      
+                                                                      
+                                                                      
+                                                                      

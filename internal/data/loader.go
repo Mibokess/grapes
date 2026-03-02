@@ -13,15 +13,15 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// commentHeader matches "### author — YYYY-MM-DD" (em-dash only).
-var commentHeader = regexp.MustCompile(`^### (\S+) \x{2014} (\d{4}-\d{2}-\d{2})$`)
+// commentHeader matches "### YYYY-MM-DD" or "### YYYY-MM-DDTHH:MM" headers,
+// as well as legacy "### author — YYYY-MM-DD" headers (em-dash only).
+var commentHeader = regexp.MustCompile(`^### (?:\S+ \x{2014} )?(\d{4}-\d{2}-\d{2}(?:T\d{2}:\d{2})?)$`)
 
 // meta is the on-disk YAML structure.
 type meta struct {
 	Title    string   `yaml:"title"`
 	Status   string   `yaml:"status"`
 	Priority string   `yaml:"priority"`
-	Assignee string   `yaml:"assignee"`
 	Labels   []string `yaml:"labels"`
 	Parent   *int     `yaml:"parent,omitempty"`
 	Created  string   `yaml:"created"`
@@ -114,7 +114,6 @@ func loadIssueMeta(dir string, id int) (Issue, error) {
 		Title:    m.Title,
 		Status:   Status(m.Status),
 		Priority: Priority(m.Priority),
-		Assignee: m.Assignee,
 		Labels:   m.Labels,
 		Parent:   m.Parent,
 		Created:  created,
@@ -123,11 +122,13 @@ func loadIssueMeta(dir string, id int) (Issue, error) {
 }
 
 func parseDate(s string) time.Time {
-	t, err := time.Parse("2006-01-02", s)
-	if err != nil {
-		return time.Time{}
+	if t, err := time.Parse("2006-01-02T15:04", s); err == nil {
+		return t
 	}
-	return t
+	if t, err := time.Parse("2006-01-02", s); err == nil {
+		return t
+	}
+	return time.Time{}
 }
 
 func readFileOr(path, fallback string) string {
@@ -138,7 +139,7 @@ func readFileOr(path, fallback string) string {
 	return string(data)
 }
 
-// ParseComments parses comments.md using strict "### author — YYYY-MM-DD" headers.
+// ParseComments parses comments.md using strict "### YYYY-MM-DD" headers.
 func ParseComments(raw string) []Comment {
 	if strings.TrimSpace(raw) == "" {
 		return nil
@@ -156,8 +157,7 @@ func ParseComments(raw string) []Comment {
 				comments = append(comments, *current)
 			}
 			current = &Comment{
-				Author: m[1],
-				Date:   m[2],
+				Date: m[1],
 			}
 		} else if current != nil {
 			current.Body += line + "\n"

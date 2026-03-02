@@ -6,10 +6,11 @@ import (
 
 	"github.com/Mibokess/grapes/internal/data"
 	"github.com/Mibokess/grapes/internal/tui/common"
-	"github.com/charmbracelet/bubbles/key"
-	"github.com/charmbracelet/bubbles/viewport"
-	tea "github.com/charmbracelet/bubbletea"
+	"charm.land/bubbles/v2/key"
+	"charm.land/bubbles/v2/viewport"
+	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/glamour"
+	"github.com/muesli/termenv"
 )
 
 type Model struct {
@@ -23,7 +24,7 @@ type Model struct {
 
 func New(issue data.Issue, allIssues []data.Issue, width, height int) Model {
 	content, clickLines := renderIssue(issue, allIssues, width)
-	vp := viewport.New(width, height)
+	vp := viewport.New(viewport.WithWidth(width), viewport.WithHeight(height))
 	vp.SetContent(content)
 
 	return Model{
@@ -41,14 +42,14 @@ func (m Model) Init() tea.Cmd { return nil }
 func (m Model) SetSize(w, h int) Model {
 	m.width = w
 	m.height = h
-	m.viewport.Width = w
-	m.viewport.Height = h
+	m.viewport.SetWidth(w)
+	m.viewport.SetHeight(h)
 	return m
 }
 
 func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 	switch msg := msg.(type) {
-	case tea.KeyMsg:
+	case tea.KeyPressMsg:
 		switch {
 		case key.Matches(msg, common.DetailKeyMap.Back):
 			return m, func() tea.Msg { return common.GoBackMsg{} }
@@ -56,15 +57,32 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 			return m, func() tea.Msg { return common.SwitchScreenMsg{Screen: common.ScreenBoard} }
 		case key.Matches(msg, common.DetailKeyMap.ToList):
 			return m, func() tea.Msg { return common.SwitchScreenMsg{Screen: common.ScreenList} }
+		case key.Matches(msg, common.DetailKeyMap.CycleStatus):
+			return m, func() tea.Msg {
+				return common.ShowPickerMsg{IssueID: m.issue.ID, Field: "status"}
+			}
+		case key.Matches(msg, common.DetailKeyMap.CyclePriority):
+			return m, func() tea.Msg {
+				return common.ShowPickerMsg{IssueID: m.issue.ID, Field: "priority"}
+			}
+		case key.Matches(msg, common.DetailKeyMap.EditIssue):
+			return m, func() tea.Msg {
+				return common.LaunchEditMsg{ID: m.issue.ID}
+			}
+		case key.Matches(msg, common.DetailKeyMap.AddComment):
+			return m, func() tea.Msg {
+				return common.LaunchEditorMsg{ID: m.issue.ID}
+			}
 		}
-	case tea.MouseMsg:
-		if msg.Action == tea.MouseActionPress && msg.Button == tea.MouseButtonBackward {
+	case tea.MouseClickMsg:
+		mouse := msg.Mouse()
+		if msg.Button == tea.MouseBackward {
 			return m, func() tea.Msg { return common.GoBackMsg{} }
 		}
-		if msg.Action == tea.MouseActionPress && msg.Button == tea.MouseButtonLeft {
-			viewportY := msg.Y - common.AppHeaderHeight
-			if viewportY >= 0 && viewportY < m.viewport.Height {
-				contentLine := m.viewport.YOffset + viewportY
+		if msg.Button == tea.MouseLeft {
+			viewportY := mouse.Y - common.AppHeaderHeight
+			if viewportY >= 0 && viewportY < m.viewport.Height() {
+				contentLine := m.viewport.YOffset() + viewportY
 				if id, ok := m.clickLines[contentLine]; ok {
 					return m, func() tea.Msg { return common.OpenDetailMsg{ID: id} }
 				}
@@ -76,6 +94,9 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 	m.viewport, cmd = m.viewport.Update(msg)
 	return m, cmd
 }
+
+// IssueID returns the ID of the issue being displayed.
+func (m Model) IssueID() int { return m.issue.ID }
 
 func (m Model) View() string {
 	return m.viewport.View()
@@ -91,22 +112,19 @@ func renderIssue(issue data.Issue, allIssues []data.Issue, width int) (string, m
 	b.WriteString(" " + idStr + "\n")
 	b.WriteString(" " + title + "\n\n")
 
-	// Metadata box: status pill + priority + assignee + labels + dates
+	// Metadata box: status pill + priority + labels + dates
 	metaBoxW := width - 4
 	if metaBoxW < 30 {
 		metaBoxW = 30
 	}
 	var metaLines []string
 
-	// Row 1: status pill + priority + assignee
+	// Row 1: status pill + priority
 	statusPill := common.StatusPillStyle(issue.Status).
 		Render(common.StatusIcon(issue.Status) + " " + issue.Status.Label())
 	prioStr := common.PriorityStyle(issue.Priority).
 		Render(strings.TrimSpace(common.PriorityIcon(issue.Priority)) + " " + issue.Priority.Label())
 	metaRow := statusPill + "  " + prioStr
-	if issue.Assignee != "" {
-		metaRow += "  " + common.StyleSubtitle.Render("@"+issue.Assignee)
-	}
 	metaLines = append(metaLines, metaRow)
 
 	// Row 2: labels
@@ -121,10 +139,10 @@ func renderIssue(issue data.Issue, allIssues []data.Issue, width int) (string, m
 	// Row 3: dates
 	var dateParts []string
 	if !issue.Created.IsZero() {
-		dateParts = append(dateParts, "Created "+issue.Created.Format("2006-01-02"))
+		dateParts = append(dateParts, "Created "+issue.Created.Format("2006-01-02 15:04"))
 	}
 	if !issue.Updated.IsZero() {
-		dateParts = append(dateParts, "Updated "+issue.Updated.Format("2006-01-02"))
+		dateParts = append(dateParts, "Updated "+issue.Updated.Format("2006-01-02 15:04"))
 	}
 	if len(dateParts) > 0 {
 		metaLines = append(metaLines, common.StyleFaint.Render(strings.Join(dateParts, "  ·  ")))
@@ -198,8 +216,7 @@ func renderIssue(issue data.Issue, allIssues []data.Issue, width int) (string, m
 		for _, c := range issue.Comments {
 			commentBox := common.StyleCommentBox.Width(commentW).
 				Render(
-					common.StyleTitle.Render(c.Author) +
-						"  " + common.StyleFaint.Render(c.Date) + "\n" +
+					common.StyleFaint.Render(c.Date) + "\n" +
 						renderMarkdown(c.Body, commentW-4),
 				)
 			b.WriteString(" " + commentBox + "\n\n")
@@ -213,6 +230,7 @@ func renderMarkdown(content string, width int) string {
 	r, err := glamour.NewTermRenderer(
 		glamour.WithStandardStyle("dark"),
 		glamour.WithWordWrap(width),
+		glamour.WithColorProfile(termenv.TrueColor),
 	)
 	if err != nil {
 		return content

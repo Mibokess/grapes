@@ -1,0 +1,28 @@
+ ID     Title                                                 Status         Priority   Labels          
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ 1      Implement user authentication                         ◑ in_progress   ! high    backend secu
+ 2      Fix dashboard loading performance                     ◌ todo         !! urgent  performance 
+ 3      Add dark mode support                                 ○ backlog       · medium  frontend des
+ 4      Write API documentation                               ● done            low     docs        
+ 5      Implement login endpoint                              ● done          ! high    backend     
+ 6      Implement token refresh                               ◑ in_progress   ! high    backend     
+ 7      Remove deprecated v1 API endpoints                    × cancelled       low                 
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    

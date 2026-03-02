@@ -1,8 +1,10 @@
 package common
 
 import (
+	"image/color"
+
 	"github.com/Mibokess/grapes/internal/data"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/lipgloss/v2"
 )
 
 // GitHub dark-inspired color palette.
@@ -165,7 +167,7 @@ func PriorityIcon(p data.Priority) string {
 }
 
 func PriorityStyle(p data.Priority) lipgloss.Style {
-	var c lipgloss.Color
+	var c color.Color
 	switch p {
 	case data.PriorityUrgent:
 		c = colorUrgent
@@ -182,7 +184,7 @@ func PriorityStyle(p data.Priority) lipgloss.Style {
 }
 
 func StatusStyle(s data.Status) lipgloss.Style {
-	var c lipgloss.Color
+	var c color.Color
 	switch s {
 	case data.StatusBacklog:
 		c = colorBacklog
@@ -200,8 +202,8 @@ func StatusStyle(s data.Status) lipgloss.Style {
 	return lipgloss.NewStyle().Foreground(c)
 }
 
-// StatusColorFor returns the raw lipgloss.Color for a given status.
-func StatusColorFor(s data.Status) lipgloss.Color {
+// StatusColorFor returns the raw color for a given status.
+func StatusColorFor(s data.Status) color.Color {
 	switch s {
 	case data.StatusBacklog:
 		return colorBacklog
@@ -224,7 +226,7 @@ func FormatKeyHint(k, action string) string {
 }
 
 func StatusHeaderStyle(s data.Status) lipgloss.Style {
-	var c lipgloss.Color
+	var c color.Color
 	switch s {
 	case data.StatusBacklog:
 		c = colorBacklog
@@ -244,7 +246,7 @@ func StatusHeaderStyle(s data.Status) lipgloss.Style {
 
 // StatusPillStyle returns a colored-background pill style for the detail view.
 func StatusPillStyle(s data.Status) lipgloss.Style {
-	var fg, bg lipgloss.Color
+	var fg, bg color.Color
 	switch s {
 	case data.StatusBacklog:
 		fg, bg = colorText, lipgloss.Color("#3d4148")
@@ -267,17 +269,17 @@ func StatusPillStyle(s data.Status) lipgloss.Style {
 }
 
 // Label color palette — distinct, readable colors for dark backgrounds.
-var labelColors = []struct{ fg, bg lipgloss.Color }{
-	{"#a371f7", "#2d1b69"}, // purple
-	{"#58a6ff", "#0d2240"}, // blue
-	{"#3fb950", "#0f2d1a"}, // green
-	{"#d29922", "#2d2006"}, // yellow
-	{"#f78166", "#2d1710"}, // orange
-	{"#f692ce", "#2d1226"}, // pink
-	{"#79c0ff", "#0d2240"}, // light blue
-	{"#7ee787", "#0f2d1a"}, // light green
-	{"#d2a8ff", "#2d1b69"}, // lavender
-	{"#ffa657", "#2d1c0a"}, // amber
+var labelColors = []struct{ fg, bg color.Color }{
+	{lipgloss.Color("#a371f7"), lipgloss.Color("#2d1b69")}, // purple
+	{lipgloss.Color("#58a6ff"), lipgloss.Color("#0d2240")}, // blue
+	{lipgloss.Color("#3fb950"), lipgloss.Color("#0f2d1a")}, // green
+	{lipgloss.Color("#d29922"), lipgloss.Color("#2d2006")}, // yellow
+	{lipgloss.Color("#f78166"), lipgloss.Color("#2d1710")}, // orange
+	{lipgloss.Color("#f692ce"), lipgloss.Color("#2d1226")}, // pink
+	{lipgloss.Color("#79c0ff"), lipgloss.Color("#0d2240")}, // light blue
+	{lipgloss.Color("#7ee787"), lipgloss.Color("#0f2d1a")}, // light green
+	{lipgloss.Color("#d2a8ff"), lipgloss.Color("#2d1b69")}, // lavender
+	{lipgloss.Color("#ffa657"), lipgloss.Color("#2d1c0a")}, // amber
 }
 
 // labelColorIndex returns a stable index for a label string.

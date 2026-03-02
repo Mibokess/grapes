@@ -6,9 +6,9 @@ import (
 
 	"github.com/Mibokess/grapes/internal/data"
 	"github.com/Mibokess/grapes/internal/tui/common"
-	"github.com/charmbracelet/bubbles/key"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/bubbles/v2/key"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 )
 
 type column struct {
@@ -25,6 +25,7 @@ type Model struct {
 	width     int
 	height    int
 	visCols   int // number of visible columns
+	sortMode  data.SortMode
 }
 
 func New(issues []data.Issue) Model {
@@ -61,9 +62,14 @@ func (m Model) SetIssues(issues []data.Issue) Model {
 	return m
 }
 
+func (m Model) SetSortMode(mode data.SortMode) Model {
+	m.sortMode = mode
+	return m
+}
+
 func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 	switch msg := msg.(type) {
-	case tea.KeyMsg:
+	case tea.KeyPressMsg:
 		switch {
 		case key.Matches(msg, common.BoardKeyMap.Left):
 			if m.curCol > 0 {
@@ -97,16 +103,38 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 				issue := m.columns[m.curCol].issues[m.curRow]
 				return m, func() tea.Msg { return common.OpenDetailMsg{ID: issue.ID} }
 			}
+		case key.Matches(msg, common.BoardKeyMap.EditIssue):
+			if len(m.columns) > 0 && len(m.columns[m.curCol].issues) > 0 {
+				issue := m.columns[m.curCol].issues[m.curRow]
+				return m, func() tea.Msg { return common.LaunchEditMsg{ID: issue.ID} }
+			}
+		case key.Matches(msg, common.BoardKeyMap.CycleStatus):
+			if len(m.columns) > 0 && len(m.columns[m.curCol].issues) > 0 {
+				issue := m.columns[m.curCol].issues[m.curRow]
+				return m, func() tea.Msg {
+					return common.ShowPickerMsg{IssueID: issue.ID, Field: "status"}
+				}
+			}
+		case key.Matches(msg, common.BoardKeyMap.CyclePriority):
+			if len(m.columns) > 0 && len(m.columns[m.curCol].issues) > 0 {
+				issue := m.columns[m.curCol].issues[m.curRow]
+				return m, func() tea.Msg {
+					return common.ShowPickerMsg{IssueID: issue.ID, Field: "priority"}
+				}
+			}
+		case key.Matches(msg, common.BoardKeyMap.CycleSort):
+			return m, func() tea.Msg { return common.CycleSortMsg{} }
+		case key.Matches(msg, common.BoardKeyMap.ReverseSort):
+			return m, func() tea.Msg { return common.ReverseSortMsg{} }
 		case key.Matches(msg, common.BoardKeyMap.ToList):
 			return m, func() tea.Msg { return common.SwitchScreenMsg{Screen: common.ScreenList} }
 		case key.Matches(msg, common.BoardKeyMap.Refresh):
 			return m, func() tea.Msg { return common.RefreshMsg{} }
 		}
 
-	case tea.MouseMsg:
-		switch msg.Button {
-		case tea.MouseButtonWheelUp:
-			// Scroll left through columns (matches Python SnapHorizontalScroll behaviour)
+	case tea.MouseWheelMsg:
+		if msg.Button == tea.MouseWheelUp {
+			// Scroll left through columns
 			if m.curCol > 0 {
 				m.curCol--
 				m.clampRow()
@@ -114,7 +142,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 				m.ensureRowVisible()
 				m.ensureColVisible()
 			}
-		case tea.MouseButtonWheelDown:
+		} else if msg.Button == tea.MouseWheelDown {
 			// Scroll right through columns
 			if m.curCol < len(m.columns)-1 {
 				m.curCol++
@@ -123,11 +151,13 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 				m.ensureRowVisible()
 				m.ensureColVisible()
 			}
-		case tea.MouseButtonLeft:
-			if msg.Action != tea.MouseActionPress {
-				break
-			}
-			if colIdx, rowIdx, ok := m.cardAt(msg.X, msg.Y); ok {
+		}
+
+	case tea.MouseClickMsg:
+		mouse := msg.Mouse()
+		switch msg.Button {
+		case tea.MouseLeft:
+			if colIdx, rowIdx, ok := m.cardAt(mouse.X, mouse.Y); ok {
 				m.curCol = colIdx
 				m.curRow = rowIdx
 				m.ensureColVisible()
@@ -136,17 +166,14 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 				return m, func() tea.Msg { return common.OpenDetailMsg{ID: issue.ID} }
 			}
 			// Click in column area without hitting a card — select the column
-			if colIdx, ok := m.columnAt(msg.X); ok && colIdx != m.curCol {
+			if colIdx, ok := m.columnAt(mouse.X); ok && colIdx != m.curCol {
 				m.curCol = colIdx
 				m.clampRow()
 				m.scrollRow = 0
 				m.ensureRowVisible()
 				m.ensureColVisible()
 			}
-		case tea.MouseButtonForward:
-			if msg.Action != tea.MouseActionPress {
-				break
-			}
+		case tea.MouseForward:
 			if len(m.columns) > 0 && len(m.columns[m.curCol].issues) > 0 {
 				issue := m.columns[m.curCol].issues[m.curRow]
 				return m, func() tea.Msg { return common.OpenDetailMsg{ID: issue.ID} }
@@ -297,8 +324,9 @@ func (m Model) renderCard(issue data.Issue, width int, active bool) string {
 		style = common.StyleActiveCard.Width(width - 2)
 	}
 
-	// Inner content width = card width - 2 (border) - 2 (padding)
-	innerW := width - 4
+	// Inner text width = card width - 2 (border) - 2 (border in Width) - 2 (padding)
+	// lipgloss v2 Width() sets the total outer width including border.
+	innerW := width - 6
 
 	// Line 1: #ID + priority icon (small, muted — like Linear's "ETA-502")
 	idStr := common.StyleFaint.Render(fmt.Sprintf("#%d", issue.ID))
@@ -331,23 +359,16 @@ func (m Model) renderCard(issue data.Issue, width int, active bool) string {
 		}
 		titleLine2 = truncate(string(rest), innerW)
 	}
-	title := titleLine1
-	if titleLine2 != "" {
-		title += "\n" + titleLine2
-	}
+	// Always render title as exactly 2 lines so all cards have the same height.
+	title := titleLine1 + "\n" + titleLine2
 	if active {
 		title = common.StyleTitle.Render(title)
 	}
 
-	// Line 3: @assignee + labels (compact, muted)
+	// Line 4: labels (compact, muted)
+	var metaLine string
 	var meta []string
-	if issue.Assignee != "" {
-		meta = append(meta, common.StyleSubtitle.Render("@"+issue.Assignee))
-	}
 	used := 0
-	if issue.Assignee != "" {
-		used = len([]rune(issue.Assignee)) + 1
-	}
 	for _, l := range issue.Labels {
 		lw := len([]rune(l))
 		sep := 0
@@ -360,20 +381,20 @@ func (m Model) renderCard(issue data.Issue, width int, active bool) string {
 		meta = append(meta, common.RenderLabel(l))
 		used += sep + lw
 	}
-
-	// Bottom line: Created date (faint, like Linear)
-	var dateLine string
-	if !issue.Created.IsZero() {
-		dateLine = common.StyleFaint.Render("Created " + issue.Created.Format("Jan 2"))
-	}
-
-	content := line1 + "\n" + title
 	if len(meta) > 0 {
-		content += "\n" + strings.Join(meta, "  ")
+		metaLine = strings.Join(meta, "  ")
 	}
-	if dateLine != "" {
-		content += "\n" + dateLine
+
+	// Line 5: Date — show "Updated" when sorting by updated, otherwise "Created"
+	var dateLine string
+	if m.sortMode == data.SortByUpdated && !issue.Updated.IsZero() {
+		dateLine = common.StyleFaint.Render("Updated " + issue.Updated.Format("Jan 2 15:04"))
+	} else if !issue.Created.IsZero() {
+		dateLine = common.StyleFaint.Render("Created " + issue.Created.Format("Jan 2 15:04"))
 	}
+
+	// Always include all 5 lines: ID, title (2), meta, date — for uniform card height.
+	content := line1 + "\n" + title + "\n" + metaLine + "\n" + dateLine
 
 	return style.Render(content)
 }

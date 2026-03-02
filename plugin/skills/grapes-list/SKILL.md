@@ -1,6 +1,6 @@
 ---
 name: grapes-list
-description: "Use when you need to find, list, browse, or filter issues by status, assignee, priority, or labels."
+description: "Use when you need to find, list, browse, or filter issues by status, priority, or labels."
 user-invokable: false
 ---
 
@@ -18,18 +18,6 @@ Replace `todo` with: `backlog`, `in_progress`, `done`, `cancelled`.
 
 ```bash
 grep -l "status: todo\|status: in_progress\|status: backlog" .grapes/*/meta.yaml
-```
-
-## By Assignee
-
-```bash
-grep -l "assignee: alice" .grapes/*/meta.yaml
-```
-
-Unassigned issues:
-
-```bash
-grep -l 'assignee: ""' .grapes/*/meta.yaml
 ```
 
 ## By Priority

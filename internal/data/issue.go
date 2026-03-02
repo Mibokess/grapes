@@ -1,6 +1,9 @@
 package data
 
-import "time"
+import (
+	"sort"
+	"time"
+)
 
 // Status represents an issue's workflow state.
 type Status string
@@ -23,11 +26,11 @@ var AllStatuses = []Status{
 }
 
 var statusLabels = map[Status]string{
-	StatusBacklog:    "Backlog",
-	StatusTodo:       "Todo",
-	StatusInProgress: "In Progress",
-	StatusDone:       "Done",
-	StatusCancelled:  "Cancelled",
+	StatusBacklog:    "backlog",
+	StatusTodo:       "todo",
+	StatusInProgress: "in_progress",
+	StatusDone:       "done",
+	StatusCancelled:  "cancelled",
 }
 
 func (s Status) Label() string {
@@ -48,10 +51,18 @@ const (
 )
 
 var priorityLabels = map[Priority]string{
-	PriorityUrgent: "Urgent",
-	PriorityHigh:   "High",
-	PriorityMedium: "Medium",
-	PriorityLow:    "Low",
+	PriorityUrgent: "urgent",
+	PriorityHigh:   "high",
+	PriorityMedium: "medium",
+	PriorityLow:    "low",
+}
+
+// AllPriorities defines the cycling order for the picker.
+var AllPriorities = []Priority{
+	PriorityLow,
+	PriorityMedium,
+	PriorityHigh,
+	PriorityUrgent,
 }
 
 // PriorityOrder defines sort order (lower = higher priority).
@@ -69,10 +80,65 @@ func (p Priority) Label() string {
 	return string(p)
 }
 
+// SortMode controls issue ordering in the TUI.
+type SortMode int
+
+const (
+	SortByPriority SortMode = iota // Urgent → Low, tie-break by ID
+	SortByUpdated                  // Most recently updated first, tie-break by ID
+	SortByCreated                  // Most recently created first, tie-break by ID
+)
+
+var sortModeLabels = map[SortMode]string{
+	SortByPriority: "priority",
+	SortByUpdated:  "updated",
+	SortByCreated:  "created",
+}
+
+func (s SortMode) Label() string {
+	if l, ok := sortModeLabels[s]; ok {
+		return l
+	}
+	return "unknown"
+}
+
+func (s SortMode) Next() SortMode {
+	return (s + 1) % 3
+}
+
+// SortIssues sorts issues in place according to the given mode.
+// When asc is true the natural order is reversed (e.g. oldest first, lowest priority first).
+func SortIssues(issues []Issue, mode SortMode, asc bool) {
+	sort.SliceStable(issues, func(i, j int) bool {
+		if asc {
+			i, j = j, i // flip comparison
+		}
+		switch mode {
+		case SortByPriority:
+			pi, pj := PriorityOrder[issues[i].Priority], PriorityOrder[issues[j].Priority]
+			if pi != pj {
+				return pi < pj
+			}
+			return issues[i].ID < issues[j].ID
+		case SortByUpdated:
+			if !issues[i].Updated.Equal(issues[j].Updated) {
+				return issues[i].Updated.After(issues[j].Updated)
+			}
+			return issues[i].ID < issues[j].ID
+		case SortByCreated:
+			if !issues[i].Created.Equal(issues[j].Created) {
+				return issues[i].Created.After(issues[j].Created)
+			}
+			return issues[i].ID < issues[j].ID
+		default:
+			return issues[i].ID < issues[j].ID
+		}
+	})
+}
+
 type Comment struct {
-	Author string
-	Date   string
-	Body   string
+	Date string
+	Body string
 }
 
 type Issue struct {
@@ -80,7 +146,6 @@ type Issue struct {
 	Title    string
 	Status   Status
 	Priority Priority
-	Assignee string
 	Labels   []string
 	Parent   *int
 	Children []int

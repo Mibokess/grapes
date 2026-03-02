@@ -1,6 +1,6 @@
 ---
 name: grapes-update
-description: "Use when you need to change issue metadata — status, priority, assignee, or labels."
+description: "Use when you need to change issue metadata — status, priority, or labels."
 user-invokable: false
 ---
 
@@ -28,14 +28,6 @@ Edit .grapes/<id>/meta.yaml
 
 Valid values: `urgent`, `high`, `medium`, `low`
 
-## Changing Assignee
-
-```
-Edit .grapes/<id>/meta.yaml
-  old: 'assignee: ""'
-  new: "assignee: alice"
-```
-
 ## Changing Labels
 
 ```
@@ -44,14 +36,14 @@ Edit .grapes/<id>/meta.yaml
   new: "labels: [bug, auth]"
 ```
 
-## Always Update the Date
+## Always Update the Datetime
 
-Every edit to meta.yaml must also update `updated:` to today's date:
+Every edit to meta.yaml must also update `updated:` to the current datetime:
 
 ```
 Edit .grapes/<id>/meta.yaml
-  old: "updated: 2026-02-20"
-  new: "updated: 2026-02-27"
+  old: "updated: 2026-02-20T10:00"
+  new: "updated: 2026-02-27T14:30"
 ```
 
-Do both edits (the field change + the date update) when modifying an issue.
+Do both edits (the field change + the datetime update) when modifying an issue.

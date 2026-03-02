@@ -11,13 +11,12 @@ Append to `.grapes/<id>/comments.md`.
 ## Format
 
 ```markdown
-### <author> — YYYY-MM-DD
+### YYYY-MM-DDTHH:MM
 Comment body here.
 ```
 
-- Use em-dash `—` (not hyphen `-` or en-dash `–`)
-- Use `agent` as the author for AI-authored comments
-- Set the date to today
+- Header: `### YYYY-MM-DDTHH:MM`
+- Set the datetime to now
 - Leave a blank line before the header if the file is not empty
 
 ## Example
@@ -25,7 +24,7 @@ Comment body here.
 If `.grapes/5/comments.md` currently contains:
 
 ```markdown
-### alice — 2026-02-27
+### 2026-02-27T09:15
 Found the root cause in auth/callback.ts.
 ```
 
@@ -33,7 +32,7 @@ Append:
 
 ```markdown
 
-### agent — 2026-02-27
+### 2026-02-28T14:30
 Fixed the callback to preserve the original URL. See commit abc123.
 ```
 

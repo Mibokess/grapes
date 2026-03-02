@@ -1,0 +1,2 @@
+# Prevent git from modifying golden file line endings
+*.golden -text

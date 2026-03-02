@@ -1,6 +1,6 @@
 package common
 
-import "github.com/charmbracelet/bubbles/key"
+import "charm.land/bubbles/v2/key"
 
 // GlobalKeys are available on every screen.
 type GlobalKeys struct {
@@ -21,13 +21,18 @@ var GlobalKeyMap = GlobalKeys{
 
 // BoardKeys are specific to the Kanban board screen.
 type BoardKeys struct {
-	Up      key.Binding
-	Down    key.Binding
-	Left    key.Binding
-	Right   key.Binding
-	Open    key.Binding
-	ToList  key.Binding
-	Refresh key.Binding
+	Up            key.Binding
+	Down          key.Binding
+	Left          key.Binding
+	Right         key.Binding
+	Open          key.Binding
+	EditIssue     key.Binding
+	ToList        key.Binding
+	Refresh       key.Binding
+	CycleStatus   key.Binding
+	CyclePriority key.Binding
+	CycleSort     key.Binding
+	ReverseSort   key.Binding
 }
 
 var BoardKeyMap = BoardKeys{
@@ -51,6 +56,10 @@ var BoardKeyMap = BoardKeys{
 		key.WithKeys("enter"),
 		key.WithHelp("enter", "open"),
 	),
+	EditIssue: key.NewBinding(
+		key.WithKeys("e"),
+		key.WithHelp("e", "edit"),
+	),
 	ToList: key.NewBinding(
 		key.WithKeys("L"),
 		key.WithHelp("L", "list view"),
@@ -59,17 +68,38 @@ var BoardKeyMap = BoardKeys{
 		key.WithKeys("r"),
 		key.WithHelp("r", "refresh"),
 	),
+	CycleStatus: key.NewBinding(
+		key.WithKeys("s"),
+		key.WithHelp("s", "status"),
+	),
+	CyclePriority: key.NewBinding(
+		key.WithKeys("p"),
+		key.WithHelp("p", "priority"),
+	),
+	CycleSort: key.NewBinding(
+		key.WithKeys("o"),
+		key.WithHelp("o", "order"),
+	),
+	ReverseSort: key.NewBinding(
+		key.WithKeys("O"),
+		key.WithHelp("O", "reverse"),
+	),
 }
 
 // ListKeys are specific to the list screen.
 type ListKeys struct {
-	Up      key.Binding
-	Down    key.Binding
-	Open    key.Binding
-	ToBoard key.Binding
-	Filter  key.Binding
-	Clear   key.Binding
-	Refresh key.Binding
+	Up            key.Binding
+	Down          key.Binding
+	Open          key.Binding
+	EditIssue     key.Binding
+	ToBoard       key.Binding
+	Filter        key.Binding
+	Clear         key.Binding
+	Refresh       key.Binding
+	CycleStatus   key.Binding
+	CyclePriority key.Binding
+	CycleSort     key.Binding
+	ReverseSort   key.Binding
 }
 
 var ListKeyMap = ListKeys{
@@ -84,6 +114,10 @@ var ListKeyMap = ListKeys{
 	Open: key.NewBinding(
 		key.WithKeys("enter"),
 		key.WithHelp("enter", "open"),
+	),
+	EditIssue: key.NewBinding(
+		key.WithKeys("e"),
+		key.WithHelp("e", "edit"),
 	),
 	ToBoard: key.NewBinding(
 		key.WithKeys("b"),
@@ -101,13 +135,33 @@ var ListKeyMap = ListKeys{
 		key.WithKeys("r"),
 		key.WithHelp("r", "refresh"),
 	),
+	CycleStatus: key.NewBinding(
+		key.WithKeys("s"),
+		key.WithHelp("s", "status"),
+	),
+	CyclePriority: key.NewBinding(
+		key.WithKeys("p"),
+		key.WithHelp("p", "priority"),
+	),
+	CycleSort: key.NewBinding(
+		key.WithKeys("o"),
+		key.WithHelp("o", "order"),
+	),
+	ReverseSort: key.NewBinding(
+		key.WithKeys("O"),
+		key.WithHelp("O", "reverse"),
+	),
 }
 
 // DetailKeys are specific to the detail screen.
 type DetailKeys struct {
-	Back    key.Binding
-	ToBoard key.Binding
-	ToList  key.Binding
+	Back          key.Binding
+	ToBoard       key.Binding
+	ToList        key.Binding
+	CycleStatus   key.Binding
+	CyclePriority key.Binding
+	AddComment    key.Binding
+	EditIssue     key.Binding
 }
 
 var DetailKeyMap = DetailKeys{
@@ -122,5 +176,21 @@ var DetailKeyMap = DetailKeys{
 	ToList: key.NewBinding(
 		key.WithKeys("l"),
 		key.WithHelp("l", "list view"),
+	),
+	CycleStatus: key.NewBinding(
+		key.WithKeys("s"),
+		key.WithHelp("s", "status"),
+	),
+	CyclePriority: key.NewBinding(
+		key.WithKeys("p"),
+		key.WithHelp("p", "priority"),
+	),
+	AddComment: key.NewBinding(
+		key.WithKeys("c"),
+		key.WithHelp("c", "comment"),
+	),
+	EditIssue: key.NewBinding(
+		key.WithKeys("e"),
+		key.WithHelp("e", "edit"),
 	),
 }

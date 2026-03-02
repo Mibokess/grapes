@@ -6,11 +6,11 @@ import (
 
 	"github.com/Mibokess/grapes/internal/data"
 	"github.com/Mibokess/grapes/internal/tui/common"
-	"github.com/charmbracelet/bubbles/key"
-	"github.com/charmbracelet/bubbles/table"
-	"github.com/charmbracelet/bubbles/textinput"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/bubbles/v2/key"
+	"charm.land/bubbles/v2/table"
+	"charm.land/bubbles/v2/textinput"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 )
 
 type Model struct {
@@ -73,7 +73,7 @@ func (m Model) SetIssues(issues []data.Issue) Model {
 
 func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 	switch msg := msg.(type) {
-	case tea.KeyMsg:
+	case tea.KeyPressMsg:
 		if m.filtering {
 			switch {
 			case key.Matches(msg, common.ListKeyMap.Clear):
@@ -83,7 +83,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 				m.table = m.buildTable(m.allIssues, m.width, m.height-3)
 				m.visibleStart = 0
 				return m, nil
-			case msg.Type == tea.KeyEnter:
+			case msg.Code == tea.KeyEnter:
 				m.filtering = false
 				m.filter.Blur()
 				return m, nil
@@ -105,6 +105,38 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 					return m, func() tea.Msg { return common.OpenDetailMsg{ID: id} }
 				}
 			}
+		case key.Matches(msg, common.ListKeyMap.EditIssue):
+			if row := m.table.SelectedRow(); row != nil {
+				id := 0
+				fmt.Sscanf(row[0], "%d", &id)
+				if id > 0 {
+					return m, func() tea.Msg { return common.LaunchEditMsg{ID: id} }
+				}
+			}
+		case key.Matches(msg, common.ListKeyMap.CycleStatus):
+			if row := m.table.SelectedRow(); row != nil {
+				id := 0
+				fmt.Sscanf(row[0], "%d", &id)
+				if id > 0 {
+					return m, func() tea.Msg {
+						return common.ShowPickerMsg{IssueID: id, Field: "status"}
+					}
+				}
+			}
+		case key.Matches(msg, common.ListKeyMap.CyclePriority):
+			if row := m.table.SelectedRow(); row != nil {
+				id := 0
+				fmt.Sscanf(row[0], "%d", &id)
+				if id > 0 {
+					return m, func() tea.Msg {
+						return common.ShowPickerMsg{IssueID: id, Field: "priority"}
+					}
+				}
+			}
+		case key.Matches(msg, common.ListKeyMap.CycleSort):
+			return m, func() tea.Msg { return common.CycleSortMsg{} }
+		case key.Matches(msg, common.ListKeyMap.ReverseSort):
+			return m, func() tea.Msg { return common.ReverseSortMsg{} }
 		case key.Matches(msg, common.ListKeyMap.Filter):
 			m.filtering = true
 			m.filter.Focus()
@@ -115,18 +147,22 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 			return m, func() tea.Msg { return common.RefreshMsg{} }
 		}
 
-	case tea.MouseMsg:
-		switch msg.Button {
-		case tea.MouseButtonWheelUp:
+	case tea.MouseWheelMsg:
+		if msg.Button == tea.MouseWheelUp {
 			m.table.MoveUp(1)
 			m.updateVisibleStart()
 			return m, nil
-		case tea.MouseButtonWheelDown:
+		} else if msg.Button == tea.MouseWheelDown {
 			m.table.MoveDown(1)
 			m.updateVisibleStart()
 			return m, nil
-		case tea.MouseButtonLeft:
-			if msg.Action != tea.MouseActionPress || m.filtering {
+		}
+
+	case tea.MouseClickMsg:
+		mouse := msg.Mouse()
+		switch msg.Button {
+		case tea.MouseLeft:
+			if m.filtering {
 				break
 			}
 			// 2-line app header + 2-line table header = 4; +1 if filter line shown.
@@ -134,8 +170,8 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 			if m.filter.Value() != "" {
 				tableTopY = common.AppHeaderHeight + 3
 			}
-			if msg.Y >= tableTopY {
-				clickedRow := m.visibleStart + (msg.Y - tableTopY)
+			if mouse.Y >= tableTopY {
+				clickedRow := m.visibleStart + (mouse.Y - tableTopY)
 				issues := m.filteredIssues()
 				if clickedRow >= 0 && clickedRow < len(issues) {
 					m.table.SetCursor(clickedRow)
@@ -149,18 +185,14 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 					}
 				}
 			}
-		case tea.MouseButtonBackward:
-			if msg.Action == tea.MouseActionPress {
-				return m, func() tea.Msg { return common.SwitchScreenMsg{Screen: common.ScreenBoard} }
-			}
-		case tea.MouseButtonForward:
-			if msg.Action == tea.MouseActionPress {
-				if row := m.table.SelectedRow(); row != nil {
-					id := 0
-					fmt.Sscanf(row[0], "%d", &id)
-					if id > 0 {
-						return m, func() tea.Msg { return common.OpenDetailMsg{ID: id} }
-					}
+		case tea.MouseBackward:
+			return m, func() tea.Msg { return common.SwitchScreenMsg{Screen: common.ScreenBoard} }
+		case tea.MouseForward:
+			if row := m.table.SelectedRow(); row != nil {
+				id := 0
+				fmt.Sscanf(row[0], "%d", &id)
+				if id > 0 {
+					return m, func() tea.Msg { return common.OpenDetailMsg{ID: id} }
 				}
 			}
 		}
@@ -207,7 +239,7 @@ func (m Model) buildTable(issues []data.Issue, width, height int) table.Model {
 		width = 40
 	}
 
-	titleW := width - 60
+	titleW := width - 48
 	if titleW < 20 {
 		titleW = 20
 	}
@@ -217,21 +249,23 @@ func (m Model) buildTable(issues []data.Issue, width, height int) table.Model {
 		{Title: "Title", Width: titleW},
 		{Title: "Status", Width: 13},
 		{Title: "Priority", Width: 9},
-		{Title: "Assignee", Width: 12},
 		{Title: "Labels", Width: 15},
 	}
 
 	var rows []table.Row
 	for _, iss := range issues {
-		labels := strings.Join(iss.Labels, " ")
-		statusCell := common.StatusIcon(iss.Status) + " " + iss.Status.Label()
-		prioCell := common.PriorityIcon(iss.Priority) + " " + iss.Priority.Label()
+		var labelParts []string
+		for _, l := range iss.Labels {
+			labelParts = append(labelParts, common.RenderLabel(l))
+		}
+		labels := strings.Join(labelParts, " ")
+		statusCell := common.StatusStyle(iss.Status).Render(common.StatusIcon(iss.Status) + " " + iss.Status.Label())
+		prioCell := common.PriorityStyle(iss.Priority).Render(common.PriorityIcon(iss.Priority) + " " + iss.Priority.Label())
 		rows = append(rows, table.Row{
 			fmt.Sprintf("%d", iss.ID),
 			iss.Title,
 			statusCell,
 			prioCell,
-			iss.Assignee,
 			labels,
 		})
 	}
@@ -240,6 +274,7 @@ func (m Model) buildTable(issues []data.Issue, width, height int) table.Model {
 		table.WithColumns(cols),
 		table.WithRows(rows),
 		table.WithFocused(true),
+		table.WithWidth(width),
 		table.WithHeight(height),
 	)
 
