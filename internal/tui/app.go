@@ -25,13 +25,19 @@ import (
 // clearStatusMsg is sent after a delay to clear transient status bar messages.
 type clearStatusMsg struct{}
 
+// navEntry captures one frame in the navigation history.
+type navEntry struct {
+	screen common.Screen
+	detail detail.Model // only meaningful when screen == ScreenDetail
+}
+
 type Model struct {
 	issues     []data.Issue
 	issuesDir  string
 	width      int
 	height     int
 	screen     common.Screen
-	prevScreen common.Screen
+	navStack   []navEntry
 	watcher    *fsnotify.Watcher
 	sortMode data.SortMode
 	sortAsc  bool // ascending order (reversed from default)
@@ -167,10 +173,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			listTabW := lipgloss.Width(common.StyleTabInactive.Render("List"))
 			tabsStart := m.width - boardTabW - listTabW
 			if mouse.X >= tabsStart && mouse.X < tabsStart+boardTabW {
+				m.navStack = nil
 				m.screen = common.ScreenBoard
 				return m, nil
 			}
 			if mouse.X >= tabsStart+boardTabW && mouse.X < m.width {
+				m.navStack = nil
 				m.screen = common.ScreenList
 				return m, nil
 			}
@@ -186,11 +194,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 		if iss != nil {
-			// Only update prevScreen when coming from a non-detail screen,
-			// so Esc from nested detail views returns to the original screen.
-			if m.screen != common.ScreenDetail {
-				m.prevScreen = m.screen
-			}
+			m.navStack = append(m.navStack, navEntry{screen: m.screen, detail: m.detail})
 			m.screen = common.ScreenDetail
 			m.detail = detail.New(*iss, m.issues, m.width, m.height-3)
 			return m, m.detail.Init()
@@ -198,10 +202,21 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case common.GoBackMsg:
-		m.screen = m.prevScreen
+		if len(m.navStack) == 0 {
+			m.screen = common.ScreenBoard
+			return m, nil
+		}
+		top := m.navStack[len(m.navStack)-1]
+		m.navStack = m.navStack[:len(m.navStack)-1]
+		m.screen = top.screen
+		if top.screen == common.ScreenDetail {
+			m.detail = top.detail
+			m.detail = m.detail.SetSize(m.width, m.height-3)
+		}
 		return m, nil
 
 	case common.SwitchScreenMsg:
+		m.navStack = nil
 		m.screen = msg.Screen
 		return m, nil
 
@@ -443,10 +458,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m Model) renderHeader() string {
 	title := common.StyleAppTitle.Render("grapes")
 
-	// Active tab follows the current screen; detail inherits from previous screen.
+	// Active tab follows the current screen; detail inherits from origin screen.
 	activeScreen := m.screen
 	if activeScreen == common.ScreenDetail {
-		activeScreen = m.prevScreen
+		activeScreen = m.originScreen()
 	}
 
 	var boardTab, listTab string
@@ -469,6 +484,17 @@ func (m Model) renderHeader() string {
 	row := title + strings.Repeat(" ", spacerW) + tabs
 	sep := common.StyleSeparator.Render(strings.Repeat("━", m.width))
 	return lipgloss.JoinVertical(lipgloss.Left, row, sep)
+}
+
+// originScreen returns the non-detail screen that was active before
+// entering the detail view chain. Used for tab highlighting.
+func (m Model) originScreen() common.Screen {
+	for i := len(m.navStack) - 1; i >= 0; i-- {
+		if m.navStack[i].screen != common.ScreenDetail {
+			return m.navStack[i].screen
+		}
+	}
+	return common.ScreenBoard
 }
 
 func (m Model) View() tea.View {

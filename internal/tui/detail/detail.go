@@ -157,7 +157,11 @@ func renderIssue(issue data.Issue, allIssues []data.Issue, width int) (string, m
 				break
 			}
 		}
-		metaLines = append(metaLines, common.StyleFaint.Render(fmt.Sprintf("↑ Parent: #%d %s", *issue.Parent, parentTitle)))
+		parentLink := common.StyleSectionHeader.Render("↑") +
+			common.StyleFaint.Render(" Parent: ") +
+			common.StyleSectionHeader.Render(fmt.Sprintf("#%d", *issue.Parent)) +
+			"  " + common.StyleSubtitle.Render(parentTitle)
+		metaLines = append(metaLines, parentLink)
 	}
 
 	metaContent := strings.Join(metaLines, "\n")
