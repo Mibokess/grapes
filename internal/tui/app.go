@@ -158,9 +158,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width = msg.Width
 		m.height = msg.Height
 		contentHeight := m.contentHeight()
-		m.board = m.board.SetSize(m.width, contentHeight)
-		m.list = m.list.SetSize(m.width, contentHeight)
-		m.detail = m.detail.SetSize(m.width, contentHeight)
+		off := m.topOffset()
+		m.board = m.board.SetTopOffset(off).SetSize(m.width, contentHeight)
+		m.list = m.list.SetTopOffset(off).SetSize(m.width, contentHeight)
+		m.detail = m.detail.SetTopOffset(off).SetSize(m.width, contentHeight)
 		return m, nil
 
 	case tea.KeyPressMsg:
@@ -195,22 +196,34 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 		}
 
-	case tea.MouseClickMsg:
-		mouse := msg.Mouse()
-		if msg.Button == tea.MouseLeft && mouse.Y == 0 {
-			// Detect clicks on header tabs (Board / List)
-			boardTabW := lipgloss.Width(common.StyleTabInactive.Render("Board"))
-			listTabW := lipgloss.Width(common.StyleTabInactive.Render("List"))
-			tabsStart := m.width - boardTabW - listTabW
-			if mouse.X >= tabsStart && mouse.X < tabsStart+boardTabW {
-				m.navStack = nil
-				m.screen = common.ScreenBoard
-				return m, nil
-			}
-			if mouse.X >= tabsStart+boardTabW && mouse.X < m.width {
-				m.navStack = nil
-				m.screen = common.ScreenList
-				return m, nil
+	case tea.MouseClickMsg, tea.MouseMotionMsg:
+		// When picker is active, route all mouse events to it
+		if m.picker != nil {
+			m.updatePickerPosition()
+			var cmd tea.Cmd
+			p := *m.picker
+			p, cmd = p.Update(msg)
+			m.picker = &p
+			return m, cmd
+		}
+
+		if click, ok := msg.(tea.MouseClickMsg); ok {
+			mouse := click.Mouse()
+			if click.Button == tea.MouseLeft && mouse.Y == 0 {
+				// Detect clicks on header tabs (Board / List)
+				boardTabW := lipgloss.Width(common.StyleTabInactive.Render("Board"))
+				listTabW := lipgloss.Width(common.StyleTabInactive.Render("List"))
+				tabsStart := m.width - boardTabW - listTabW
+				if mouse.X >= tabsStart && mouse.X < tabsStart+boardTabW {
+					m.navStack = nil
+					m.screen = common.ScreenBoard
+					return m, nil
+				}
+				if mouse.X >= tabsStart+boardTabW && mouse.X < m.width {
+					m.navStack = nil
+					m.screen = common.ScreenList
+					return m, nil
+				}
 			}
 		}
 		// Non-tab clicks fall through to active screen delegation
@@ -226,7 +239,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if iss != nil {
 			m.navStack = append(m.navStack, navEntry{screen: m.screen, detail: m.detail})
 			m.screen = common.ScreenDetail
-			m.detail = detail.New(*iss, m.issues, m.width, m.contentHeight())
+			m.detail = detail.New(*iss, m.issues, m.width, m.contentHeight()).SetTopOffset(m.topOffset())
 			return m, m.detail.Init()
 		}
 		return m, nil
@@ -241,7 +254,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.screen = top.screen
 		if top.screen == common.ScreenDetail {
 			m.detail = top.detail
-			m.detail = m.detail.SetSize(m.width, m.contentHeight())
+			m.detail = m.detail.SetTopOffset(m.topOffset()).SetSize(m.width, m.contentHeight())
 		}
 		return m, nil
 
@@ -294,7 +307,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.screen == common.ScreenDetail {
 			for _, iss := range issues {
 				if iss.ID == m.detail.IssueID() {
-					m.detail = detail.New(iss, issues, m.width, m.contentHeight())
+					m.detail = detail.New(iss, issues, m.width, m.contentHeight()).SetTopOffset(m.topOffset())
 					break
 				}
 			}
@@ -745,6 +758,33 @@ func (m Model) buildPicker(issueID int, field string) picker.Model {
 	return picker.New(field, nil, 0, issueID, field)
 }
 
+// updatePickerPosition computes the centered screen position of the picker
+// overlay and stores it on the picker model for mouse hit-testing.
+func (m *Model) updatePickerPosition() {
+	if m.picker == nil {
+		return
+	}
+	pickerView := m.picker.View()
+	pickerLines := strings.Split(pickerView, "\n")
+	fgH := len(pickerLines)
+	fgW := 0
+	for _, l := range pickerLines {
+		if w := lipgloss.Width(l); w > fgW {
+			fgW = w
+		}
+	}
+	contentH := m.contentHeight()
+	offsetY := common.AppHeaderHeight + filter.BarHeight(m.filters)
+	m.picker.ScreenX = (m.width - fgW) / 2
+	m.picker.ScreenY = offsetY + (contentH-fgH)/2
+}
+
+// topOffset returns the number of screen lines above the view content
+// (app header + optional structured filter bar).
+func (m Model) topOffset() int {
+	return common.AppHeaderHeight + filter.BarHeight(m.filters)
+}
+
 // contentHeight returns the available height for view content, accounting for
 // the app header, status bar, and optional filter bar.
 func (m Model) contentHeight() int {
@@ -869,8 +909,9 @@ func (m *Model) propagateFilters() {
 	m.board = m.board.SetStatusFilter(m.filters.Statuses).SetIssues(filtered)
 	m.list = m.list.SetIssues(filtered)
 	contentHeight := m.contentHeight()
-	m.board = m.board.SetSize(m.width, contentHeight)
-	m.list = m.list.SetSize(m.width, contentHeight)
+	off := m.topOffset()
+	m.board = m.board.SetTopOffset(off).SetSize(m.width, contentHeight)
+	m.list = m.list.SetTopOffset(off).SetSize(m.width, contentHeight)
 }
 
 // stripErrorBanner removes a leading "# ERROR: ..." banner that was prepended by

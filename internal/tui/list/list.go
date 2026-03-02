@@ -41,11 +41,12 @@ type Model struct {
 	scrollX      int // horizontal scroll offset for columns after the sticky ID
 	sortMode     data.SortMode
 	sortAsc      bool
+	topOffset    int // screen lines above this view's content (app header + filter bar)
 }
 
 func New(issues []data.Issue) Model {
 	ti := textinput.New()
-	ti.Placeholder = "Filter by title..."
+	ti.Placeholder = "Search all fields..."
 	ti.CharLimit = 100
 
 	m := Model{
@@ -88,8 +89,16 @@ func (m Model) SetSize(w, h int) Model {
 }
 
 func (m Model) SetIssues(issues []data.Issue) Model {
+	prev := m.table.Cursor()
 	m.allIssues = issues
 	m.table = m.buildTable(m.filteredIssues(), m.width, m.height-3)
+	m.table.SetCursor(prev)
+	m.updateVisibleStart()
+	return m
+}
+
+func (m Model) SetTopOffset(n int) Model {
+	m.topOffset = n
 	return m
 }
 
@@ -210,16 +219,14 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 			if m.filtering {
 				break
 			}
-			// Header row is right after app header (+filter line if shown).
-			headerY := common.AppHeaderHeight
+			// Header row: topOffset accounts for app header + structured filter bar.
+			// Add 1 more if the list's own text filter line is visible.
+			headerY := m.topOffset
 			if m.filter.Value() != "" {
-				headerY = common.AppHeaderHeight + 1
+				headerY++
 			}
-			// 2-line app header + 2-line table header = 4; +1 if filter line shown.
-			tableTopY := common.AppHeaderHeight + 2
-			if m.filter.Value() != "" {
-				tableTopY = common.AppHeaderHeight + 3
-			}
+			// Data rows start 2 lines after the column header (header + border).
+			tableTopY := headerY + 2
 			if mouse.Y == headerY {
 				// Click on column header → sort by that column
 				col := m.columnAtX(mouse.X)
@@ -239,7 +246,19 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 						id := 0
 						fmt.Sscanf(row[0], "%d", &id)
 						if id > 0 {
-							return m, func() tea.Msg { return common.OpenDetailMsg{ID: id} }
+							col := m.columnAtX(mouse.X)
+							switch col {
+							case 2: // Status column
+								return m, func() tea.Msg {
+									return common.ShowPickerMsg{IssueID: id, Field: "status"}
+								}
+							case 3: // Priority column
+								return m, func() tea.Msg {
+									return common.ShowPickerMsg{IssueID: id, Field: "priority"}
+								}
+							default:
+								return m, func() tea.Msg { return common.OpenDetailMsg{ID: id} }
+							}
 						}
 					}
 				}
@@ -273,6 +292,12 @@ func (m Model) View() string {
 
 	tableView := m.table.View()
 
+	// Inject snippet lines below matching rows when search is active
+	query := strings.TrimSpace(m.filter.Value())
+	if query != "" {
+		tableView = m.injectSnippets(tableView, query)
+	}
+
 	if m.needsHScroll() {
 		tableView = m.applyHScroll(tableView)
 	}
@@ -281,6 +306,39 @@ func (m Model) View() string {
 		return lipgloss.JoinVertical(lipgloss.Left, filterLine, tableView)
 	}
 	return tableView
+}
+
+// injectSnippets post-processes the rendered table to insert a dimmed context
+// line below each issue row whose match came from outside the title.
+func (m Model) injectSnippets(tableView, query string) string {
+	lines := strings.Split(tableView, "\n")
+	// Table header is 2 lines (header row + border)
+	if len(lines) < 3 {
+		return tableView
+	}
+
+	issues := m.filteredIssues()
+	var out []string
+	out = append(out, lines[0], lines[1]) // header + border
+
+	for i, line := range lines[2:] {
+		out = append(out, line)
+		issueIdx := m.visibleStart + i
+		if issueIdx < len(issues) {
+			if snippet := data.MatchSnippet(issues[issueIdx], query); snippet != "" {
+				indent := strings.Repeat(" ", stickyWidth+2)
+				snippetLine := indent + common.StyleFaint.Render("· "+snippet)
+				out = append(out, snippetLine)
+			}
+		}
+	}
+
+	// Truncate to available height to prevent overflow
+	if len(out) > m.height {
+		out = out[:m.height]
+	}
+
+	return strings.Join(out, "\n")
 }
 
 // applyHScroll post-processes the table output to create a sticky ID column
@@ -326,13 +384,13 @@ func (m Model) applyHScroll(view string) string {
 }
 
 func (m Model) filteredIssues() []data.Issue {
-	query := strings.ToLower(m.filter.Value())
-	if query == "" {
+	query := m.filter.Value()
+	if strings.TrimSpace(query) == "" {
 		return m.allIssues
 	}
 	var out []data.Issue
 	for _, iss := range m.allIssues {
-		if strings.Contains(strings.ToLower(iss.Title), query) {
+		if data.MatchesQuery(iss, query) {
 			out = append(out, iss)
 		}
 	}

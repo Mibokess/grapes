@@ -9,9 +9,18 @@ import (
 	"charm.land/bubbles/v2/key"
 	"charm.land/bubbles/v2/viewport"
 	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/glamour"
 	"github.com/muesli/termenv"
 )
+
+// clickZone represents a clickable rectangular region in the rendered content.
+type clickZone struct {
+	line   int    // content line number
+	xStart int    // start X position (inclusive, screen coordinates)
+	xEnd   int    // end X position (exclusive, screen coordinates)
+	field  string // "status" or "priority"
+}
 
 type Model struct {
 	issue      data.Issue
@@ -19,11 +28,13 @@ type Model struct {
 	ready      bool
 	width      int
 	height     int
-	clickLines map[int]int // content line number → issue ID for clickable links
+	clickLines map[int]int  // content line number → issue ID for clickable links
+	clickZones []clickZone  // rectangular click zones for metadata fields
+	topOffset  int          // screen lines above this view's content (app header + filter bar)
 }
 
 func New(issue data.Issue, allIssues []data.Issue, width, height int) Model {
-	content, clickLines := renderIssue(issue, allIssues, width)
+	content, clickLines, clickZones := renderIssue(issue, allIssues, width)
 	vp := viewport.New(viewport.WithWidth(width), viewport.WithHeight(height))
 	vp.SetContent(content)
 
@@ -34,10 +45,16 @@ func New(issue data.Issue, allIssues []data.Issue, width, height int) Model {
 		width:      width,
 		height:     height,
 		clickLines: clickLines,
+		clickZones: clickZones,
 	}
 }
 
 func (m Model) Init() tea.Cmd { return nil }
+
+func (m Model) SetTopOffset(n int) Model {
+	m.topOffset = n
+	return m
+}
 
 func (m Model) SetSize(w, h int) Model {
 	m.width = w
@@ -80,9 +97,19 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 			return m, func() tea.Msg { return common.GoBackMsg{} }
 		}
 		if msg.Button == tea.MouseLeft {
-			viewportY := mouse.Y - common.AppHeaderHeight
+			viewportY := mouse.Y - m.topOffset
 			if viewportY >= 0 && viewportY < m.viewport.Height() {
 				contentLine := m.viewport.YOffset() + viewportY
+				// Check click zones first (status/priority pickers)
+				for _, zone := range m.clickZones {
+					if contentLine == zone.line && mouse.X >= zone.xStart && mouse.X < zone.xEnd {
+						field := zone.field
+						return m, func() tea.Msg {
+							return common.ShowPickerMsg{IssueID: m.issue.ID, Field: field}
+						}
+					}
+				}
+				// Fall through to line-based click links (issue navigation)
 				if id, ok := m.clickLines[contentLine]; ok {
 					return m, func() tea.Msg { return common.OpenDetailMsg{ID: id} }
 				}
@@ -102,7 +129,7 @@ func (m Model) View() string {
 	return m.viewport.View()
 }
 
-func renderIssue(issue data.Issue, allIssues []data.Issue, width int) (string, map[int]int) {
+func renderIssue(issue data.Issue, allIssues []data.Issue, width int) (string, map[int]int, []clickZone) {
 	clickLines := make(map[int]int)
 	var b strings.Builder
 
@@ -124,6 +151,8 @@ func renderIssue(issue data.Issue, allIssues []data.Issue, width int) (string, m
 		Render(common.StatusIcon(issue.Status) + " " + issue.Status.Label())
 	prioStr := common.PriorityStyle(issue.Priority).
 		Render(strings.TrimSpace(common.PriorityIcon(issue.Priority)) + " " + issue.Priority.Label())
+	statusPillWidth := lipgloss.Width(statusPill)
+	prioStrWidth := lipgloss.Width(prioStr)
 	metaRow := statusPill + "  " + prioStr
 	metaLines = append(metaLines, metaRow)
 
@@ -216,6 +245,24 @@ func renderIssue(issue data.Issue, allIssues []data.Issue, width int) (string, m
 		clickLines[metaBoxStartLine+1+mc.lineIdx] = mc.issueID
 	}
 
+	// Register click zones for status pill and priority text
+	// Meta box content X offset: MarginLeft(1) + Border(1) + Padding(1) = 3
+	const metaContentXOffset = 3
+	statusPrioLine := metaBoxStartLine + 1
+	var zones []clickZone
+	zones = append(zones, clickZone{
+		line:   statusPrioLine,
+		xStart: metaContentXOffset,
+		xEnd:   metaContentXOffset + statusPillWidth,
+		field:  "status",
+	})
+	zones = append(zones, clickZone{
+		line:   statusPrioLine,
+		xStart: metaContentXOffset + statusPillWidth + 2, // +2 for "  " separator
+		xEnd:   metaContentXOffset + statusPillWidth + 2 + prioStrWidth,
+		field:  "priority",
+	})
+
 	b.WriteString("\n")
 
 	mdWidth := width - 4
@@ -268,7 +315,7 @@ func renderIssue(issue data.Issue, allIssues []data.Issue, width int) (string, m
 		}
 	}
 
-	return b.String(), clickLines
+	return b.String(), clickLines, zones
 }
 
 func renderMarkdown(content string, width int) string {

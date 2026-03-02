@@ -1,8 +1,6 @@
 package filter
 
 import (
-	"strings"
-
 	"github.com/Mibokess/grapes/internal/data"
 )
 
@@ -38,9 +36,7 @@ func (f FilterSet) Matches(issue data.Issue) bool {
 		return false
 	}
 	if f.TextQuery != "" {
-		q := strings.ToLower(f.TextQuery)
-		if !strings.Contains(strings.ToLower(issue.Title), q) &&
-			!strings.Contains(strings.ToLower(issue.Content), q) {
+		if !data.MatchesQuery(issue, f.TextQuery) {
 			return false
 		}
 	}

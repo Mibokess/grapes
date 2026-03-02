@@ -25,6 +25,9 @@ type Model struct {
 	current int    // index of the issue's current value (shown with ✓)
 	issueID int    // which issue this picker is for
 	field   string // "status" or "priority"
+
+	// Screen position of the picker box, set by the app for mouse handling.
+	ScreenX, ScreenY int
 }
 
 var (
@@ -66,6 +69,12 @@ func New(title string, options []Option, current, issueID int, field string) Mod
 
 func (m Model) Init() tea.Cmd { return nil }
 
+// boxHeight returns the total height of the rendered picker box.
+func (m Model) boxHeight() int {
+	// border(1) + padding(1) + options + padding(1) + border(1)
+	return len(m.options) + 4
+}
+
 func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyPressMsg:
@@ -89,6 +98,38 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 			}
 		case key.Matches(msg, keyCancel):
 			return m, func() tea.Msg { return common.PickerCancelMsg{} }
+		}
+
+	case tea.MouseClickMsg:
+		if msg.Button != tea.MouseLeft {
+			break
+		}
+		mouse := msg.Mouse()
+		// Options start 2 lines below picker top (border + padding)
+		relY := mouse.Y - m.ScreenY - 2
+		inBox := mouse.Y >= m.ScreenY && mouse.Y < m.ScreenY+m.boxHeight() &&
+			mouse.X >= m.ScreenX
+		if inBox && relY >= 0 && relY < len(m.options) {
+			m.cursor = relY
+			opt := m.options[m.cursor]
+			return m, func() tea.Msg {
+				return common.PickerResultMsg{
+					IssueID: m.issueID,
+					Field:   m.field,
+					Value:   opt.Value,
+				}
+			}
+		}
+		// Click outside → cancel
+		if !inBox {
+			return m, func() tea.Msg { return common.PickerCancelMsg{} }
+		}
+
+	case tea.MouseMotionMsg:
+		mouse := msg.Mouse()
+		relY := mouse.Y - m.ScreenY - 2
+		if relY >= 0 && relY < len(m.options) {
+			m.cursor = relY
 		}
 	}
 	return m, nil

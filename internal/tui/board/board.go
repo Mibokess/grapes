@@ -29,6 +29,7 @@ type Model struct {
 	sortMode  data.SortMode
 
 	statusFilter []data.Status // non-empty when user has a status filter active
+	topOffset    int            // screen lines above this view's content (app header + filter bar)
 
 	// Drag-and-drop state
 	dragging    bool
@@ -37,6 +38,12 @@ type Model struct {
 	dragFromCol int
 	dragOverCol int // column cursor is hovering over (-1 = none)
 	dragX, dragY int // current cursor position (screen coords)
+	dragStartX, dragStartY int // initial click position for release-without-drag
+}
+
+func (m Model) SetTopOffset(n int) Model {
+	m.topOffset = n
+	return m
 }
 
 // SetStatusFilter sets the active status filter for column hiding.
@@ -188,6 +195,8 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 				m.dragIssueID = issue.ID
 				m.dragFromCol = colIdx
 				m.dragOverCol = colIdx
+				m.dragStartX = mouse.X
+				m.dragStartY = mouse.Y
 			} else if colIdx, ok := m.columnAt(mouse.X); ok && colIdx != m.curCol {
 				// Click in column area without hitting a card — select the column
 				m.curCol = colIdx
@@ -229,11 +238,9 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 					return common.MoveIssueMsg{IssueID: issueID, NewStatus: newStatus}
 				}
 			}
-			// Released without moving — treat as a click (open detail)
-			if !m.dragMoved && len(m.columns) > 0 && len(m.columns[m.curCol].issues) > 0 {
-				issue := m.columns[m.curCol].issues[m.curRow]
-				return m, func() tea.Msg { return common.OpenDetailMsg{ID: issue.ID} }
-			}
+			// Released without moving — card is already selected (curCol/curRow
+			// were set on MouseClickMsg). No navigation; use Enter or forward
+			// mouse button to open the detail view.
 		}
 	}
 	return m, nil
@@ -333,7 +340,7 @@ func (m Model) View() string {
 			m.dragging = false
 			floating := m.renderCard(issue, colWidth, true)
 			m.dragging = saved
-			board = m.overlayAt(board, floating, m.dragX, m.dragY-common.AppHeaderHeight)
+			board = m.overlayAt(board, floating, m.dragX, m.dragY-m.topOffset)
 		}
 	}
 
@@ -376,7 +383,7 @@ func (m Model) renderColumn(col column, width int, isActive bool) string {
 			// Figure out which slot the cursor is near based on Y position
 			const headerH = 2
 			const cardH = 7
-			yInCol := m.dragY - common.AppHeaderHeight - headerH
+			yInCol := m.dragY - m.topOffset - headerH
 			if yInCol < 0 {
 				ghostInsertIdx = 0
 			} else {
@@ -436,7 +443,7 @@ func (m Model) renderColumn(col column, width int, isActive bool) string {
 }
 
 func (m Model) renderCard(issue data.Issue, width int, active bool) string {
-	isDragged := m.dragging && issue.ID == m.dragIssueID
+	isDragged := m.dragging && m.dragMoved && issue.ID == m.dragIssueID
 
 	style := common.StyleCard.Width(width - 2) // -2 for border chars
 	if isDragged {
@@ -584,10 +591,9 @@ func (m Model) cardAt(x, y int) (colIdx, rowIdx int, ok bool) {
 		return 0, 0, false
 	}
 
-	// Skip app header lines + column header lines (2 each = 4 total).
-	const appH = common.AppHeaderHeight
+	// Skip lines above content (app header + filter bar) + column header (2 lines).
 	const headerH = 2
-	const totalSkip = appH + headerH
+	totalSkip := m.topOffset + headerH
 	if y < totalSkip {
 		return 0, 0, false
 	}
