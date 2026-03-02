@@ -69,7 +69,15 @@ func NewModel(issues []data.Issue, issuesDir string) Model {
 	sortMode := data.SortByPriority
 	data.SortIssues(issues, sortMode, false)
 
-	l := list.New(issues)
+	filters := filter.Default()
+	var filtered []data.Issue
+	for _, iss := range issues {
+		if filters.Matches(iss) {
+			filtered = append(filtered, iss)
+		}
+	}
+
+	l := list.New(filtered)
 	l = l.SetSortState(sortMode, false)
 
 	return Model{
@@ -77,7 +85,8 @@ func NewModel(issues []data.Issue, issuesDir string) Model {
 		issuesDir: issuesDir,
 		screen:    common.ScreenBoard,
 		sortMode:  sortMode,
-		board:     board.New(issues),
+		filters:   filters,
+		board:     board.New(filtered),
 		list:      l,
 		watcher:   w,
 	}
@@ -339,6 +348,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.propagateFilters()
 		return m, nil
 
+	case common.FilterToggleTopLevelMsg:
+		m.filterMenu = nil
+		m.filters.ToggleTopLevelOnly()
+		m.propagateFilters()
+		return m, nil
+
 	case common.FilterPickerResultMsg:
 		m.filterPicker = nil
 		m.applyFilterSelection(msg.Field, msg.Selected)
@@ -351,6 +366,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case common.ClearAllFiltersMsg:
+		m.filterMenu = nil
 		m.filters.Clear()
 		m.propagateFilters()
 		return m, nil
@@ -771,12 +787,20 @@ func (m Model) collectAllLabels() []string {
 }
 
 // buildFilterPicker creates a MultiPicker for the given filter field.
+// Only values that exist in the current issue set are shown.
 func (m Model) buildFilterPicker(field string) filter.MultiPicker {
 	switch field {
 	case "status":
+		present := make(map[data.Status]bool)
+		for _, iss := range m.issues {
+			present[iss.Status] = true
+		}
 		var opts []filter.PickerOption
 		var preSelected []string
 		for _, s := range data.AllStatuses {
+			if !present[s] {
+				continue
+			}
 			opts = append(opts, filter.PickerOption{
 				Value: string(s),
 				Label: s.Label(),
@@ -790,9 +814,16 @@ func (m Model) buildFilterPicker(field string) filter.MultiPicker {
 		return filter.NewMultiPicker("Status", "status", opts, preSelected)
 
 	case "priority":
+		present := make(map[data.Priority]bool)
+		for _, iss := range m.issues {
+			present[iss.Priority] = true
+		}
 		var opts []filter.PickerOption
 		var preSelected []string
 		for _, p := range data.AllPriorities {
+			if !present[p] {
+				continue
+			}
 			opts = append(opts, filter.PickerOption{
 				Value: string(p),
 				Label: p.Label(),

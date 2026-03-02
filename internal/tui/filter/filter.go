@@ -9,11 +9,12 @@ import (
 // FilterSet holds the active structured filters. Categories are AND'd together;
 // values within a category are OR'd.
 type FilterSet struct {
-	Statuses    []data.Status
-	Priorities  []data.Priority
-	Labels      []string
-	HasChildren *bool
-	TextQuery   string
+	Statuses     []data.Status
+	Priorities   []data.Priority
+	Labels       []string
+	HasChildren  *bool
+	TopLevelOnly bool // when true, only show issues without a parent
+	TextQuery    string
 }
 
 // Matches returns true if the issue passes all active filters.
@@ -33,6 +34,9 @@ func (f FilterSet) Matches(issue data.Issue) bool {
 			return false
 		}
 	}
+	if f.TopLevelOnly && issue.Parent != nil {
+		return false
+	}
 	if f.TextQuery != "" {
 		q := strings.ToLower(f.TextQuery)
 		if !strings.Contains(strings.ToLower(issue.Title), q) &&
@@ -49,6 +53,7 @@ func (f FilterSet) IsEmpty() bool {
 		len(f.Priorities) == 0 &&
 		len(f.Labels) == 0 &&
 		f.HasChildren == nil &&
+		!f.TopLevelOnly &&
 		f.TextQuery == ""
 }
 
@@ -67,6 +72,9 @@ func (f FilterSet) ActiveCount() int {
 	if f.HasChildren != nil {
 		n++
 	}
+	if f.TopLevelOnly {
+		n++
+	}
 	return n
 }
 
@@ -76,6 +84,7 @@ func (f *FilterSet) Clear() {
 	f.Priorities = nil
 	f.Labels = nil
 	f.HasChildren = nil
+	f.TopLevelOnly = false
 	f.TextQuery = ""
 }
 
@@ -110,6 +119,16 @@ func (f *FilterSet) ToggleLabel(l string) {
 		}
 	}
 	f.Labels = append(f.Labels, l)
+}
+
+// Default returns a FilterSet with the default filters applied (top-level only).
+func Default() FilterSet {
+	return FilterSet{TopLevelOnly: true}
+}
+
+// ToggleTopLevelOnly toggles the top-level-only filter.
+func (f *FilterSet) ToggleTopLevelOnly() {
+	f.TopLevelOnly = !f.TopLevelOnly
 }
 
 // ToggleHasChildren cycles nil → true → false → nil.

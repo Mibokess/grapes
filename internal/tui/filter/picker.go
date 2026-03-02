@@ -194,7 +194,7 @@ var (
 		key.WithKeys("j", "down"),
 	)
 	pickerKeyToggle = key.NewBinding(
-		key.WithKeys(" ", "x"),
+		key.WithKeys("space", "x"),
 	)
 	pickerKeyConfirm = key.NewBinding(
 		key.WithKeys("enter"),

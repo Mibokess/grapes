@@ -49,5 +49,6 @@ type FilterPickerResultMsg struct {
 	Selected []string
 }
 type FilterToggleChildrenMsg struct{}
+type FilterToggleTopLevelMsg struct{}
 type FilterCancelMsg struct{}
 type ClearAllFiltersMsg struct{}

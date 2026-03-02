@@ -7,6 +7,7 @@ import (
 )
 
 func boolPtr(b bool) *bool { return &b }
+func intPtr(i int) *int    { return &i }
 
 func TestFilterSet_Matches(t *testing.T) {
 	base := data.Issue{
@@ -153,6 +154,24 @@ func TestFilterSet_Matches(t *testing.T) {
 			issue:  data.Issue{ID: 2, Status: data.StatusTodo, Priority: data.PriorityLow},
 			want:   false,
 		},
+		{
+			name:   "top level only - issue has no parent",
+			filter: FilterSet{TopLevelOnly: true},
+			issue:  base,
+			want:   true,
+		},
+		{
+			name:   "top level only - issue has parent",
+			filter: FilterSet{TopLevelOnly: true},
+			issue:  data.Issue{ID: 5, Parent: intPtr(1), Status: data.StatusTodo, Priority: data.PriorityLow},
+			want:   false,
+		},
+		{
+			name:   "top level only off - issue has parent passes",
+			filter: FilterSet{TopLevelOnly: false},
+			issue:  data.Issue{ID: 5, Parent: intPtr(1), Status: data.StatusTodo, Priority: data.PriorityLow},
+			want:   true,
+		},
 	}
 
 	for _, tt := range tests {
@@ -174,6 +193,19 @@ func TestFilterSet_IsEmpty(t *testing.T) {
 	}
 	if (FilterSet{TextQuery: "foo"}).IsEmpty() {
 		t.Error("FilterSet with text query should not be empty")
+	}
+	if (FilterSet{TopLevelOnly: true}).IsEmpty() {
+		t.Error("FilterSet with TopLevelOnly should not be empty")
+	}
+}
+
+func TestFilterSet_Default(t *testing.T) {
+	d := Default()
+	if !d.TopLevelOnly {
+		t.Error("Default() should have TopLevelOnly=true")
+	}
+	if d.ActiveCount() != 1 {
+		t.Errorf("Default() ActiveCount() = %d, want 1", d.ActiveCount())
 	}
 }
 

@@ -32,6 +32,17 @@ func NewMenu(fs FilterSet, labelCount int) Menu {
 		{Field: "labels", Label: "Label", ActiveCount: len(fs.Labels)},
 	}
 
+	// Top-level only toggle
+	var topLevelLabel string
+	if fs.TopLevelOnly {
+		topLevelLabel = "on"
+	}
+	cats = append(cats, MenuCategory{
+		Field:       "top_level_only",
+		Label:       "Top-level only",
+		ToggleLabel: topLevelLabel,
+	})
+
 	// Has sub-issues shows current toggle state inline
 	var toggleLabel string
 	if fs.HasChildren != nil {
@@ -46,6 +57,14 @@ func NewMenu(fs FilterSet, labelCount int) Menu {
 		Label:       "Has sub-issues",
 		ToggleLabel: toggleLabel,
 	})
+
+	// Clear all — only shown when any filter is active
+	if fs.ActiveCount() > 0 {
+		cats = append(cats, MenuCategory{
+			Field: "clear_all",
+			Label: "Clear all filters",
+		})
+	}
 
 	return Menu{categories: cats}
 }
@@ -66,11 +85,17 @@ func (m Menu) Update(msg tea.Msg) (Menu, tea.Cmd) {
 			}
 		case key.Matches(msg, menuKeySelect):
 			cat := m.categories[m.cursor]
-			if cat.Field == "has_children" {
+			switch cat.Field {
+			case "clear_all":
+				return m, func() tea.Msg { return common.ClearAllFiltersMsg{} }
+			case "top_level_only":
+				return m, func() tea.Msg { return common.FilterToggleTopLevelMsg{} }
+			case "has_children":
 				return m, func() tea.Msg { return common.FilterToggleChildrenMsg{} }
+			default:
+				field := cat.Field
+				return m, func() tea.Msg { return common.FilterMenuSelectMsg{Field: field} }
 			}
-			field := cat.Field
-			return m, func() tea.Msg { return common.FilterMenuSelectMsg{Field: field} }
 		case key.Matches(msg, menuKeyCancel):
 			return m, func() tea.Msg { return common.FilterCancelMsg{} }
 		}
@@ -93,10 +118,13 @@ func (m Menu) View() string {
 		}
 
 		label := cat.Label
+		if cat.Field == "clear_all" {
+			label = pickerStyleHint.Render(cat.Label)
+		}
 
 		// Right-aligned indicator
 		var indicator string
-		if cat.Field == "has_children" && cat.ToggleLabel != "" {
+		if cat.ToggleLabel != "" {
 			indicator = pickerStyleCheck.Render(cat.ToggleLabel)
 		} else if cat.ActiveCount > 0 {
 			indicator = pickerStyleCheck.Render(fmt.Sprintf("(%d)", cat.ActiveCount))

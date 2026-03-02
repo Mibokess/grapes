@@ -14,8 +14,6 @@ var (
 			Foreground(lipgloss.Color("#e6edf3"))
 	barStyleBracket = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("#484f58"))
-	barStyleClear = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#8b949e"))
 )
 
 // BarHeight returns the number of lines the filter bar occupies (0 or 1).
@@ -49,6 +47,11 @@ func RenderBar(fs FilterSet, width int) string {
 			return common.RenderLabel(v)
 		}))
 	}
+	if fs.TopLevelOnly {
+		chips = append(chips, renderChip("Scope", []string{"top-level"}, func(v string) string {
+			return v
+		}))
+	}
 	if fs.HasChildren != nil {
 		val := "no"
 		if *fs.HasChildren {
@@ -60,19 +63,7 @@ func RenderBar(fs FilterSet, width int) string {
 	}
 
 	prefix := "  " + barStyleLabel.Render("Filters:") + " "
-	suffix := "  " + barStyleClear.Render("✕ Clear")
-	line := prefix + strings.Join(chips, " ") + suffix
-
-	// Truncate to width
-	if lipgloss.Width(line) > width && width > 0 {
-		// Simple truncation — keep prefix and as many chips as fit
-		line = prefix + strings.Join(chips, " ")
-		if lipgloss.Width(line)+lipgloss.Width(suffix) > width {
-			line = line[:max(0, width-4)] + "..."
-		} else {
-			line += suffix
-		}
-	}
+	line := prefix + strings.Join(chips, " ")
 
 	return line
 }
