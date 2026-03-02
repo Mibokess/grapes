@@ -1,9 +1,9 @@
 title: Web UI described in spec but not implemented
-status: backlog
+status: todo
 priority: medium
 labels:
     - feature
     - web
     - epic
 created: 2026-02-27T00:00
-updated: 2026-03-02T16:16
+updated: 2026-03-02T17:51

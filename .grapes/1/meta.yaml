@@ -1,7 +1,8 @@
-title: "Bug: Comment parser splits on any ### line, not just comment headers"
+title: 'Bug: Comment parser splits on any ### line, not just comment headers'
 status: todo
 priority: urgent
-assignee: ""
-labels: [bug, parser]
-created: 2026-02-27
-updated: 2026-02-27
+labels:
+    - bug
+    - parser
+created: 2026-02-27T00:00
+updated: 2026-03-02T18:02

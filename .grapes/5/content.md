@@ -19,7 +19,7 @@ Replace the `Label` with `Markdown` for comment bodies:
 
 ```python
 for c in comments:
-    yield Label(f"  {c.author} — {c.date}", classes="comment-header")
+    yield Label(f"  {c.date}", classes="comment-header")
     yield Markdown(c.body)
 ```
 
