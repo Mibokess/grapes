@@ -32,13 +32,12 @@ type Model struct {
 	topOffset    int            // screen lines above this view's content (app header + filter bar)
 
 	// Drag-and-drop state
-	dragging    bool
-	dragMoved   bool // true once the mouse moves after click (real drag)
+	mouseDown   bool // left button is held (pending drag)
+	dragging    bool // true only once the mouse moves while held
 	dragIssueID int
 	dragFromCol int
 	dragOverCol int // column cursor is hovering over (-1 = none)
 	dragX, dragY int // current cursor position (screen coords)
-	dragStartX, dragStartY int // initial click position for release-without-drag
 }
 
 func (m Model) SetTopOffset(n int) Model {
@@ -184,19 +183,17 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		switch msg.Button {
 		case tea.MouseLeft:
 			if colIdx, rowIdx, ok := m.cardAt(mouse.X, mouse.Y); ok {
-				// Start drag from this card
+				// Select the card; prepare for potential drag
 				m.curCol = colIdx
 				m.curRow = rowIdx
 				m.ensureColVisible()
 				m.ensureRowVisible()
 				issue := m.columns[colIdx].issues[rowIdx]
-				m.dragging = true
-				m.dragMoved = false
+				m.mouseDown = true
+				m.dragging = false
 				m.dragIssueID = issue.ID
 				m.dragFromCol = colIdx
 				m.dragOverCol = colIdx
-				m.dragStartX = mouse.X
-				m.dragStartY = mouse.Y
 			} else if colIdx, ok := m.columnAt(mouse.X); ok && colIdx != m.curCol {
 				// Click in column area without hitting a card — select the column
 				m.curCol = colIdx
@@ -213,8 +210,11 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		}
 
 	case tea.MouseMotionMsg:
+		if m.mouseDown && !m.dragging {
+			// First movement after click — begin drag
+			m.dragging = true
+		}
 		if m.dragging {
-			m.dragMoved = true
 			mouse := msg.Mouse()
 			m.dragX = mouse.X
 			m.dragY = mouse.Y
@@ -224,23 +224,27 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		}
 
 	case tea.MouseReleaseMsg:
-		if m.dragging {
-			m.dragging = false
-			fromCol := m.dragFromCol
-			overCol := m.dragOverCol
-			issueID := m.dragIssueID
-			m.dragOverCol = -1
+		wasDragging := m.dragging
+		wasMouseDown := m.mouseDown
+		fromCol := m.dragFromCol
+		overCol := m.dragOverCol
+		issueID := m.dragIssueID
+		m.mouseDown = false
+		m.dragging = false
+		m.dragOverCol = -1
 
+		if wasDragging {
+			// Real drag — drop on a different column to move the issue
 			if overCol != fromCol && overCol >= 0 && overCol < len(m.columns) {
-				// Dropped on a different column — move the issue
 				newStatus := m.columns[overCol].status
 				return m, func() tea.Msg {
 					return common.MoveIssueMsg{IssueID: issueID, NewStatus: newStatus}
 				}
 			}
-			// Released without moving — card is already selected (curCol/curRow
-			// were set on MouseClickMsg). No navigation; use Enter or forward
-			// mouse button to open the detail view.
+		} else if wasMouseDown && len(m.columns) > 0 && len(m.columns[m.curCol].issues) > 0 {
+			// Clean click (no drag movement) — open detail
+			issue := m.columns[m.curCol].issues[m.curRow]
+			return m, func() tea.Msg { return common.OpenDetailMsg{ID: issue.ID} }
 		}
 	}
 	return m, nil
@@ -443,7 +447,7 @@ func (m Model) renderColumn(col column, width int, isActive bool) string {
 }
 
 func (m Model) renderCard(issue data.Issue, width int, active bool) string {
-	isDragged := m.dragging && m.dragMoved && issue.ID == m.dragIssueID
+	isDragged := m.dragging && issue.ID == m.dragIssueID
 
 	style := common.StyleCard.Width(width - 2) // -2 for border chars
 	if isDragged {

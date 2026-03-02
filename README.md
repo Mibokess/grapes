@@ -1,23 +1,29 @@
 # Grapes
 
-A file-based issue tracker designed for AI agents. Issues are plain files in a `.grapes/` folder — no database, no CLI tool, no API. Agents manipulate issues directly using standard file tools (grep, edit, read, write). A web UI provides board visualization.
+A file-based issue tracker built for AI agents. Issues are plain files in a `.grapes/` folder — no database, no CLI, no API. Agents read and write issues with standard file tools. A terminal UI provides visualization.
+
+![Grapes TUI demo](doc/demo.gif)
 
 ## Why
 
-- **Context efficiency** — Agents can surgically edit a single line (e.g. change `status: todo` to `status: in_progress`) without loading entire issue objects.
-- **Zero tooling overhead** — No custom tool definitions, no SDK, no authentication. The filesystem *is* the database, the agent *is* the CLI.
-- **Performance** — Standard Linux commands handle hundreds/thousands of issues effortlessly.
+Most issue trackers require dedicated tooling — API clients, CLI wrappers, SDK integrations. Grapes removes all of that. The filesystem *is* the interface.
 
-## How It Works
+- **Surgical edits** — Change `status: todo` to `status: in_progress` with a single line edit. No need to load or serialize entire objects.
+- **Zero tooling** — Agents use `grep`, `cat`, `sed`, and standard file operations. No custom tools, no authentication, no SDK.
+- **Composable** — Pipe, filter, and transform issues with any Unix tool or scripting language.
 
-Each issue is a numbered folder with three files:
+## Issue Format
+
+Each issue is a numbered folder under `.grapes/`:
 
 ```
 .grapes/
-  42/
-    meta.yaml       # status, priority, labels, dates
-    content.md      # issue description
+  1/
+    meta.yaml       # structured metadata
+    content.md      # description (markdown)
     comments.md     # append-only comment log
+  2/
+    ...
 ```
 
 ### meta.yaml
@@ -27,54 +33,124 @@ title: Fix login redirect loop
 status: todo
 priority: high
 labels: [bug, auth]
-parent: 40
-created: 2026-02-27
-updated: 2026-02-27
+parent: 1
+blocked_by: [3, 5]
+created: 2026-02-27T14:00
+updated: 2026-02-28T09:30
 ```
 
 ### Fields
 
-| Field | Values |
-|-------|--------|
-| `status` | `backlog`, `todo`, `in_progress`, `done`, `cancelled` |
-| `priority` | `urgent`, `high`, `medium`, `low` |
-| `labels` | freeform tags |
-| `parent` | ID of parent issue (omit for top-level) |
+| Field | Values | Notes |
+|-------|--------|-------|
+| `status` | `backlog` `todo` `in_progress` `done` `cancelled` | Required |
+| `priority` | `urgent` `high` `medium` `low` | Required |
+| `labels` | Freeform tags | `[]` for none |
+| `parent` | Issue ID | Creates a sub-issue relationship |
+| `blocked_by` | List of issue IDs | Inverse `blocks` computed automatically |
+| `created` | `YYYY-MM-DD` or `YYYY-MM-DDTHH:MM` | Set once |
+| `updated` | `YYYY-MM-DD` or `YYYY-MM-DDTHH:MM` | Updated on every change |
 
-### Querying
+### comments.md
 
-```sh
-grep -rl "status: todo" .grapes/*/meta.yaml       # issues by status
-grep -rl "login bug" .grapes/*/content.md          # full-text search
-grep -rl "parent: 40" .grapes/*/meta.yaml          # children of issue 40
+Append-only log with timestamped entries:
+
+```markdown
+### 2026-02-28T10:00
+
+Investigated the root cause — session cookie not being cleared on redirect.
+
+### 2026-02-28T14:30
+
+Fix deployed. Monitoring for regressions.
 ```
 
-### Creating an Issue
+## Relationships
 
-1. Find the next ID: `ls .grapes/ | sort -n | tail -1`
-2. Create `.grapes/<next>/` with `meta.yaml`, `content.md`, `comments.md`
+**Sub-issues** — Set `parent: 1` on a child issue to nest it under issue 1. Nesting depth is unlimited. The folder structure stays flat; hierarchy is a data relationship.
 
-No counter file needed — the folder names *are* the counter.
+**Blocking** — Set `blocked_by: [3, 5]` to indicate dependencies. The inverse (`blocks`) is computed at load time and shown in the TUI.
 
-## Sub-Issues
+## Querying
 
-Issues support unlimited nesting via the `parent` field. The folder structure stays flat — nesting is a data relationship, not a filesystem relationship. Moving a sub-issue means editing one line.
+```sh
+grep -rl "status: todo" .grapes/*/meta.yaml       # find by status
+grep -rl "priority: urgent" .grapes/*/meta.yaml    # find by priority
+grep -rl "parent: 1" .grapes/*/meta.yaml           # children of issue 1
+grep -rl "login" .grapes/*/content.md              # full-text search
+ls .grapes/ | sort -n | tail -1                    # latest issue ID
+```
+
+## Creating an Issue
+
+```sh
+# Next ID is one above the highest existing folder
+next=$(( $(ls .grapes/ | sort -n | tail -1) + 1 ))
+mkdir .grapes/$next
+
+cat > .grapes/$next/meta.yaml << 'EOF'
+title: My new issue
+status: todo
+priority: medium
+labels: []
+created: 2026-03-01T10:00
+updated: 2026-03-01T10:00
+EOF
+
+touch .grapes/$next/content.md .grapes/$next/comments.md
+```
+
+## Validation
+
+```sh
+go run . validate          # validate all issues
+go run . validate 42 43    # validate specific issues
+```
+
+Checks required fields, valid enum values, date formats, comment header format, and cross-issue integrity (parent/blocked_by references exist, no self-blocking).
 
 ## TUI
-
-A terminal UI built with Go and the [Charm](https://charm.sh) ecosystem (Bubble Tea, Bubbles, Glamour, Lip Gloss):
 
 ```sh
 go run .
 ```
 
-Three views:
+Three views — **Board** (kanban by status), **List** (sortable table), and **Detail** (full issue with rendered markdown). Switch between them with `L`/`B` and `Enter`/`Esc`.
 
-- **Board view** — Kanban columns by status (`hjkl`/arrows to navigate, `Enter` to open)
-- **List view** — Sortable/filterable table (`L` from board, `/` to filter)
-- **Detail view** — Full issue with rendered markdown (`Enter` on any issue, `Esc` to go back)
+### Features
 
-The TUI is read-only. The primary write path is agents editing files directly.
+- **Filtering** — Structured filter menu (`f`) for status, priority, labels, and sub-issue scope. Text search (`/`) in list view matches across all fields.
+- **Sorting** — Cycle sort mode with `o` (priority, updated, created, ID, title, status). Reverse with `O`.
+- **Inline editing** — Press `e` to open the issue in `$EDITOR`. Changes are validated before saving.
+- **Comments** — Press `c` in detail view to append a timestamped comment.
+- **Status/priority** — Press `s` or `p` to pick a new value from a menu.
+- **Drag and drop** — Drag cards between board columns to change status.
+- **Live reload** — File changes from agents or other tools appear in real time via fsnotify.
+- **Navigation** — Clickable links between parent, child, and blocked issues in detail view.
+
+### Keybindings
+
+| Key | Board | List | Detail |
+|-----|-------|------|--------|
+| `hjkl` / arrows | Navigate cards | Navigate rows | Scroll |
+| `Enter` | Open issue | Open issue | — |
+| `Esc` | — | Clear filter | Go back |
+| `L` / `B` | To list | To board | Switch view |
+| `/` | — | Text search | — |
+| `f` | Filter menu | Filter menu | — |
+| `s` / `p` | Status / priority filter | Status / priority filter | Cycle status / priority |
+| `o` / `O` | Sort / reverse | Sort / reverse | — |
+| `e` | Edit in `$EDITOR` | Edit in `$EDITOR` | Edit in `$EDITOR` |
+| `c` | — | — | Add comment |
+| `r` | Refresh | Refresh | — |
+| `?` | Help | Help | Help |
+| `q` | Quit | Quit | Quit |
+
+## Agent Integration
+
+Grapes ships with [Claude Code](https://claude.ai/claude-code) skills in `plugin/skills/` for creating, reading, listing, searching, updating, commenting on, and closing issues. Symlink them into `.claude/skills/` to enable them.
+
+The TUI is read-only by design. The primary write path is agents (or humans) editing files directly.
 
 ## Inspiration
 
