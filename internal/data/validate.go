@@ -163,7 +163,7 @@ func ValidateAll(issuesDir string) []ValidationError {
 		errs = append(errs, ValidateIssue(issuesDir, id)...)
 	}
 
-	// Check parent references
+	// Check parent and blocked_by references
 	for _, id := range issueIDs {
 		metaPath := filepath.Join(issuesDir, strconv.Itoa(id), "meta.yaml")
 		raw, err := os.ReadFile(metaPath)
@@ -179,6 +179,19 @@ func ValidateAll(issuesDir string) []ValidationError {
 				IssueID: id, Field: "parent",
 				Message: fmt.Sprintf("references #%d which does not exist", *m.Parent),
 			})
+		}
+		for _, blockerID := range m.BlockedBy {
+			if blockerID == id {
+				errs = append(errs, ValidationError{
+					IssueID: id, Field: "blocked_by",
+					Message: "cannot be blocked by itself",
+				})
+			} else if !existingIDs[blockerID] {
+				errs = append(errs, ValidationError{
+					IssueID: id, Field: "blocked_by",
+					Message: fmt.Sprintf("references #%d which does not exist", blockerID),
+				})
+			}
 		}
 	}
 

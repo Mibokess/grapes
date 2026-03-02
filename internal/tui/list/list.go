@@ -180,6 +180,8 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 			return m, func() tea.Msg { return common.CycleSortMsg{} }
 		case key.Matches(msg, common.ListKeyMap.ReverseSort):
 			return m, func() tea.Msg { return common.ReverseSortMsg{} }
+		case key.Matches(msg, common.ListKeyMap.StructuredFilter):
+			return m, func() tea.Msg { return common.ShowFilterMenuMsg{} }
 		case key.Matches(msg, common.ListKeyMap.Filter):
 			m.filtering = true
 			m.filter.Focus()

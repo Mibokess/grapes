@@ -9,10 +9,13 @@ import (
 	"strings"
 	"time"
 
+	"sort"
+
 	"github.com/Mibokess/grapes/internal/data"
 	"github.com/Mibokess/grapes/internal/tui/board"
 	"github.com/Mibokess/grapes/internal/tui/common"
 	"github.com/Mibokess/grapes/internal/tui/detail"
+	"github.com/Mibokess/grapes/internal/tui/filter"
 	"github.com/Mibokess/grapes/internal/tui/list"
 	"github.com/Mibokess/grapes/internal/tui/picker"
 	"charm.land/bubbles/v2/key"
@@ -46,11 +49,15 @@ type Model struct {
 	list   list.Model
 	detail detail.Model
 
-	picker         *picker.Model // non-nil when picker overlay is active
-	statusMsg      string        // transient error/info message for status bar
-	editingIssueID int           // issue ID for in-progress editor session
-	editingTmpPath string        // temp file path for editor
-	editingMode    string        // "comment" or "edit"
+	picker       *picker.Model       // non-nil when picker overlay is active
+	filterMenu   *filter.Menu        // non-nil when filter menu is open
+	filterPicker *filter.MultiPicker // non-nil when filter multi-picker is open
+	filters      filter.FilterSet    // structured filter state
+
+	statusMsg      string // transient error/info message for status bar
+	editingIssueID int    // issue ID for in-progress editor session
+	editingTmpPath string // temp file path for editor
+	editingMode    string // "comment" or "edit"
 }
 
 func NewModel(issues []data.Issue, issuesDir string) Model {
@@ -141,14 +148,28 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
-		const overhead = 3 // app header (2 lines) + status bar (1 line)
-		contentHeight := m.height - overhead
+		contentHeight := m.contentHeight()
 		m.board = m.board.SetSize(m.width, contentHeight)
 		m.list = m.list.SetSize(m.width, contentHeight)
 		m.detail = m.detail.SetSize(m.width, contentHeight)
 		return m, nil
 
 	case tea.KeyPressMsg:
+		// When filter overlays are active, route all input to them
+		if m.filterPicker != nil {
+			var cmd tea.Cmd
+			fp := *m.filterPicker
+			fp, cmd = fp.Update(msg)
+			m.filterPicker = &fp
+			return m, cmd
+		}
+		if m.filterMenu != nil {
+			var cmd tea.Cmd
+			fm := *m.filterMenu
+			fm, cmd = fm.Update(msg)
+			m.filterMenu = &fm
+			return m, cmd
+		}
 		// When picker is active, route all input to it
 		if m.picker != nil {
 			var cmd tea.Cmd
@@ -196,7 +217,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if iss != nil {
 			m.navStack = append(m.navStack, navEntry{screen: m.screen, detail: m.detail})
 			m.screen = common.ScreenDetail
-			m.detail = detail.New(*iss, m.issues, m.width, m.height-3)
+			m.detail = detail.New(*iss, m.issues, m.width, m.contentHeight())
 			return m, m.detail.Init()
 		}
 		return m, nil
@@ -211,7 +232,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.screen = top.screen
 		if top.screen == common.ScreenDetail {
 			m.detail = top.detail
-			m.detail = m.detail.SetSize(m.width, m.height-3)
+			m.detail = m.detail.SetSize(m.width, m.contentHeight())
 		}
 		return m, nil
 
@@ -224,15 +245,17 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.sortMode = m.sortMode.Next()
 		m.sortAsc = false // reset direction when changing sort field
 		data.SortIssues(m.issues, m.sortMode, m.sortAsc)
-		m.board = m.board.SetSortMode(m.sortMode).SetIssues(m.issues)
-		m.list = m.list.SetSortState(m.sortMode, m.sortAsc).SetIssues(m.issues)
+		filtered := m.filteredIssues()
+		m.board = m.board.SetSortMode(m.sortMode).SetIssues(filtered)
+		m.list = m.list.SetSortState(m.sortMode, m.sortAsc).SetIssues(filtered)
 		return m, nil
 
 	case common.ReverseSortMsg:
 		m.sortAsc = !m.sortAsc
 		data.SortIssues(m.issues, m.sortMode, m.sortAsc)
-		m.board = m.board.SetIssues(m.issues)
-		m.list = m.list.SetSortState(m.sortMode, m.sortAsc).SetIssues(m.issues)
+		filtered := m.filteredIssues()
+		m.board = m.board.SetIssues(filtered)
+		m.list = m.list.SetSortState(m.sortMode, m.sortAsc).SetIssues(filtered)
 		return m, nil
 
 	case common.ColumnSortMsg:
@@ -243,8 +266,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.sortAsc = false
 		}
 		data.SortIssues(m.issues, m.sortMode, m.sortAsc)
-		m.board = m.board.SetSortMode(m.sortMode).SetIssues(m.issues)
-		m.list = m.list.SetSortState(m.sortMode, m.sortAsc).SetIssues(m.issues)
+		filtered := m.filteredIssues()
+		m.board = m.board.SetSortMode(m.sortMode).SetIssues(filtered)
+		m.list = m.list.SetSortState(m.sortMode, m.sortAsc).SetIssues(filtered)
 		return m, nil
 
 	case common.RefreshMsg:
@@ -254,13 +278,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		data.SortIssues(issues, m.sortMode, m.sortAsc)
 		m.issues = issues
-		m.board = m.board.SetIssues(issues)
-		m.list = m.list.SetIssues(issues)
+		filtered := m.filteredIssues()
+		m.board = m.board.SetIssues(filtered)
+		m.list = m.list.SetIssues(filtered)
 		// Re-create detail view if it's showing, so changes are visible
 		if m.screen == common.ScreenDetail {
 			for _, iss := range issues {
 				if iss.ID == m.detail.IssueID() {
-					m.detail = detail.New(iss, issues, m.width, m.height-3)
+					m.detail = detail.New(iss, issues, m.width, m.contentHeight())
 					break
 				}
 			}
@@ -295,6 +320,39 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case common.PickerCancelMsg:
 		m.picker = nil
+		return m, nil
+
+	case common.ShowFilterMenuMsg:
+		menu := filter.NewMenu(m.filters, len(m.collectAllLabels()))
+		m.filterMenu = &menu
+		return m, nil
+
+	case common.FilterMenuSelectMsg:
+		m.filterMenu = nil
+		picker := m.buildFilterPicker(msg.Field)
+		m.filterPicker = &picker
+		return m, nil
+
+	case common.FilterToggleChildrenMsg:
+		m.filterMenu = nil
+		m.filters.ToggleHasChildren()
+		m.propagateFilters()
+		return m, nil
+
+	case common.FilterPickerResultMsg:
+		m.filterPicker = nil
+		m.applyFilterSelection(msg.Field, msg.Selected)
+		m.propagateFilters()
+		return m, nil
+
+	case common.FilterCancelMsg:
+		m.filterMenu = nil
+		m.filterPicker = nil
+		return m, nil
+
+	case common.ClearAllFiltersMsg:
+		m.filters.Clear()
+		m.propagateFilters()
 		return m, nil
 
 	case common.LaunchEditorMsg:
@@ -504,7 +562,7 @@ func (m Model) View() tea.View {
 	var helpParts []string
 	dot := common.StyleStatusSep.Render(" · ")
 
-	contentHeight := m.height - 3
+	contentHeight := m.contentHeight()
 
 	sortArrow := "▼"
 	if m.sortAsc {
@@ -522,6 +580,7 @@ func (m Model) View() tea.View {
 			common.FormatKeyHint("s", "status"),
 			common.FormatKeyHint("p", "priority"),
 			common.FormatKeyHint("drag", "move"),
+			common.FormatKeyHint("f", "filter"),
 			common.FormatKeyHint("o/O", sortLabel),
 			common.FormatKeyHint("L", "list"),
 			common.FormatKeyHint("q", "quit"),
@@ -539,7 +598,8 @@ func (m Model) View() tea.View {
 			common.FormatKeyHint("s", "status"),
 			common.FormatKeyHint("p", "priority"),
 			common.FormatKeyHint("o/O", sortLabel),
-			common.FormatKeyHint("/", "filter"),
+			common.FormatKeyHint("f", "filter"),
+			common.FormatKeyHint("/", "search"),
 			common.FormatKeyHint("B", "board"),
 			common.FormatKeyHint("q", "quit"),
 		}
@@ -572,6 +632,24 @@ func (m Model) View() tea.View {
 		}
 	}
 
+	// Filter overlays
+	if m.filterPicker != nil {
+		content = overlayCenter(content, m.filterPicker.View(), m.width, contentHeight)
+		helpParts = []string{
+			common.FormatKeyHint("jk", "navigate"),
+			common.FormatKeyHint("space", "toggle"),
+			common.FormatKeyHint("enter", "apply"),
+			common.FormatKeyHint("esc", "cancel"),
+		}
+	} else if m.filterMenu != nil {
+		content = overlayCenter(content, m.filterMenu.View(), m.width, contentHeight)
+		helpParts = []string{
+			common.FormatKeyHint("jk", "navigate"),
+			common.FormatKeyHint("enter", "select"),
+			common.FormatKeyHint("esc", "cancel"),
+		}
+	}
+
 	var helpText string
 	if m.statusMsg != "" {
 		errStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#f85149"))
@@ -580,7 +658,15 @@ func (m Model) View() tea.View {
 		helpText = "  " + strings.Join(helpParts, dot)
 	}
 	bar := common.StyleStatusBar.Width(m.width).Render(helpText)
-	full := lipgloss.JoinVertical(lipgloss.Left, header, content, bar)
+
+	// Render filter bar between header and content when filters are active
+	filterBar := filter.RenderBar(m.filters, m.width)
+	var full string
+	if filterBar != "" {
+		full = lipgloss.JoinVertical(lipgloss.Left, header, filterBar, content, bar)
+	} else {
+		full = lipgloss.JoinVertical(lipgloss.Left, header, content, bar)
+	}
 
 	v := tea.NewView(full)
 	v.AltScreen = true
@@ -641,6 +727,119 @@ func (m Model) buildPicker(issueID int, field string) picker.Model {
 
 	// Fallback (shouldn't happen)
 	return picker.New(field, nil, 0, issueID, field)
+}
+
+// contentHeight returns the available height for view content, accounting for
+// the app header, status bar, and optional filter bar.
+func (m Model) contentHeight() int {
+	h := m.height - 3 // header(2) + status bar(1)
+	h -= filter.BarHeight(m.filters)
+	if h < 0 {
+		h = 0
+	}
+	return h
+}
+
+// filteredIssues returns issues matching the current structured filters.
+func (m Model) filteredIssues() []data.Issue {
+	if m.filters.IsEmpty() {
+		return m.issues
+	}
+	var out []data.Issue
+	for _, iss := range m.issues {
+		if m.filters.Matches(iss) {
+			out = append(out, iss)
+		}
+	}
+	return out
+}
+
+// collectAllLabels extracts unique labels from all loaded issues (unfiltered).
+func (m Model) collectAllLabels() []string {
+	seen := make(map[string]bool)
+	var labels []string
+	for _, iss := range m.issues {
+		for _, l := range iss.Labels {
+			if !seen[l] {
+				seen[l] = true
+				labels = append(labels, l)
+			}
+		}
+	}
+	sort.Strings(labels)
+	return labels
+}
+
+// buildFilterPicker creates a MultiPicker for the given filter field.
+func (m Model) buildFilterPicker(field string) filter.MultiPicker {
+	switch field {
+	case "status":
+		var opts []filter.PickerOption
+		var preSelected []string
+		for _, s := range data.AllStatuses {
+			opts = append(opts, filter.PickerOption{
+				Value: string(s),
+				Label: s.Label(),
+				Icon:  common.StatusIcon(s),
+				Style: common.StatusStyle(s),
+			})
+		}
+		for _, s := range m.filters.Statuses {
+			preSelected = append(preSelected, string(s))
+		}
+		return filter.NewMultiPicker("Status", "status", opts, preSelected)
+
+	case "priority":
+		var opts []filter.PickerOption
+		var preSelected []string
+		for _, p := range data.AllPriorities {
+			opts = append(opts, filter.PickerOption{
+				Value: string(p),
+				Label: p.Label(),
+				Icon:  strings.TrimSpace(common.PriorityIcon(p)),
+				Style: common.PriorityStyle(p),
+			})
+		}
+		for _, p := range m.filters.Priorities {
+			preSelected = append(preSelected, string(p))
+		}
+		return filter.NewMultiPicker("Priority", "priority", opts, preSelected)
+
+	case "labels":
+		var opts []filter.PickerOption
+		for _, l := range m.collectAllLabels() {
+			opts = append(opts, filter.PickerOption{
+				Value: l,
+				Label: l,
+				Style: common.StatusStyle(data.StatusTodo), // neutral color
+			})
+		}
+		return filter.NewMultiPicker("Label", "labels", opts, m.filters.Labels)
+	}
+
+	return filter.NewMultiPicker(field, field, nil, nil)
+}
+
+// applyFilterSelection updates the filter set from a multi-picker result.
+func (m *Model) applyFilterSelection(field string, selected []string) {
+	switch field {
+	case "status":
+		m.filters.SetStatuses(selected)
+	case "priority":
+		m.filters.SetPriorities(selected)
+	case "labels":
+		m.filters.SetLabels(selected)
+	}
+}
+
+// propagateFilters sends filtered issues to both views and adjusts sizes.
+func (m *Model) propagateFilters() {
+	filtered := m.filteredIssues()
+	m.board = m.board.SetStatusFilter(m.filters.Statuses).SetIssues(filtered)
+	m.list = m.list.SetIssues(filtered)
+	contentHeight := m.contentHeight()
+	m.board = m.board.SetSize(m.width, contentHeight)
+	m.list = m.list.SetSize(m.width, contentHeight)
 }
 
 // stripErrorBanner removes a leading "# ERROR: ..." banner that was prepended by

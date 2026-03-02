@@ -28,6 +28,7 @@ type BoardKeys struct {
 	Open          key.Binding
 	EditIssue     key.Binding
 	ToList        key.Binding
+	Filter        key.Binding
 	Refresh       key.Binding
 	CycleStatus   key.Binding
 	CyclePriority key.Binding
@@ -64,6 +65,10 @@ var BoardKeyMap = BoardKeys{
 		key.WithKeys("L"),
 		key.WithHelp("L", "list view"),
 	),
+	Filter: key.NewBinding(
+		key.WithKeys("f"),
+		key.WithHelp("f", "filter"),
+	),
 	Refresh: key.NewBinding(
 		key.WithKeys("r"),
 		key.WithHelp("r", "refresh"),
@@ -88,20 +93,21 @@ var BoardKeyMap = BoardKeys{
 
 // ListKeys are specific to the list screen.
 type ListKeys struct {
-	Up            key.Binding
-	Down          key.Binding
-	Open          key.Binding
-	EditIssue     key.Binding
-	ToBoard       key.Binding
-	Filter        key.Binding
-	Clear         key.Binding
-	Refresh       key.Binding
-	CycleStatus   key.Binding
-	CyclePriority key.Binding
-	CycleSort     key.Binding
-	ReverseSort   key.Binding
-	ScrollLeft    key.Binding
-	ScrollRight   key.Binding
+	Up               key.Binding
+	Down             key.Binding
+	Open             key.Binding
+	EditIssue        key.Binding
+	ToBoard          key.Binding
+	Filter           key.Binding
+	StructuredFilter key.Binding
+	Clear            key.Binding
+	Refresh          key.Binding
+	CycleStatus      key.Binding
+	CyclePriority    key.Binding
+	CycleSort        key.Binding
+	ReverseSort      key.Binding
+	ScrollLeft       key.Binding
+	ScrollRight      key.Binding
 }
 
 var ListKeyMap = ListKeys{
@@ -127,7 +133,11 @@ var ListKeyMap = ListKeys{
 	),
 	Filter: key.NewBinding(
 		key.WithKeys("/"),
-		key.WithHelp("/", "filter"),
+		key.WithHelp("/", "search"),
+	),
+	StructuredFilter: key.NewBinding(
+		key.WithKeys("f"),
+		key.WithHelp("f", "filter"),
 	),
 	Clear: key.NewBinding(
 		key.WithKeys("esc"),

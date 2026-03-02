@@ -28,6 +28,8 @@ type Model struct {
 	visCols   int // number of visible columns
 	sortMode  data.SortMode
 
+	statusFilter []data.Status // non-empty when user has a status filter active
+
 	// Drag-and-drop state
 	dragging    bool
 	dragMoved   bool // true once the mouse moves after click (real drag)
@@ -37,9 +39,15 @@ type Model struct {
 	dragX, dragY int // current cursor position (screen coords)
 }
 
+// SetStatusFilter sets the active status filter for column hiding.
+func (m Model) SetStatusFilter(statuses []data.Status) Model {
+	m.statusFilter = statuses
+	return m
+}
+
 func New(issues []data.Issue) Model {
 	m := Model{visCols: 3}
-	m.columns = groupByStatus(issues)
+	m.columns = groupByStatus(issues, nil)
 	return m
 }
 
@@ -60,7 +68,7 @@ func (m Model) SetSize(w, h int) Model {
 }
 
 func (m Model) SetIssues(issues []data.Issue) Model {
-	m.columns = groupByStatus(issues)
+	m.columns = groupByStatus(issues, m.statusFilter)
 	if m.curCol >= len(m.columns) {
 		m.curCol = max(0, len(m.columns)-1)
 	}
@@ -135,6 +143,8 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 			return m, func() tea.Msg { return common.CycleSortMsg{} }
 		case key.Matches(msg, common.BoardKeyMap.ReverseSort):
 			return m, func() tea.Msg { return common.ReverseSortMsg{} }
+		case key.Matches(msg, common.BoardKeyMap.Filter):
+			return m, func() tea.Msg { return common.ShowFilterMenuMsg{} }
 		case key.Matches(msg, common.BoardKeyMap.ToList):
 			return m, func() tea.Msg { return common.SwitchScreenMsg{Screen: common.ScreenList} }
 		case key.Matches(msg, common.BoardKeyMap.Refresh):
@@ -605,14 +615,20 @@ func (m Model) cardAt(x, y int) (colIdx, rowIdx int, ok bool) {
 	return ci, ri, true
 }
 
-func groupByStatus(issues []data.Issue) []column {
+func groupByStatus(issues []data.Issue, statusFilter []data.Status) []column {
 	byStatus := make(map[data.Status][]data.Issue)
 	for _, iss := range issues {
 		byStatus[iss.Status] = append(byStatus[iss.Status], iss)
 	}
 
+	// When a status filter is active, only show those columns
+	statuses := data.AllStatuses
+	if len(statusFilter) > 0 {
+		statuses = statusFilter
+	}
+
 	var cols []column
-	for _, s := range data.AllStatuses {
+	for _, s := range statuses {
 		cols = append(cols, column{
 			status: s,
 			issues: byStatus[s],

@@ -210,6 +210,46 @@ func renderIssue(issue data.Issue, allIssues []data.Issue, width int) (string, m
 		b.WriteString("\n")
 	}
 
+	if len(issue.BlockedBy) > 0 {
+		b.WriteString(" " + common.StyleSectionHeader.Render("Blocked by") + " " + sectionUnderline + "\n\n")
+		for _, blockerID := range issue.BlockedBy {
+			blockerTitle := ""
+			blockerStatus := data.Status("")
+			for _, iss := range allIssues {
+				if iss.ID == blockerID {
+					blockerTitle = iss.Title
+					blockerStatus = iss.Status
+					break
+				}
+			}
+			icon := common.StatusStyle(blockerStatus).Render(common.StatusIcon(blockerStatus))
+			lineNum := strings.Count(b.String(), "\n")
+			clickLines[lineNum] = blockerID
+			b.WriteString(fmt.Sprintf("  %s  #%d  %s\n", icon, blockerID, common.StyleSubtitle.Render(blockerTitle)))
+		}
+		b.WriteString("\n")
+	}
+
+	if len(issue.Blocks) > 0 {
+		b.WriteString(" " + common.StyleSectionHeader.Render("Blocks") + " " + sectionUnderline + "\n\n")
+		for _, blockedID := range issue.Blocks {
+			blockedTitle := ""
+			blockedStatus := data.Status("")
+			for _, iss := range allIssues {
+				if iss.ID == blockedID {
+					blockedTitle = iss.Title
+					blockedStatus = iss.Status
+					break
+				}
+			}
+			icon := common.StatusStyle(blockedStatus).Render(common.StatusIcon(blockedStatus))
+			lineNum := strings.Count(b.String(), "\n")
+			clickLines[lineNum] = blockedID
+			b.WriteString(fmt.Sprintf("  %s  #%d  %s\n", icon, blockedID, common.StyleSubtitle.Render(blockedTitle)))
+		}
+		b.WriteString("\n")
+	}
+
 	if len(issue.Comments) > 0 {
 		b.WriteString(" " + common.StyleSectionHeader.Render(fmt.Sprintf("Comments (%d)", len(issue.Comments))) + " " + sectionUnderline + "\n\n")
 

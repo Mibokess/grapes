@@ -22,6 +22,14 @@ mkdir -p .grapes/<id>
 
 ## Step 3: Write meta.yaml
 
+Get the current timestamp first:
+
+```bash
+date +%Y-%m-%dT%H:%M
+```
+
+Use this value for both `created` and `updated`.
+
 ```yaml
 title: "Short description of the issue"
 status: backlog
@@ -31,9 +39,9 @@ created: YYYY-MM-DDTHH:MM
 updated: YYYY-MM-DDTHH:MM
 ```
 
-- Set `created` and `updated` to the current datetime.
 - Set `status` to `backlog` for new issues unless there's reason to start higher.
 - Add `parent: <id>` if this is a sub-issue.
+- Add `blocked_by: [id1, id2]` if the issue depends on other issues being completed first.
 - Quote the title if it contains colons, brackets, or other YAML-special characters.
 
 ## Step 4: Write content.md
@@ -62,3 +70,19 @@ updated: 2026-02-27T09:15
 ```
 
 The folder structure stays flat. Nesting is a data relationship only.
+
+## Dependencies
+
+To mark an issue as blocked by other issues, add `blocked_by` to meta.yaml:
+
+```yaml
+title: "Build preferences UI"
+status: backlog
+priority: medium
+labels: [frontend]
+blocked_by: [19, 20]
+created: 2026-03-02T14:10
+updated: 2026-03-02T14:10
+```
+
+The inverse (`blocks`) is computed at load time — only `blocked_by` is stored on disk.

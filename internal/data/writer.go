@@ -90,6 +90,13 @@ func SerializeIssue(issue Issue) string {
 	if issue.Parent != nil {
 		sb.WriteString(fmt.Sprintf("parent: %d\n", *issue.Parent))
 	}
+	if len(issue.BlockedBy) > 0 {
+		parts := make([]string, len(issue.BlockedBy))
+		for i, id := range issue.BlockedBy {
+			parts[i] = strconv.Itoa(id)
+		}
+		sb.WriteString(fmt.Sprintf("blocked_by: [%s]\n", strings.Join(parts, ", ")))
+	}
 	sb.WriteString("---\n")
 
 	// Description
@@ -127,11 +134,12 @@ func (e *EditValidationError) Error() string {
 
 // editMeta is the frontmatter structure parsed back from the edited document.
 type editMeta struct {
-	Title    string   `yaml:"title"`
-	Status   string   `yaml:"status"`
-	Priority string   `yaml:"priority"`
-	Labels   []string `yaml:"labels"`
-	Parent   *int     `yaml:"parent,omitempty"`
+	Title     string   `yaml:"title"`
+	Status    string   `yaml:"status"`
+	Priority  string   `yaml:"priority"`
+	Labels    []string `yaml:"labels"`
+	Parent    *int     `yaml:"parent,omitempty"`
+	BlockedBy []int    `yaml:"blocked_by,omitempty"`
 }
 
 // SaveIssueFromText parses an edited issue document and writes the changes
@@ -188,13 +196,14 @@ func SaveIssueFromText(issuesDir string, issueID int, text string) error {
 	}
 
 	newMeta := meta{
-		Title:    em.Title,
-		Status:   em.Status,
-		Priority: em.Priority,
-		Labels:   em.Labels,
-		Parent:   em.Parent,
-		Created:  existing.Created,
-		Updated:  now,
+		Title:     em.Title,
+		Status:    em.Status,
+		Priority:  em.Priority,
+		Labels:    em.Labels,
+		Parent:    em.Parent,
+		BlockedBy: em.BlockedBy,
+		Created:   existing.Created,
+		Updated:   now,
 	}
 	metaBytes, err := yaml.Marshal(&newMeta)
 	if err != nil {
@@ -212,12 +221,17 @@ func SaveIssueFromText(issuesDir string, issueID int, text string) error {
 		return fmt.Errorf("writing content.md: %w", err)
 	}
 
-	// Write comments.md
+	// Write comments.md only when there are comments; remove the file otherwise.
+	commentsPath := filepath.Join(issueDir, "comments.md")
 	if commentsRaw != "" {
-		commentsRaw += "\n"
-	}
-	if err := os.WriteFile(filepath.Join(issueDir, "comments.md"), []byte(commentsRaw), 0644); err != nil {
-		return fmt.Errorf("writing comments.md: %w", err)
+		if err := os.WriteFile(commentsPath, []byte(commentsRaw+"\n"), 0644); err != nil {
+			return fmt.Errorf("writing comments.md: %w", err)
+		}
+	} else {
+		// Remove stale comments.md; ignore error if it doesn't exist.
+		if err := os.Remove(commentsPath); err != nil && !os.IsNotExist(err) {
+			return fmt.Errorf("removing comments.md: %w", err)
+		}
 	}
 
 	return nil

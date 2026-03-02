@@ -4,28 +4,24 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"regexp"
 	"sort"
 	"strconv"
-	"strings"
 	"time"
 
 	"gopkg.in/yaml.v3"
 )
 
-// commentHeader matches "### YYYY-MM-DD" or "### YYYY-MM-DDTHH:MM" headers,
-// as well as legacy "### author — YYYY-MM-DD" headers (em-dash only).
-var commentHeader = regexp.MustCompile(`^### (?:\S+ \x{2014} )?(\d{4}-\d{2}-\d{2}(?:T\d{2}:\d{2})?)$`)
-
 // meta is the on-disk YAML structure.
 type meta struct {
-	Title    string   `yaml:"title"`
-	Status   string   `yaml:"status"`
-	Priority string   `yaml:"priority"`
-	Labels   []string `yaml:"labels"`
-	Parent   *int     `yaml:"parent,omitempty"`
-	Created  string   `yaml:"created"`
-	Updated  string   `yaml:"updated"`
+	Title     string    `yaml:"title"`
+	Status    string    `yaml:"status"`
+	Priority  string    `yaml:"priority"`
+	Labels    []string  `yaml:"labels"`
+	Parent    *int      `yaml:"parent,omitempty"`
+	BlockedBy []int     `yaml:"blocked_by,omitempty"`
+	Comments  []Comment `yaml:"comments,omitempty"`
+	Created   string    `yaml:"created"`
+	Updated   string    `yaml:"updated"`
 }
 
 // FindIssuesDir walks up from startDir looking for a .grapes/ directory.
@@ -57,6 +53,7 @@ func LoadAllIssues(dir string) ([]Issue, error) {
 
 	var issues []Issue
 	childrenMap := make(map[int][]int) // parent ID → child IDs
+	blocksMap := make(map[int][]int)   // blocked ID → IDs it blocks
 
 	for _, e := range entries {
 		if !e.IsDir() {
@@ -78,13 +75,20 @@ func LoadAllIssues(dir string) ([]Issue, error) {
 		if issue.Parent != nil {
 			childrenMap[*issue.Parent] = append(childrenMap[*issue.Parent], id)
 		}
+		for _, blockerID := range issue.BlockedBy {
+			blocksMap[blockerID] = append(blocksMap[blockerID], id)
+		}
 	}
 
-	// Wire up children
+	// Wire up children and blocks
 	for i := range issues {
 		if kids, ok := childrenMap[issues[i].ID]; ok {
 			sort.Ints(kids)
 			issues[i].Children = kids
+		}
+		if blocked, ok := blocksMap[issues[i].ID]; ok {
+			sort.Ints(blocked)
+			issues[i].Blocks = blocked
 		}
 	}
 
@@ -110,14 +114,15 @@ func loadIssueMeta(dir string, id int) (Issue, error) {
 	updated := parseDate(m.Updated)
 
 	return Issue{
-		ID:       id,
-		Title:    m.Title,
-		Status:   Status(m.Status),
-		Priority: Priority(m.Priority),
-		Labels:   m.Labels,
-		Parent:   m.Parent,
-		Created:  created,
-		Updated:  updated,
+		ID:        id,
+		Title:     m.Title,
+		Status:    Status(m.Status),
+		Priority:  Priority(m.Priority),
+		Labels:    m.Labels,
+		Parent:    m.Parent,
+		BlockedBy: m.BlockedBy,
+		Created:   created,
+		Updated:   updated,
 	}, nil
 }
 

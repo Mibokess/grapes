@@ -169,20 +169,22 @@ func SortIssues(issues []Issue, mode SortMode, asc bool) {
 }
 
 type Comment struct {
-	Date string
-	Body string
+	Date string `yaml:"date"`
+	Body string `yaml:"body"`
 }
 
 type Issue struct {
-	ID       int
-	Title    string
-	Status   Status
-	Priority Priority
-	Labels   []string
-	Parent   *int
-	Children []int
-	Created  time.Time
-	Updated  time.Time
-	Content  string
-	Comments []Comment
+	ID        int
+	Title     string
+	Status    Status
+	Priority  Priority
+	Labels    []string
+	Parent    *int
+	Children  []int
+	BlockedBy []int
+	Blocks    []int
+	Created   time.Time
+	Updated   time.Time
+	Content   string
+	Comments  []Comment
 }

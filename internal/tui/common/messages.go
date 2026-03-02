@@ -40,3 +40,14 @@ type MoveIssueMsg struct {
 	IssueID   int
 	NewStatus data.Status
 }
+
+// Filter overlay messages.
+type ShowFilterMenuMsg struct{}
+type FilterMenuSelectMsg struct{ Field string }
+type FilterPickerResultMsg struct {
+	Field    string
+	Selected []string
+}
+type FilterToggleChildrenMsg struct{}
+type FilterCancelMsg struct{}
+type ClearAllFiltersMsg struct{}
