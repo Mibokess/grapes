@@ -1,15 +1,13 @@
 # Grapes
 
-A file-based issue tracker built for AI agents. Issues are plain files in a `.grapes/` folder — no database, no CLI, no API. Agents read and write issues with standard file tools. A terminal UI provides visualization.
+A file-based issue tracker. Issues are plain files in a `.grapes/` folder that agents read and write with standard file tools. A terminal UI provides visualization.
 
 ![Grapes TUI demo](doc/demo.gif)
 
 ## Why
 
-Most issue trackers require dedicated tooling — API clients, CLI wrappers, SDK integrations. Grapes removes all of that. The filesystem *is* the interface.
-
-- **Surgical edits** — Change `status: todo` to `status: in_progress` with a single line edit. No need to load or serialize entire objects.
-- **Zero tooling** — Agents use `grep`, `cat`, `sed`, and standard file operations. No custom tools, no authentication, no SDK.
+- **Surgical edits** — Change `status: todo` to `status: in_progress` with a single line edit.
+- **Standard tools** — Agents use `grep`, `cat`, `sed`, and regular file operations to work with issues.
 - **Composable** — Pipe, filter, and transform issues with any Unix tool or scripting language.
 
 ## Issue Format
