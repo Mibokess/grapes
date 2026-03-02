@@ -6,11 +6,11 @@
  │  backend                                                                                     │   
  │ Created 2025-03-05 08:00  ·  Updated 2025-03-10 16:00                                        │   
  │ ↑ Parent: #1  Implement user authentication                                                  │   
+ │ ▸ Blocks: #6  Implement token refresh                                                        │   
  ╰──────────────────────────────────────────────────────────────────────────────────────────────╯   
                                                                                                     
- Blocks ━━                                                                                          
                                                                                                     
-  ◑  #6  Implement token refresh                                                                    
+                                                                                                    
                                                                                                     
                                                                                                     
                                                                                                     

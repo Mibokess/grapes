@@ -148,6 +148,13 @@ func renderIssue(issue data.Issue, allIssues []data.Issue, width int) (string, m
 		metaLines = append(metaLines, common.StyleFaint.Render(strings.Join(dateParts, "  ·  ")))
 	}
 
+	// Track clickable lines within meta box (lineIdx → issueID)
+	type metaClick struct {
+		lineIdx int
+		issueID int
+	}
+	var metaClicks []metaClick
+
 	// Row 4: parent link
 	if issue.Parent != nil {
 		parentTitle := ""
@@ -161,18 +168,52 @@ func renderIssue(issue data.Issue, allIssues []data.Issue, width int) (string, m
 			common.StyleFaint.Render(" Parent: ") +
 			common.StyleSectionHeader.Render(fmt.Sprintf("#%d", *issue.Parent)) +
 			"  " + common.StyleSubtitle.Render(parentTitle)
+		metaClicks = append(metaClicks, metaClick{lineIdx: len(metaLines), issueID: *issue.Parent})
 		metaLines = append(metaLines, parentLink)
 	}
 
+	// Row 5: blocked by
+	for _, blockerID := range issue.BlockedBy {
+		blockerTitle := ""
+		for _, iss := range allIssues {
+			if iss.ID == blockerID {
+				blockerTitle = iss.Title
+				break
+			}
+		}
+		link := common.StyleSectionHeader.Render("⊘") +
+			common.StyleFaint.Render(" Blocked by: ") +
+			common.StyleSectionHeader.Render(fmt.Sprintf("#%d", blockerID)) +
+			"  " + common.StyleSubtitle.Render(blockerTitle)
+		metaClicks = append(metaClicks, metaClick{lineIdx: len(metaLines), issueID: blockerID})
+		metaLines = append(metaLines, link)
+	}
+
+	// Row 6: blocks
+	for _, blockedID := range issue.Blocks {
+		blockedTitle := ""
+		for _, iss := range allIssues {
+			if iss.ID == blockedID {
+				blockedTitle = iss.Title
+				break
+			}
+		}
+		link := common.StyleSectionHeader.Render("▸") +
+			common.StyleFaint.Render(" Blocks: ") +
+			common.StyleSectionHeader.Render(fmt.Sprintf("#%d", blockedID)) +
+			"  " + common.StyleSubtitle.Render(blockedTitle)
+		metaClicks = append(metaClicks, metaClick{lineIdx: len(metaLines), issueID: blockedID})
+		metaLines = append(metaLines, link)
+	}
+
+	metaBoxStartLine := strings.Count(b.String(), "\n")
 	metaContent := strings.Join(metaLines, "\n")
 	metaBox := common.StyleMetaBox.Width(metaBoxW).Render(metaContent)
 	b.WriteString(metaBox + "\n")
 
-	// Register click line for parent (inside the box — estimate line offset)
-	if issue.Parent != nil {
-		// The parent line is the last line of the box content, offset by box border
-		lineNum := strings.Count(b.String(), "\n") - 2
-		clickLines[lineNum] = *issue.Parent
+	// Register click lines for all links inside the meta box
+	for _, mc := range metaClicks {
+		clickLines[metaBoxStartLine+1+mc.lineIdx] = mc.issueID
 	}
 
 	b.WriteString("\n")
@@ -206,46 +247,6 @@ func renderIssue(issue data.Issue, allIssues []data.Issue, width int) (string, m
 			lineNum := strings.Count(b.String(), "\n")
 			clickLines[lineNum] = childID
 			b.WriteString(fmt.Sprintf("  %s  #%d  %s\n", icon, childID, common.StyleSubtitle.Render(childTitle)))
-		}
-		b.WriteString("\n")
-	}
-
-	if len(issue.BlockedBy) > 0 {
-		b.WriteString(" " + common.StyleSectionHeader.Render("Blocked by") + " " + sectionUnderline + "\n\n")
-		for _, blockerID := range issue.BlockedBy {
-			blockerTitle := ""
-			blockerStatus := data.Status("")
-			for _, iss := range allIssues {
-				if iss.ID == blockerID {
-					blockerTitle = iss.Title
-					blockerStatus = iss.Status
-					break
-				}
-			}
-			icon := common.StatusStyle(blockerStatus).Render(common.StatusIcon(blockerStatus))
-			lineNum := strings.Count(b.String(), "\n")
-			clickLines[lineNum] = blockerID
-			b.WriteString(fmt.Sprintf("  %s  #%d  %s\n", icon, blockerID, common.StyleSubtitle.Render(blockerTitle)))
-		}
-		b.WriteString("\n")
-	}
-
-	if len(issue.Blocks) > 0 {
-		b.WriteString(" " + common.StyleSectionHeader.Render("Blocks") + " " + sectionUnderline + "\n\n")
-		for _, blockedID := range issue.Blocks {
-			blockedTitle := ""
-			blockedStatus := data.Status("")
-			for _, iss := range allIssues {
-				if iss.ID == blockedID {
-					blockedTitle = iss.Title
-					blockedStatus = iss.Status
-					break
-				}
-			}
-			icon := common.StatusStyle(blockedStatus).Render(common.StatusIcon(blockedStatus))
-			lineNum := strings.Count(b.String(), "\n")
-			clickLines[lineNum] = blockedID
-			b.WriteString(fmt.Sprintf("  %s  #%d  %s\n", icon, blockedID, common.StyleSubtitle.Render(blockedTitle)))
 		}
 		b.WriteString("\n")
 	}
