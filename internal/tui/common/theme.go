@@ -5,33 +5,80 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
-// gh-dash inspired color palette
+// GitHub dark-inspired color palette.
 var (
-	colorSubtle  = lipgloss.AdaptiveColor{Light: "#9B9B9B", Dark: "#5C5C5C"}
-	colorText    = lipgloss.AdaptiveColor{Light: "#1A1A1A", Dark: "#FAFAFA"}
-	colorDimText = lipgloss.AdaptiveColor{Light: "#666666", Dark: "#999999"}
-	colorBorder  = lipgloss.AdaptiveColor{Light: "#DBDBDB", Dark: "#3C3C3C"}
-	colorAccent  = lipgloss.AdaptiveColor{Light: "#6C40BF", Dark: "#B48EF7"}
+	colorBorder  = lipgloss.Color("#30363d")
+	colorText    = lipgloss.Color("#e6edf3")
+	colorMuted   = lipgloss.Color("#8b949e")
+	colorFaint   = lipgloss.Color("#484f58")
+	colorSurface = lipgloss.Color("#161b22")
+	colorAccent  = lipgloss.Color("#a371f7")
+	colorAccentBg = lipgloss.Color("#2d1b69")
 
 	// Priority colors
-	colorUrgent = lipgloss.AdaptiveColor{Light: "#E03131", Dark: "#FF6B6B"}
-	colorHigh   = lipgloss.AdaptiveColor{Light: "#E8590C", Dark: "#FF922B"}
-	colorMedium = lipgloss.AdaptiveColor{Light: "#E67700", Dark: "#FFD43B"}
-	colorLow    = lipgloss.AdaptiveColor{Light: "#868E96", Dark: "#909296"}
+	colorUrgent = lipgloss.Color("#f85149")
+	colorHigh   = lipgloss.Color("#d29922")
+	colorMedium = lipgloss.Color("#388bfd")
+	colorLow    = lipgloss.Color("#6e7681")
 
 	// Status colors
-	colorBacklog    = lipgloss.AdaptiveColor{Light: "#868E96", Dark: "#909296"}
-	colorTodo       = lipgloss.AdaptiveColor{Light: "#1C7ED6", Dark: "#74C0FC"}
-	colorInProgress = lipgloss.AdaptiveColor{Light: "#E67700", Dark: "#FFD43B"}
-	colorDone       = lipgloss.AdaptiveColor{Light: "#2B8A3E", Dark: "#69DB7C"}
-	colorCancelled  = lipgloss.AdaptiveColor{Light: "#ADB5BD", Dark: "#5C5C5C"}
+	colorBacklog    = lipgloss.Color("#8b949e")
+	colorTodo       = lipgloss.Color("#388bfd")
+	colorInProgress = lipgloss.Color("#d29922")
+	colorDone       = lipgloss.Color("#3fb950")
+	colorCancelled  = lipgloss.Color("#6e7681")
 )
 
-// Shared styles
+// Exported raw colors needed by sub-packages (e.g. bubbles/table styling).
 var (
+	ColorBorder = colorBorder
+	ColorMuted  = colorMuted
+	ColorAccent = colorAccent
+)
+
+// AppHeaderHeight is the number of terminal lines occupied by the app header.
+const AppHeaderHeight = 2
+
+// Status icons.
+const (
+	IconBacklog    = "○"
+	IconTodo       = "◌"
+	IconInProgress = "◑"
+	IconDone       = "●"
+	IconCancelled  = "×"
+)
+
+// Priority icons — always 2 visible chars wide for alignment.
+const (
+	IconUrgent = "!!"
+	IconHigh   = " !"
+	IconMedium = " ·"
+	IconLow    = "  "
+)
+
+// Shared styles.
+var (
+	StyleAppTitle = lipgloss.NewStyle().
+			Bold(true).
+			Foreground(colorAccent).
+			Padding(0, 1, 0, 2)
+
+	StyleTabActive = lipgloss.NewStyle().
+			Bold(true).
+			Foreground(colorAccent).
+			Background(colorAccentBg).
+			Padding(0, 1)
+
+	StyleTabInactive = lipgloss.NewStyle().
+				Foreground(colorMuted).
+				Padding(0, 1)
+
+	StyleSeparator = lipgloss.NewStyle().
+			Foreground(colorBorder)
+
 	StyleStatusBar = lipgloss.NewStyle().
-			Background(lipgloss.AdaptiveColor{Light: "#E9ECEF", Dark: "#2C2C2C"}).
-			Foreground(colorDimText).
+			Background(colorSurface).
+			Foreground(colorMuted).
 			Padding(0, 1)
 
 	StyleTitle = lipgloss.NewStyle().
@@ -39,33 +86,86 @@ var (
 			Foreground(colorText)
 
 	StyleSubtitle = lipgloss.NewStyle().
-			Foreground(colorDimText)
+			Foreground(colorMuted)
 
-	StyleLabel = lipgloss.NewStyle().
-			Foreground(lipgloss.AdaptiveColor{Light: "#FFFFFF", Dark: "#1A1A1A"}).
-			Background(colorAccent).
+	StyleFaint = lipgloss.NewStyle().
+			Foreground(colorFaint)
+
+	StyleSectionHeader = lipgloss.NewStyle().
+				Bold(true).
+				Foreground(colorAccent)
+
+	StyleLabel = lipgloss.NewStyle()
+
+	StyleLabelPill = lipgloss.NewStyle().
 			Padding(0, 1)
 
 	StyleCard = lipgloss.NewStyle().
 			Border(lipgloss.RoundedBorder()).
 			BorderForeground(colorBorder).
-			Padding(0, 1).
-			MarginBottom(1)
+			Padding(0, 1)
 
 	StyleActiveCard = lipgloss.NewStyle().
 				Border(lipgloss.RoundedBorder()).
 				BorderForeground(colorAccent).
-				Padding(0, 1).
-				MarginBottom(1)
+				Padding(0, 1)
 
 	StyleColumnHeader = lipgloss.NewStyle().
 				Bold(true).
-				Padding(0, 1).
-				MarginBottom(1)
+				Padding(0, 1)
+
+	StyleStatusKey = lipgloss.NewStyle().
+			Foreground(colorText).
+			Bold(true)
+
+	StyleStatusSep = lipgloss.NewStyle().
+			Foreground(colorFaint)
+
+	StyleCommentBox = lipgloss.NewStyle().
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(colorBorder).
+			Padding(0, 1)
+
+	StyleMetaBox = lipgloss.NewStyle().
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(colorBorder).
+			Padding(0, 1)
 )
 
+// StatusIcon returns the icon character for a given status.
+func StatusIcon(s data.Status) string {
+	switch s {
+	case data.StatusBacklog:
+		return IconBacklog
+	case data.StatusTodo:
+		return IconTodo
+	case data.StatusInProgress:
+		return IconInProgress
+	case data.StatusDone:
+		return IconDone
+	case data.StatusCancelled:
+		return IconCancelled
+	default:
+		return "?"
+	}
+}
+
+// PriorityIcon returns the 2-char icon for a given priority.
+func PriorityIcon(p data.Priority) string {
+	switch p {
+	case data.PriorityUrgent:
+		return IconUrgent
+	case data.PriorityHigh:
+		return IconHigh
+	case data.PriorityMedium:
+		return IconMedium
+	default:
+		return IconLow
+	}
+}
+
 func PriorityStyle(p data.Priority) lipgloss.Style {
-	var c lipgloss.AdaptiveColor
+	var c lipgloss.Color
 	switch p {
 	case data.PriorityUrgent:
 		c = colorUrgent
@@ -76,13 +176,13 @@ func PriorityStyle(p data.Priority) lipgloss.Style {
 	case data.PriorityLow:
 		c = colorLow
 	default:
-		c = colorDimText
+		c = colorFaint
 	}
 	return lipgloss.NewStyle().Foreground(c)
 }
 
 func StatusStyle(s data.Status) lipgloss.Style {
-	var c lipgloss.AdaptiveColor
+	var c lipgloss.Color
 	switch s {
 	case data.StatusBacklog:
 		c = colorBacklog
@@ -95,13 +195,36 @@ func StatusStyle(s data.Status) lipgloss.Style {
 	case data.StatusCancelled:
 		c = colorCancelled
 	default:
-		c = colorDimText
+		c = colorMuted
 	}
 	return lipgloss.NewStyle().Foreground(c)
 }
 
+// StatusColorFor returns the raw lipgloss.Color for a given status.
+func StatusColorFor(s data.Status) lipgloss.Color {
+	switch s {
+	case data.StatusBacklog:
+		return colorBacklog
+	case data.StatusTodo:
+		return colorTodo
+	case data.StatusInProgress:
+		return colorInProgress
+	case data.StatusDone:
+		return colorDone
+	case data.StatusCancelled:
+		return colorCancelled
+	default:
+		return colorMuted
+	}
+}
+
+// FormatKeyHint renders a styled "key action" pair for the status bar.
+func FormatKeyHint(k, action string) string {
+	return StyleStatusKey.Render(k) + " " + action
+}
+
 func StatusHeaderStyle(s data.Status) lipgloss.Style {
-	var c lipgloss.AdaptiveColor
+	var c lipgloss.Color
 	switch s {
 	case data.StatusBacklog:
 		c = colorBacklog
@@ -114,7 +237,66 @@ func StatusHeaderStyle(s data.Status) lipgloss.Style {
 	case data.StatusCancelled:
 		c = colorCancelled
 	default:
-		c = colorDimText
+		c = colorMuted
 	}
 	return StyleColumnHeader.Foreground(c)
+}
+
+// StatusPillStyle returns a colored-background pill style for the detail view.
+func StatusPillStyle(s data.Status) lipgloss.Style {
+	var fg, bg lipgloss.Color
+	switch s {
+	case data.StatusBacklog:
+		fg, bg = colorText, lipgloss.Color("#3d4148")
+	case data.StatusTodo:
+		fg, bg = lipgloss.Color("#0d1117"), colorTodo
+	case data.StatusInProgress:
+		fg, bg = lipgloss.Color("#0d1117"), colorInProgress
+	case data.StatusDone:
+		fg, bg = lipgloss.Color("#0d1117"), colorDone
+	case data.StatusCancelled:
+		fg, bg = colorMuted, lipgloss.Color("#21262d")
+	default:
+		fg, bg = colorText, colorBorder
+	}
+	return lipgloss.NewStyle().
+		Foreground(fg).
+		Background(bg).
+		Padding(0, 1).
+		Bold(true)
+}
+
+// Label color palette — distinct, readable colors for dark backgrounds.
+var labelColors = []struct{ fg, bg lipgloss.Color }{
+	{"#a371f7", "#2d1b69"}, // purple
+	{"#58a6ff", "#0d2240"}, // blue
+	{"#3fb950", "#0f2d1a"}, // green
+	{"#d29922", "#2d2006"}, // yellow
+	{"#f78166", "#2d1710"}, // orange
+	{"#f692ce", "#2d1226"}, // pink
+	{"#79c0ff", "#0d2240"}, // light blue
+	{"#7ee787", "#0f2d1a"}, // light green
+	{"#d2a8ff", "#2d1b69"}, // lavender
+	{"#ffa657", "#2d1c0a"}, // amber
+}
+
+// labelColorIndex returns a stable index for a label string.
+func labelColorIndex(label string) int {
+	h := uint32(0)
+	for _, r := range label {
+		h = h*31 + uint32(r)
+	}
+	return int(h % uint32(len(labelColors)))
+}
+
+// RenderLabel renders a label with a deterministic color (compact, for board cards).
+func RenderLabel(label string) string {
+	c := labelColors[labelColorIndex(label)]
+	return StyleLabel.Foreground(c.fg).Render(label)
+}
+
+// RenderLabelPill renders a label pill with background (for detail view).
+func RenderLabelPill(label string) string {
+	c := labelColors[labelColorIndex(label)]
+	return StyleLabelPill.Foreground(c.fg).Background(c.bg).Render(label)
 }

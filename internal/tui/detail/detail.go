@@ -10,27 +10,29 @@ import (
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/glamour"
-	"github.com/charmbracelet/lipgloss"
 )
 
 type Model struct {
-	issue    data.Issue
-	viewport viewport.Model
-	ready    bool
-	width    int
-	height   int
+	issue      data.Issue
+	viewport   viewport.Model
+	ready      bool
+	width      int
+	height     int
+	clickLines map[int]int // content line number → issue ID for clickable links
 }
 
 func New(issue data.Issue, allIssues []data.Issue, width, height int) Model {
+	content, clickLines := renderIssue(issue, allIssues, width)
 	vp := viewport.New(width, height)
-	vp.SetContent(renderIssue(issue, allIssues, width))
+	vp.SetContent(content)
 
 	return Model{
-		issue:    issue,
-		viewport: vp,
-		ready:    true,
-		width:    width,
-		height:   height,
+		issue:      issue,
+		viewport:   vp,
+		ready:      true,
+		width:      width,
+		height:     height,
+		clickLines: clickLines,
 	}
 }
 
@@ -55,6 +57,19 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		case key.Matches(msg, common.DetailKeyMap.ToList):
 			return m, func() tea.Msg { return common.SwitchScreenMsg{Screen: common.ScreenList} }
 		}
+	case tea.MouseMsg:
+		if msg.Action == tea.MouseActionPress && msg.Button == tea.MouseButtonBackward {
+			return m, func() tea.Msg { return common.GoBackMsg{} }
+		}
+		if msg.Action == tea.MouseActionPress && msg.Button == tea.MouseButtonLeft {
+			viewportY := msg.Y - common.AppHeaderHeight
+			if viewportY >= 0 && viewportY < m.viewport.Height {
+				contentLine := m.viewport.YOffset + viewportY
+				if id, ok := m.clickLines[contentLine]; ok {
+					return m, func() tea.Msg { return common.OpenDetailMsg{ID: id} }
+				}
+			}
+		}
 	}
 
 	var cmd tea.Cmd
@@ -66,38 +81,56 @@ func (m Model) View() string {
 	return m.viewport.View()
 }
 
-func renderIssue(issue data.Issue, allIssues []data.Issue, width int) string {
+func renderIssue(issue data.Issue, allIssues []data.Issue, width int) (string, map[int]int) {
+	clickLines := make(map[int]int)
 	var b strings.Builder
 
-	title := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.AdaptiveColor{Light: "#1A1A1A", Dark: "#FAFAFA"}).
-		Render(fmt.Sprintf("#%d  %s", issue.ID, issue.Title))
-	b.WriteString(title + "\n\n")
+	// Title header
+	idStr := common.StyleFaint.Render(fmt.Sprintf("#%d", issue.ID))
+	title := common.StyleTitle.Render(issue.Title)
+	b.WriteString(" " + idStr + "\n")
+	b.WriteString(" " + title + "\n\n")
 
-	labelStyle := lipgloss.NewStyle().Bold(true)
-	metaStyle := lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "#666666", Dark: "#999999"})
+	// Metadata box: status pill + priority + assignee + labels + dates
+	metaBoxW := width - 4
+	if metaBoxW < 30 {
+		metaBoxW = 30
+	}
+	var metaLines []string
 
-	statusStr := common.StatusStyle(issue.Status).Render(issue.Status.Label())
-	prioStr := common.PriorityStyle(issue.Priority).Render(issue.Priority.Label())
-
-	b.WriteString(labelStyle.Render("Status:   ") + statusStr + "\n")
-	b.WriteString(labelStyle.Render("Priority: ") + prioStr + "\n")
+	// Row 1: status pill + priority + assignee
+	statusPill := common.StatusPillStyle(issue.Status).
+		Render(common.StatusIcon(issue.Status) + " " + issue.Status.Label())
+	prioStr := common.PriorityStyle(issue.Priority).
+		Render(strings.TrimSpace(common.PriorityIcon(issue.Priority)) + " " + issue.Priority.Label())
+	metaRow := statusPill + "  " + prioStr
 	if issue.Assignee != "" {
-		b.WriteString(labelStyle.Render("Assignee: ") + metaStyle.Render(issue.Assignee) + "\n")
+		metaRow += "  " + common.StyleSubtitle.Render("@"+issue.Assignee)
 	}
+	metaLines = append(metaLines, metaRow)
+
+	// Row 2: labels
 	if len(issue.Labels) > 0 {
-		var labels []string
+		var labelStrs []string
 		for _, l := range issue.Labels {
-			labels = append(labels, common.StyleLabel.Render(l))
+			labelStrs = append(labelStrs, common.RenderLabelPill(l))
 		}
-		b.WriteString(labelStyle.Render("Labels:   ") + strings.Join(labels, " ") + "\n")
+		metaLines = append(metaLines, strings.Join(labelStrs, " "))
 	}
+
+	// Row 3: dates
+	var dateParts []string
 	if !issue.Created.IsZero() {
-		b.WriteString(labelStyle.Render("Created:  ") + metaStyle.Render(issue.Created.Format("2006-01-02")) + "\n")
+		dateParts = append(dateParts, "Created "+issue.Created.Format("2006-01-02"))
 	}
 	if !issue.Updated.IsZero() {
-		b.WriteString(labelStyle.Render("Updated:  ") + metaStyle.Render(issue.Updated.Format("2006-01-02")) + "\n")
+		dateParts = append(dateParts, "Updated "+issue.Updated.Format("2006-01-02"))
+	}
+	if len(dateParts) > 0 {
+		metaLines = append(metaLines, common.StyleFaint.Render(strings.Join(dateParts, "  ·  ")))
 	}
 
+	// Row 4: parent link
 	if issue.Parent != nil {
 		parentTitle := ""
 		for _, iss := range allIssues {
@@ -106,28 +139,37 @@ func renderIssue(issue data.Issue, allIssues []data.Issue, width int) string {
 				break
 			}
 		}
-		b.WriteString(labelStyle.Render("Parent:   ") + metaStyle.Render(fmt.Sprintf("#%d %s", *issue.Parent, parentTitle)) + "\n")
+		metaLines = append(metaLines, common.StyleFaint.Render(fmt.Sprintf("↑ Parent: #%d %s", *issue.Parent, parentTitle)))
+	}
+
+	metaContent := strings.Join(metaLines, "\n")
+	metaBox := common.StyleMetaBox.Width(metaBoxW).Render(metaContent)
+	b.WriteString(" " + metaBox + "\n")
+
+	// Register click line for parent (inside the box — estimate line offset)
+	if issue.Parent != nil {
+		// The parent line is the last line of the box content, offset by box border
+		lineNum := strings.Count(b.String(), "\n") - 2
+		clickLines[lineNum] = *issue.Parent
 	}
 
 	b.WriteString("\n")
 
-	sectionStyle := lipgloss.NewStyle().Bold(true).
-		Foreground(lipgloss.AdaptiveColor{Light: "#6C40BF", Dark: "#B48EF7"})
+	mdWidth := width - 4
+	if mdWidth < 40 {
+		mdWidth = 40
+	}
+
+	sectionUnderline := common.StyleSectionHeader.Render(strings.Repeat("━", 2))
 
 	if issue.Content != "" {
-		b.WriteString(sectionStyle.Render("── Description ──") + "\n\n")
-
-		mdWidth := width - 4
-		if mdWidth < 40 {
-			mdWidth = 40
-		}
+		b.WriteString(" " + common.StyleSectionHeader.Render("Description") + " " + sectionUnderline + "\n\n")
 		rendered := renderMarkdown(issue.Content, mdWidth)
 		b.WriteString(rendered + "\n")
 	}
 
 	if len(issue.Children) > 0 {
-		b.WriteString(sectionStyle.Render("── Sub-issues ──") + "\n\n")
-
+		b.WriteString(" " + common.StyleSectionHeader.Render("Sub-issues") + " " + sectionUnderline + "\n\n")
 		for _, childID := range issue.Children {
 			childTitle := ""
 			childStatus := data.Status("")
@@ -138,36 +180,38 @@ func renderIssue(issue data.Issue, allIssues []data.Issue, width int) string {
 					break
 				}
 			}
-			statusStr := common.StatusStyle(childStatus).Render(childStatus.Label())
-			b.WriteString(fmt.Sprintf("  #%d  %s  [%s]\n", childID, childTitle, statusStr))
+			icon := common.StatusStyle(childStatus).Render(common.StatusIcon(childStatus))
+			lineNum := strings.Count(b.String(), "\n")
+			clickLines[lineNum] = childID
+			b.WriteString(fmt.Sprintf("  %s  #%d  %s\n", icon, childID, common.StyleSubtitle.Render(childTitle)))
 		}
 		b.WriteString("\n")
 	}
 
 	if len(issue.Comments) > 0 {
-		b.WriteString(sectionStyle.Render(fmt.Sprintf("── Comments (%d) ──", len(issue.Comments))) + "\n\n")
+		b.WriteString(" " + common.StyleSectionHeader.Render(fmt.Sprintf("Comments (%d)", len(issue.Comments))) + " " + sectionUnderline + "\n\n")
 
-		commentHeaderStyle := lipgloss.NewStyle().Bold(true)
-
-		mdWidth := width - 4
-		if mdWidth < 40 {
-			mdWidth = 40
+		commentW := width - 6
+		if commentW < 30 {
+			commentW = 30
 		}
-
 		for _, c := range issue.Comments {
-			header := commentHeaderStyle.Render(fmt.Sprintf("%s — %s", c.Author, c.Date))
-			b.WriteString(header + "\n")
-			rendered := renderMarkdown(c.Body, mdWidth)
-			b.WriteString(rendered + "\n")
+			commentBox := common.StyleCommentBox.Width(commentW).
+				Render(
+					common.StyleTitle.Render(c.Author) +
+						"  " + common.StyleFaint.Render(c.Date) + "\n" +
+						renderMarkdown(c.Body, commentW-4),
+				)
+			b.WriteString(" " + commentBox + "\n\n")
 		}
 	}
 
-	return b.String()
+	return b.String(), clickLines
 }
 
 func renderMarkdown(content string, width int) string {
 	r, err := glamour.NewTermRenderer(
-		glamour.WithAutoStyle(),
+		glamour.WithStandardStyle("dark"),
 		glamour.WithWordWrap(width),
 	)
 	if err != nil {

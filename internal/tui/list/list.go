@@ -14,12 +14,13 @@ import (
 )
 
 type Model struct {
-	allIssues []data.Issue
-	table     table.Model
-	filter    textinput.Model
-	filtering bool
-	width     int
-	height    int
+	allIssues    []data.Issue
+	table        table.Model
+	filter       textinput.Model
+	filtering    bool
+	width        int
+	height       int
+	visibleStart int // first visible row index, mirrors table's internal start
 }
 
 func New(issues []data.Issue) Model {
@@ -38,6 +39,24 @@ func New(issues []data.Issue) Model {
 func (m Model) Init() tea.Cmd { return nil }
 
 func (m Model) Filtering() bool { return m.filtering }
+
+// updateVisibleStart keeps visibleStart in sync with the table's internal scroll position.
+func (m *Model) updateVisibleStart() {
+	tableHeight := m.height - 3
+	if tableHeight < 1 {
+		tableHeight = 1
+	}
+	cursor := m.table.Cursor()
+	if m.visibleStart > cursor {
+		m.visibleStart = cursor
+	}
+	if cursor >= m.visibleStart+tableHeight {
+		m.visibleStart = cursor - tableHeight + 1
+	}
+	if m.visibleStart < 0 {
+		m.visibleStart = 0
+	}
+}
 
 func (m Model) SetSize(w, h int) Model {
 	m.width = w
@@ -62,6 +81,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 				m.filter.SetValue("")
 				m.filter.Blur()
 				m.table = m.buildTable(m.allIssues, m.width, m.height-3)
+				m.visibleStart = 0
 				return m, nil
 			case msg.Type == tea.KeyEnter:
 				m.filtering = false
@@ -71,6 +91,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 				var cmd tea.Cmd
 				m.filter, cmd = m.filter.Update(msg)
 				m.table = m.buildTable(m.filteredIssues(), m.width, m.height-3)
+				m.visibleStart = 0
 				return m, cmd
 			}
 		}
@@ -93,10 +114,61 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		case key.Matches(msg, common.ListKeyMap.Refresh):
 			return m, func() tea.Msg { return common.RefreshMsg{} }
 		}
+
+	case tea.MouseMsg:
+		switch msg.Button {
+		case tea.MouseButtonWheelUp:
+			m.table.MoveUp(1)
+			m.updateVisibleStart()
+			return m, nil
+		case tea.MouseButtonWheelDown:
+			m.table.MoveDown(1)
+			m.updateVisibleStart()
+			return m, nil
+		case tea.MouseButtonLeft:
+			if msg.Action != tea.MouseActionPress || m.filtering {
+				break
+			}
+			// 2-line app header + 2-line table header = 4; +1 if filter line shown.
+			tableTopY := common.AppHeaderHeight + 2
+			if m.filter.Value() != "" {
+				tableTopY = common.AppHeaderHeight + 3
+			}
+			if msg.Y >= tableTopY {
+				clickedRow := m.visibleStart + (msg.Y - tableTopY)
+				issues := m.filteredIssues()
+				if clickedRow >= 0 && clickedRow < len(issues) {
+					m.table.SetCursor(clickedRow)
+					m.updateVisibleStart()
+					if row := m.table.SelectedRow(); row != nil {
+						id := 0
+						fmt.Sscanf(row[0], "%d", &id)
+						if id > 0 {
+							return m, func() tea.Msg { return common.OpenDetailMsg{ID: id} }
+						}
+					}
+				}
+			}
+		case tea.MouseButtonBackward:
+			if msg.Action == tea.MouseActionPress {
+				return m, func() tea.Msg { return common.SwitchScreenMsg{Screen: common.ScreenBoard} }
+			}
+		case tea.MouseButtonForward:
+			if msg.Action == tea.MouseActionPress {
+				if row := m.table.SelectedRow(); row != nil {
+					id := 0
+					fmt.Sscanf(row[0], "%d", &id)
+					if id > 0 {
+						return m, func() tea.Msg { return common.OpenDetailMsg{ID: id} }
+					}
+				}
+			}
+		}
 	}
 
 	var cmd tea.Cmd
 	m.table, cmd = m.table.Update(msg)
+	m.updateVisibleStart()
 	return m, cmd
 }
 
@@ -105,8 +177,7 @@ func (m Model) View() string {
 	if m.filtering {
 		filterLine = "  / " + m.filter.View()
 	} else if m.filter.Value() != "" {
-		filterLine = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "#666", Dark: "#999"}).
-			Render(fmt.Sprintf("  Filter: %s", m.filter.Value()))
+		filterLine = common.StyleSubtitle.Render(fmt.Sprintf("  Filter: %s", m.filter.Value()))
 	}
 
 	tableView := m.table.View()
@@ -152,12 +223,14 @@ func (m Model) buildTable(issues []data.Issue, width, height int) table.Model {
 
 	var rows []table.Row
 	for _, iss := range issues {
-		labels := strings.Join(iss.Labels, ", ")
+		labels := strings.Join(iss.Labels, " ")
+		statusCell := common.StatusIcon(iss.Status) + " " + iss.Status.Label()
+		prioCell := common.PriorityIcon(iss.Priority) + " " + iss.Priority.Label()
 		rows = append(rows, table.Row{
 			fmt.Sprintf("%d", iss.ID),
 			iss.Title,
-			iss.Status.Label(),
-			iss.Priority.Label(),
+			statusCell,
+			prioCell,
 			iss.Assignee,
 			labels,
 		})
@@ -172,13 +245,14 @@ func (m Model) buildTable(issues []data.Issue, width, height int) table.Model {
 
 	s := table.DefaultStyles()
 	s.Header = s.Header.
-		BorderStyle(lipgloss.NormalBorder()).
-		BorderForeground(lipgloss.AdaptiveColor{Light: "#DBDBDB", Dark: "#3C3C3C"}).
+		BorderStyle(lipgloss.ThickBorder()).
+		BorderForeground(common.ColorBorder).
 		BorderBottom(true).
+		Foreground(common.ColorMuted).
 		Bold(true)
 	s.Selected = s.Selected.
-		Foreground(lipgloss.AdaptiveColor{Light: "#FFFFFF", Dark: "#FFFFFF"}).
-		Background(lipgloss.AdaptiveColor{Light: "#6C40BF", Dark: "#6C40BF"}).
+		Foreground(lipgloss.Color("#e6edf3")).
+		Background(common.ColorAccent).
 		Bold(false)
 	t.SetStyles(s)
 

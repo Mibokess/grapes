@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/Mibokess/grapes/internal/data"
@@ -112,8 +113,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
-		helpHeight := 1
-		contentHeight := m.height - helpHeight
+		const overhead = 3 // app header (2 lines) + status bar (1 line)
+		contentHeight := m.height - overhead
 		m.board = m.board.SetSize(m.width, contentHeight)
 		m.list = m.list.SetSize(m.width, contentHeight)
 		m.detail = m.detail.SetSize(m.width, contentHeight)
@@ -128,6 +129,23 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 		}
 
+	case tea.MouseMsg:
+		if msg.Button == tea.MouseButtonLeft && msg.Action == tea.MouseActionPress && msg.Y == 0 {
+			// Detect clicks on header tabs (Board / List)
+			boardTabW := lipgloss.Width(common.StyleTabInactive.Render("Board"))
+			listTabW := lipgloss.Width(common.StyleTabInactive.Render("List"))
+			tabsStart := m.width - boardTabW - listTabW
+			if msg.X >= tabsStart && msg.X < tabsStart+boardTabW {
+				m.screen = common.ScreenBoard
+				return m, nil
+			}
+			if msg.X >= tabsStart+boardTabW && msg.X < m.width {
+				m.screen = common.ScreenList
+				return m, nil
+			}
+		}
+		// Non-tab clicks fall through to active screen delegation
+
 	case common.OpenDetailMsg:
 		var iss *data.Issue
 		for i := range m.issues {
@@ -137,9 +155,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 		if iss != nil {
-			m.prevScreen = m.screen
+			// Only update prevScreen when coming from a non-detail screen,
+			// so Esc from nested detail views returns to the original screen.
+			if m.screen != common.ScreenDetail {
+				m.prevScreen = m.screen
+			}
 			m.screen = common.ScreenDetail
-			m.detail = detail.New(*iss, m.issues, m.width, m.height-1)
+			m.detail = detail.New(*iss, m.issues, m.width, m.height-3)
 			return m, m.detail.Init()
 		}
 		return m, nil
@@ -180,22 +202,76 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
+func (m Model) renderHeader() string {
+	title := common.StyleAppTitle.Render("grapes")
+
+	// Active tab follows the current screen; detail inherits from previous screen.
+	activeScreen := m.screen
+	if activeScreen == common.ScreenDetail {
+		activeScreen = m.prevScreen
+	}
+
+	var boardTab, listTab string
+	if activeScreen == common.ScreenBoard {
+		boardTab = common.StyleTabActive.Render("Board")
+	} else {
+		boardTab = common.StyleTabInactive.Render("Board")
+	}
+	if activeScreen == common.ScreenList {
+		listTab = common.StyleTabActive.Render("List")
+	} else {
+		listTab = common.StyleTabInactive.Render("List")
+	}
+
+	tabs := lipgloss.JoinHorizontal(lipgloss.Top, boardTab, " ", listTab)
+	spacerW := m.width - lipgloss.Width(title) - lipgloss.Width(tabs)
+	if spacerW < 0 {
+		spacerW = 0
+	}
+	row := title + strings.Repeat(" ", spacerW) + tabs
+	sep := common.StyleSeparator.Render(strings.Repeat("━", m.width))
+	return lipgloss.JoinVertical(lipgloss.Left, row, sep)
+}
+
 func (m Model) View() string {
+	header := m.renderHeader()
+
 	var content string
-	var helpText string
+	var helpParts []string
+	dot := common.StyleStatusSep.Render(" · ")
 
 	switch m.screen {
 	case common.ScreenBoard:
 		content = m.board.View()
-		helpText = "  hjkl/arrows: navigate • enter: open • L: list • r: refresh • q: quit"
+		helpParts = []string{
+			common.FormatKeyHint("hjkl", "navigate"),
+			common.FormatKeyHint("enter", "open"),
+			common.FormatKeyHint("L", "list"),
+			common.FormatKeyHint("r", "refresh"),
+			common.FormatKeyHint("q", "quit"),
+		}
 	case common.ScreenList:
 		content = m.list.View()
-		helpText = "  j/k: navigate • enter: open • /: filter • esc: clear • b: board • r: refresh • q: quit"
+		helpParts = []string{
+			common.FormatKeyHint("jk", "navigate"),
+			common.FormatKeyHint("enter", "open"),
+			common.FormatKeyHint("/", "filter"),
+			common.FormatKeyHint("esc", "clear"),
+			common.FormatKeyHint("b", "board"),
+			common.FormatKeyHint("q", "quit"),
+		}
 	case common.ScreenDetail:
 		content = m.detail.View()
-		helpText = "  j/k: scroll • esc: back • b: board • l: list • q: quit"
+		helpParts = []string{
+			common.FormatKeyHint("jk", "scroll"),
+			common.FormatKeyHint("esc", "back"),
+			common.FormatKeyHint("b", "board"),
+			common.FormatKeyHint("l", "list"),
+			common.FormatKeyHint("q", "quit"),
+		}
 	}
 
+	helpText := "  " + strings.Join(helpParts, dot)
 	bar := common.StyleStatusBar.Width(m.width).Render(helpText)
-	return lipgloss.JoinVertical(lipgloss.Left, content, bar)
+	return lipgloss.JoinVertical(lipgloss.Left, header, content, bar)
 }
