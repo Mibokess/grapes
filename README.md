@@ -148,7 +148,7 @@ Three views — **Board** (kanban by status), **List** (sortable table), and **D
 
 Grapes ships with [Claude Code](https://claude.ai/claude-code) skills in `plugin/skills/` for creating, reading, listing, searching, updating, commenting on, and closing issues. Symlink them into `.claude/skills/` to enable them.
 
-The TUI is read-only by design. The primary write path is agents (or humans) editing files directly.
+Changes made in the TUI write directly to the `.grapes/` files on disk.
 
 ## Inspiration
 
