@@ -514,7 +514,7 @@ func (m Model) View() tea.View {
 			common.FormatKeyHint("p", "priority"),
 			common.FormatKeyHint("o/O", sortLabel),
 			common.FormatKeyHint("/", "filter"),
-			common.FormatKeyHint("b", "board"),
+			common.FormatKeyHint("B", "board"),
 			common.FormatKeyHint("q", "quit"),
 		}
 	case common.ScreenDetail:
