@@ -18,6 +18,9 @@ go.work.sum
 .DS_Store
 Thumbs.db
 
+# Local
+old/
+
 # Env
 .env
 .env.*
