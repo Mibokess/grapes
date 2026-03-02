@@ -1,6 +1,0 @@
-title: "Bug: Malformed meta.yaml crashes the entire TUI"
-status: in_progress
-priority: high
-labels: [bug, data, robustness]
-created: 2026-02-27T00:00
-updated: 2026-03-02T14:32

@@ -1,6 +1,0 @@
-title: "find_issues_dir() searches from package location, not working directory"
-status: done
-priority: high
-labels: [bug, data, usability]
-created: 2026-02-27T00:00
-updated: 2026-03-02T16:47

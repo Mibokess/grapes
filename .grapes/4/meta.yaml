@@ -1,9 +1,0 @@
-title: Detail view loads all issues twice to render one issue
-status: in_progress
-priority: medium
-labels:
-    - perf
-    - tui
-    - data
-created: 2026-02-27T00:00
-updated: 2026-03-02T16:41
