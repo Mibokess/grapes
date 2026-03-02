@@ -1,5 +1,7 @@
 package common
 
+import "github.com/Mibokess/grapes/internal/data"
+
 // Screen identifies which view is active.
 type Screen int
 
@@ -33,3 +35,8 @@ type EditFinishedMsg struct{ Err error }
 type WriteErrMsg struct{ Err error }
 type CycleSortMsg struct{}
 type ReverseSortMsg struct{}
+type ColumnSortMsg struct{ Mode data.SortMode }
+type MoveIssueMsg struct {
+	IssueID   int
+	NewStatus data.Status
+}

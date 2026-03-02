@@ -2,11 +2,11 @@
  Implement user authentication                              
                                                             
  ╭──────────────────────────────────────────────────────╮   
-│  ◑ in_progress   ! high                              │    
-│  backend   security                                  │    
-│ Created 2025-01-15 10:00  ·  Updated 2025-03-01      │    
-│ 14:00                                                │    
-╰──────────────────────────────────────────────────────╯    
+ │  ◑ in_progress   ! high                              │   
+ │  backend   security                                  │   
+ │ Created 2025-01-15 10:00  ·  Updated 2025-03-01      │   
+ │ 14:00                                                │   
+ ╰──────────────────────────────────────────────────────╯   
                                                             
  Description ━━                                             
                                                             
@@ -26,15 +26,15 @@
  Comments (2) ━━                                            
                                                             
  ╭────────────────────────────────────────────────────╮     
-│ 2025-02-01T12:00                                   │      
-│                                                    │      
-│   Investigating OAuth2 vs JWT. JWT is simpler      │      
-│   for this use case.                               │      
-╰────────────────────────────────────────────────────╯      
+ │ 2025-02-01T12:00                                   │     
+ │                                                    │     
+ │   Investigating OAuth2 vs JWT. JWT is simpler      │     
+ │   for this use case.                               │     
+ ╰────────────────────────────────────────────────────╯     
                                                             
  ╭────────────────────────────────────────────────────╮     
-│ 2025-02-02T09:30                                   │      
-│                                                    │      
-│   Started with JWT implementation. Login           │      
-│   endpoint scaffolded.                             │      
-╰────────────────────────────────────────────────────╯      
+ │ 2025-02-02T09:30                                   │     
+ │                                                    │     
+ │   Started with JWT implementation. Login           │     
+ │   endpoint scaffolded.                             │     
+ ╰────────────────────────────────────────────────────╯     

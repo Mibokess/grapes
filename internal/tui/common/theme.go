@@ -126,11 +126,23 @@ var (
 	StyleCommentBox = lipgloss.NewStyle().
 			Border(lipgloss.RoundedBorder()).
 			BorderForeground(colorBorder).
-			Padding(0, 1)
+			Padding(0, 1).
+			MarginLeft(1)
 
 	StyleMetaBox = lipgloss.NewStyle().
 			Border(lipgloss.RoundedBorder()).
 			BorderForeground(colorBorder).
+			Padding(0, 1).
+			MarginLeft(1)
+
+	StyleDragCard = lipgloss.NewStyle().
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(colorFaint).
+			Foreground(colorFaint).
+			Padding(0, 1)
+
+	StyleDropTarget = lipgloss.NewStyle().
+			Bold(true).
 			Padding(0, 1)
 )
 

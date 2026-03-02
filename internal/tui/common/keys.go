@@ -100,6 +100,8 @@ type ListKeys struct {
 	CyclePriority key.Binding
 	CycleSort     key.Binding
 	ReverseSort   key.Binding
+	ScrollLeft    key.Binding
+	ScrollRight   key.Binding
 }
 
 var ListKeyMap = ListKeys{
@@ -120,8 +122,8 @@ var ListKeyMap = ListKeys{
 		key.WithHelp("e", "edit"),
 	),
 	ToBoard: key.NewBinding(
-		key.WithKeys("b"),
-		key.WithHelp("b", "board view"),
+		key.WithKeys("B"),
+		key.WithHelp("B", "board view"),
 	),
 	Filter: key.NewBinding(
 		key.WithKeys("/"),
@@ -151,6 +153,14 @@ var ListKeyMap = ListKeys{
 		key.WithKeys("O"),
 		key.WithHelp("O", "reverse"),
 	),
+	ScrollLeft: key.NewBinding(
+		key.WithKeys("left", "h"),
+		key.WithHelp("←/h", "scroll left"),
+	),
+	ScrollRight: key.NewBinding(
+		key.WithKeys("right", "l"),
+		key.WithHelp("→/l", "scroll right"),
+	),
 }
 
 // DetailKeys are specific to the detail screen.
@@ -170,8 +180,8 @@ var DetailKeyMap = DetailKeys{
 		key.WithHelp("esc", "back"),
 	),
 	ToBoard: key.NewBinding(
-		key.WithKeys("b"),
-		key.WithHelp("b", "board view"),
+		key.WithKeys("B"),
+		key.WithHelp("B", "board view"),
 	),
 	ToList: key.NewBinding(
 		key.WithKeys("l"),

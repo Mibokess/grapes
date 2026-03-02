@@ -162,7 +162,7 @@ func renderIssue(issue data.Issue, allIssues []data.Issue, width int) (string, m
 
 	metaContent := strings.Join(metaLines, "\n")
 	metaBox := common.StyleMetaBox.Width(metaBoxW).Render(metaContent)
-	b.WriteString(" " + metaBox + "\n")
+	b.WriteString(metaBox + "\n")
 
 	// Register click line for parent (inside the box — estimate line offset)
 	if issue.Parent != nil {
@@ -219,7 +219,7 @@ func renderIssue(issue data.Issue, allIssues []data.Issue, width int) (string, m
 					common.StyleFaint.Render(c.Date) + "\n" +
 						renderMarkdown(c.Body, commentW-4),
 				)
-			b.WriteString(" " + commentBox + "\n\n")
+			b.WriteString(commentBox + "\n\n")
 		}
 	}
 

@@ -2,6 +2,7 @@ package data
 
 import (
 	"sort"
+	"strings"
 	"time"
 )
 
@@ -87,12 +88,28 @@ const (
 	SortByPriority SortMode = iota // Urgent → Low, tie-break by ID
 	SortByUpdated                  // Most recently updated first, tie-break by ID
 	SortByCreated                  // Most recently created first, tie-break by ID
+	SortByID                       // Lowest ID first
+	SortByTitle                    // Alphabetical by title
+	SortByStatus                   // Status column order (backlog → cancelled)
+	sortModeCount
 )
+
+// StatusOrder defines sort order for statuses (lower = earlier in workflow).
+var StatusOrder = map[Status]int{
+	StatusBacklog:    0,
+	StatusTodo:       1,
+	StatusInProgress: 2,
+	StatusDone:       3,
+	StatusCancelled:  4,
+}
 
 var sortModeLabels = map[SortMode]string{
 	SortByPriority: "priority",
 	SortByUpdated:  "updated",
 	SortByCreated:  "created",
+	SortByID:       "id",
+	SortByTitle:    "title",
+	SortByStatus:   "status",
 }
 
 func (s SortMode) Label() string {
@@ -103,7 +120,7 @@ func (s SortMode) Label() string {
 }
 
 func (s SortMode) Next() SortMode {
-	return (s + 1) % 3
+	return (s + 1) % sortModeCount
 }
 
 // SortIssues sorts issues in place according to the given mode.
@@ -128,6 +145,21 @@ func SortIssues(issues []Issue, mode SortMode, asc bool) {
 		case SortByCreated:
 			if !issues[i].Created.Equal(issues[j].Created) {
 				return issues[i].Created.After(issues[j].Created)
+			}
+			return issues[i].ID < issues[j].ID
+		case SortByID:
+			return issues[i].ID < issues[j].ID
+		case SortByTitle:
+			ti := strings.ToLower(issues[i].Title)
+			tj := strings.ToLower(issues[j].Title)
+			if ti != tj {
+				return ti < tj
+			}
+			return issues[i].ID < issues[j].ID
+		case SortByStatus:
+			si, sj := StatusOrder[issues[i].Status], StatusOrder[issues[j].Status]
+			if si != sj {
+				return si < sj
 			}
 			return issues[i].ID < issues[j].ID
 		default:

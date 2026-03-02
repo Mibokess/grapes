@@ -56,13 +56,16 @@ func NewModel(issues []data.Issue, issuesDir string) Model {
 	sortMode := data.SortByPriority
 	data.SortIssues(issues, sortMode, false)
 
+	l := list.New(issues)
+	l = l.SetSortState(sortMode, false)
+
 	return Model{
 		issues:    issues,
 		issuesDir: issuesDir,
 		screen:    common.ScreenBoard,
 		sortMode:  sortMode,
 		board:     board.New(issues),
-		list:      list.New(issues),
+		list:      l,
 		watcher:   w,
 	}
 }
@@ -207,14 +210,26 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.sortAsc = false // reset direction when changing sort field
 		data.SortIssues(m.issues, m.sortMode, m.sortAsc)
 		m.board = m.board.SetSortMode(m.sortMode).SetIssues(m.issues)
-		m.list = m.list.SetIssues(m.issues)
+		m.list = m.list.SetSortState(m.sortMode, m.sortAsc).SetIssues(m.issues)
 		return m, nil
 
 	case common.ReverseSortMsg:
 		m.sortAsc = !m.sortAsc
 		data.SortIssues(m.issues, m.sortMode, m.sortAsc)
 		m.board = m.board.SetIssues(m.issues)
-		m.list = m.list.SetIssues(m.issues)
+		m.list = m.list.SetSortState(m.sortMode, m.sortAsc).SetIssues(m.issues)
+		return m, nil
+
+	case common.ColumnSortMsg:
+		if m.sortMode == msg.Mode {
+			m.sortAsc = !m.sortAsc
+		} else {
+			m.sortMode = msg.Mode
+			m.sortAsc = false
+		}
+		data.SortIssues(m.issues, m.sortMode, m.sortAsc)
+		m.board = m.board.SetSortMode(m.sortMode).SetIssues(m.issues)
+		m.list = m.list.SetSortState(m.sortMode, m.sortAsc).SetIssues(m.issues)
 		return m, nil
 
 	case common.RefreshMsg:
@@ -245,6 +260,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		p := m.buildPicker(msg.IssueID, msg.Field)
 		m.picker = &p
 		return m, nil
+
+	case common.MoveIssueMsg:
+		return m, func() tea.Msg {
+			if err := data.UpdateField(m.issuesDir, msg.IssueID, "status", string(msg.NewStatus)); err != nil {
+				return common.WriteErrMsg{Err: err}
+			}
+			return nil // fsnotify will trigger refresh
+		}
 
 	case common.PickerResultMsg:
 		m.picker = nil
@@ -472,14 +495,19 @@ func (m Model) View() tea.View {
 			common.FormatKeyHint("e", "edit"),
 			common.FormatKeyHint("s", "status"),
 			common.FormatKeyHint("p", "priority"),
+			common.FormatKeyHint("drag", "move"),
 			common.FormatKeyHint("o/O", sortLabel),
 			common.FormatKeyHint("L", "list"),
 			common.FormatKeyHint("q", "quit"),
 		}
 	case common.ScreenList:
 		content = m.list.View()
+		navHint := "jk"
+		if m.list.HScrollActive() {
+			navHint = "hjkl"
+		}
 		helpParts = []string{
-			common.FormatKeyHint("jk", "navigate"),
+			common.FormatKeyHint(navHint, "navigate"),
 			common.FormatKeyHint("enter", "open"),
 			common.FormatKeyHint("e", "edit"),
 			common.FormatKeyHint("s", "status"),

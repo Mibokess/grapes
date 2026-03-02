@@ -9,6 +9,7 @@ import (
 	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/x/ansi"
 )
 
 type column struct {
@@ -26,6 +27,14 @@ type Model struct {
 	height    int
 	visCols   int // number of visible columns
 	sortMode  data.SortMode
+
+	// Drag-and-drop state
+	dragging    bool
+	dragMoved   bool // true once the mouse moves after click (real drag)
+	dragIssueID int
+	dragFromCol int
+	dragOverCol int // column cursor is hovering over (-1 = none)
+	dragX, dragY int // current cursor position (screen coords)
 }
 
 func New(issues []data.Issue) Model {
@@ -158,15 +167,19 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		switch msg.Button {
 		case tea.MouseLeft:
 			if colIdx, rowIdx, ok := m.cardAt(mouse.X, mouse.Y); ok {
+				// Start drag from this card
 				m.curCol = colIdx
 				m.curRow = rowIdx
 				m.ensureColVisible()
 				m.ensureRowVisible()
 				issue := m.columns[colIdx].issues[rowIdx]
-				return m, func() tea.Msg { return common.OpenDetailMsg{ID: issue.ID} }
-			}
-			// Click in column area without hitting a card — select the column
-			if colIdx, ok := m.columnAt(mouse.X); ok && colIdx != m.curCol {
+				m.dragging = true
+				m.dragMoved = false
+				m.dragIssueID = issue.ID
+				m.dragFromCol = colIdx
+				m.dragOverCol = colIdx
+			} else if colIdx, ok := m.columnAt(mouse.X); ok && colIdx != m.curCol {
+				// Click in column area without hitting a card — select the column
 				m.curCol = colIdx
 				m.clampRow()
 				m.scrollRow = 0
@@ -175,6 +188,39 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 			}
 		case tea.MouseForward:
 			if len(m.columns) > 0 && len(m.columns[m.curCol].issues) > 0 {
+				issue := m.columns[m.curCol].issues[m.curRow]
+				return m, func() tea.Msg { return common.OpenDetailMsg{ID: issue.ID} }
+			}
+		}
+
+	case tea.MouseMotionMsg:
+		if m.dragging {
+			m.dragMoved = true
+			mouse := msg.Mouse()
+			m.dragX = mouse.X
+			m.dragY = mouse.Y
+			if colIdx, ok := m.columnAt(mouse.X); ok {
+				m.dragOverCol = colIdx
+			}
+		}
+
+	case tea.MouseReleaseMsg:
+		if m.dragging {
+			m.dragging = false
+			fromCol := m.dragFromCol
+			overCol := m.dragOverCol
+			issueID := m.dragIssueID
+			m.dragOverCol = -1
+
+			if overCol != fromCol && overCol >= 0 && overCol < len(m.columns) {
+				// Dropped on a different column — move the issue
+				newStatus := m.columns[overCol].status
+				return m, func() tea.Msg {
+					return common.MoveIssueMsg{IssueID: issueID, NewStatus: newStatus}
+				}
+			}
+			// Released without moving — treat as a click (open detail)
+			if !m.dragMoved && len(m.columns) > 0 && len(m.columns[m.curCol].issues) > 0 {
 				issue := m.columns[m.curCol].issues[m.curRow]
 				return m, func() tea.Msg { return common.OpenDetailMsg{ID: issue.ID} }
 			}
@@ -267,20 +313,72 @@ func (m Model) View() string {
 		renderedCols[i] = colContent
 	}
 
-	return lipgloss.JoinHorizontal(lipgloss.Top, renderedCols...)
+	board := lipgloss.JoinHorizontal(lipgloss.Top, renderedCols...)
+
+	// Overlay floating card at cursor during drag — temporarily clear dragging
+	// so renderCard uses the active style instead of the ghost style.
+	if m.dragging {
+		if issue, ok := m.findIssue(m.dragIssueID); ok {
+			saved := m.dragging
+			m.dragging = false
+			floating := m.renderCard(issue, colWidth, true)
+			m.dragging = saved
+			board = m.overlayAt(board, floating, m.dragX, m.dragY-common.AppHeaderHeight)
+		}
+	}
+
+	return board
 }
 
 func (m Model) renderColumn(col column, width int, isActive bool) string {
 	icon := common.StatusIcon(col.status)
 	label := strings.ToUpper(col.status.Label())
 	count := common.StyleFaint.Render(fmt.Sprintf("(%d)", len(col.issues)))
-	headerText := common.StatusHeaderStyle(col.status).Width(width).
-		Render(fmt.Sprintf(" %s %s ", icon, label) + count)
-	sepStyle := lipgloss.NewStyle().Foreground(common.StatusColorFor(col.status))
-	separator := sepStyle.Render(strings.Repeat("━", width))
+
+	// Highlight column header when it's the drop target during a drag
+	isDropTarget := m.dragging && m.dragOverCol >= 0 && m.dragOverCol < len(m.columns) &&
+		m.columns[m.dragOverCol].status == col.status && m.dragOverCol != m.dragFromCol
+
+	var headerText, separator string
+	if isDropTarget {
+		headerText = common.StyleDropTarget.
+			Foreground(common.StatusColorFor(col.status)).
+			Background(common.StatusColorFor(col.status)).
+			Width(width).
+			Render(fmt.Sprintf(" %s %s ", icon, label) + count)
+		separator = lipgloss.NewStyle().
+			Foreground(common.StatusColorFor(col.status)).
+			Render(strings.Repeat("━", width))
+	} else {
+		headerText = common.StatusHeaderStyle(col.status).Width(width).
+			Render(fmt.Sprintf(" %s %s ", icon, label) + count)
+		sepStyle := lipgloss.NewStyle().Foreground(common.StatusColorFor(col.status))
+		separator = sepStyle.Render(strings.Repeat("━", width))
+	}
 	header := lipgloss.JoinVertical(lipgloss.Left, headerText, separator)
 
+	// Insert a ghost preview card when dragging over this column
+	var ghostCard string
+	ghostInsertIdx := -1
+	if isDropTarget {
+		if issue, ok := m.findIssue(m.dragIssueID); ok {
+			ghostCard = m.renderGhostCard(issue, width)
+			// Figure out which slot the cursor is near based on Y position
+			const headerH = 2
+			const cardH = 7
+			yInCol := m.dragY - common.AppHeaderHeight - headerH
+			if yInCol < 0 {
+				ghostInsertIdx = 0
+			} else {
+				ghostInsertIdx = yInCol / cardH
+			}
+		}
+	}
+
 	if len(col.issues) == 0 {
+		if ghostCard != "" {
+			return lipgloss.JoinVertical(lipgloss.Left, header, ghostCard)
+		}
 		return header
 	}
 
@@ -303,9 +401,18 @@ func (m Model) renderColumn(col column, width int, isActive bool) string {
 			fmt.Sprintf("  ↑ %d more", startIdx)))
 	}
 
+	visibleIdx := 0
 	for i := startIdx; i < endIdx; i++ {
+		if ghostCard != "" && visibleIdx == ghostInsertIdx {
+			cards = append(cards, ghostCard)
+		}
 		active := isActive && i == m.curRow
 		cards = append(cards, m.renderCard(col.issues[i], width, active))
+		visibleIdx++
+	}
+	// If cursor is past the last card, append ghost at the end
+	if ghostCard != "" && ghostInsertIdx >= visibleIdx {
+		cards = append(cards, ghostCard)
 	}
 
 	if endIdx < len(col.issues) {
@@ -319,8 +426,12 @@ func (m Model) renderColumn(col column, width int, isActive bool) string {
 }
 
 func (m Model) renderCard(issue data.Issue, width int, active bool) string {
+	isDragged := m.dragging && issue.ID == m.dragIssueID
+
 	style := common.StyleCard.Width(width - 2) // -2 for border chars
-	if active {
+	if isDragged {
+		style = common.StyleDragCard.Width(width - 2)
+	} else if active {
 		style = common.StyleActiveCard.Width(width - 2)
 	}
 
@@ -361,7 +472,9 @@ func (m Model) renderCard(issue data.Issue, width int, active bool) string {
 	}
 	// Always render title as exactly 2 lines so all cards have the same height.
 	title := titleLine1 + "\n" + titleLine2
-	if active {
+	if isDragged {
+		title = common.StyleFaint.Render(titleLine1 + "\n" + titleLine2)
+	} else if active {
 		title = common.StyleTitle.Render(title)
 	}
 
@@ -378,7 +491,11 @@ func (m Model) renderCard(issue data.Issue, width int, active bool) string {
 		if used+sep+lw > innerW {
 			break
 		}
-		meta = append(meta, common.RenderLabel(l))
+		if isDragged {
+			meta = append(meta, common.StyleFaint.Render(l))
+		} else {
+			meta = append(meta, common.RenderLabel(l))
+		}
 		used += sep + lw
 	}
 	if len(meta) > 0 {
@@ -391,6 +508,11 @@ func (m Model) renderCard(issue data.Issue, width int, active bool) string {
 		dateLine = common.StyleFaint.Render("Updated " + issue.Updated.Format("Jan 2 15:04"))
 	} else if !issue.Created.IsZero() {
 		dateLine = common.StyleFaint.Render("Created " + issue.Created.Format("Jan 2 15:04"))
+	}
+
+	// When dragged, force all content to faint
+	if isDragged {
+		line1 = common.StyleFaint.Render(fmt.Sprintf("#%d", issue.ID))
 	}
 
 	// Always include all 5 lines: ID, title (2), meta, date — for uniform card height.
@@ -525,4 +647,135 @@ func max(a, b int) int {
 		return a
 	}
 	return b
+}
+
+// renderGhostCard renders a card in the ghost/dim style for the drop preview.
+func (m Model) renderGhostCard(issue data.Issue, width int) string {
+	style := common.StyleDragCard.Width(width - 2)
+	innerW := width - 6
+
+	idStr := common.StyleFaint.Render(fmt.Sprintf("#%d", issue.ID))
+	prioIcon := common.PriorityStyle(issue.Priority).Render(
+		strings.TrimSpace(common.PriorityIcon(issue.Priority)))
+	line1 := idStr
+	if issue.Priority <= data.PriorityHigh {
+		line1 += " " + prioIcon
+	}
+
+	titleRunes := []rune(issue.Title)
+	var titleLine1, titleLine2 string
+	if len(titleRunes) <= innerW {
+		titleLine1 = issue.Title
+	} else {
+		breakAt := innerW
+		for i := innerW - 1; i > 0; i-- {
+			if titleRunes[i] == ' ' {
+				breakAt = i
+				break
+			}
+		}
+		titleLine1 = string(titleRunes[:breakAt])
+		rest := titleRunes[breakAt:]
+		if len(rest) > 0 && rest[0] == ' ' {
+			rest = rest[1:]
+		}
+		titleLine2 = truncate(string(rest), innerW)
+	}
+	title := common.StyleFaint.Render(titleLine1 + "\n" + titleLine2)
+
+	var metaLine string
+	var meta []string
+	used := 0
+	for _, l := range issue.Labels {
+		lw := len([]rune(l))
+		sep := 0
+		if len(meta) > 0 {
+			sep = 2
+		}
+		if used+sep+lw > innerW {
+			break
+		}
+		meta = append(meta, common.StyleFaint.Render(l))
+		used += sep + lw
+	}
+	if len(meta) > 0 {
+		metaLine = strings.Join(meta, "  ")
+	}
+
+	var dateLine string
+	if m.sortMode == data.SortByUpdated && !issue.Updated.IsZero() {
+		dateLine = common.StyleFaint.Render("Updated " + issue.Updated.Format("Jan 2 15:04"))
+	} else if !issue.Created.IsZero() {
+		dateLine = common.StyleFaint.Render("Created " + issue.Created.Format("Jan 2 15:04"))
+	}
+
+	content := line1 + "\n" + title + "\n" + metaLine + "\n" + dateLine
+	return style.Render(content)
+}
+
+// findIssue looks up an issue by ID across all columns.
+func (m Model) findIssue(id int) (data.Issue, bool) {
+	for _, col := range m.columns {
+		for _, iss := range col.issues {
+			if iss.ID == id {
+				return iss, true
+			}
+		}
+	}
+	return data.Issue{}, false
+}
+
+// overlayAt composites a small fg box on top of bg at position (x, y).
+func (m Model) overlayAt(bg, fg string, x, y int) string {
+	bgLines := strings.Split(bg, "\n")
+	fgLines := strings.Split(fg, "\n")
+
+	// Offset so the card appears below and to the right of the cursor
+	startX := x + 1
+	startY := y + 1
+
+	// Measure fg width
+	fgWidth := 0
+	for _, line := range fgLines {
+		if w := lipgloss.Width(line); w > fgWidth {
+			fgWidth = w
+		}
+	}
+
+	// Clamp to stay within bounds
+	if startX+fgWidth > m.width {
+		startX = m.width - fgWidth
+	}
+	if startX < 0 {
+		startX = 0
+	}
+	if startY+len(fgLines) > len(bgLines) {
+		startY = len(bgLines) - len(fgLines)
+	}
+	if startY < 0 {
+		startY = 0
+	}
+
+	for i, fgLine := range fgLines {
+		row := startY + i
+		if row < 0 || row >= len(bgLines) {
+			continue
+		}
+		bgLine := bgLines[row]
+
+		// Left portion
+		left := ansi.Truncate(bgLine, startX, "")
+		leftW := lipgloss.Width(left)
+		if leftW < startX {
+			left += strings.Repeat(" ", startX-leftW)
+		}
+
+		// Right portion
+		rightStart := startX + fgWidth
+		right := ansi.TruncateLeft(bgLine, rightStart, "")
+
+		bgLines[row] = left + fgLine + right
+	}
+
+	return strings.Join(bgLines, "\n")
 }
