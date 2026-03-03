@@ -7,28 +7,28 @@ Version 1.0
 ```
 .grapes/
   <id>/
-    meta.yaml
+    meta.toml
     content.md
     comments.md
 ```
 
 Each issue is a directory named with its numeric ID (positive integer, assigned sequentially). All three files are required but `content.md` and `comments.md` may be empty.
 
-## meta.yaml
+## meta.toml
 
-```yaml
-title: "Short description of the issue"
-status: todo
-priority: high
-labels: [bug, auth]
-parent: 40
-created: 2026-02-27T09:15
-updated: 2026-02-27T14:30
+```toml
+title = "Short description of the issue"
+status = 'todo'
+priority = 'high'
+labels = ['bug', 'auth']
+parent = 40
+created = '2026-02-27T09:15'
+updated = '2026-02-27T14:30'
 ```
 
 | Field | Type | Required | Values |
 |-------|------|----------|--------|
-| `title` | string | yes | Non-empty. Quote if it contains YAML-special characters. |
+| `title` | string | yes | Non-empty. |
 | `status` | string | yes | `backlog` · `todo` · `in_progress` · `done` · `cancelled` |
 | `priority` | string | yes | `urgent` · `high` · `medium` · `low` |
 | `labels` | string list | yes | Freeform tags. `[]` for none. |

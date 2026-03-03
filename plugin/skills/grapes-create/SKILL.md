@@ -10,8 +10,8 @@ user-invokable: false
 
 Use the **Glob** tool to find all existing issues:
 
-1. Glob for `.grapes/*/meta.yaml`
-2. Glob for `.claude/worktrees/*/.grapes/*/meta.yaml` (catches issues created in worktrees)
+1. Glob for `.grapes/*/meta.toml`
+2. Glob for `.claude/worktrees/*/.grapes/*/meta.toml` (catches issues created in worktrees)
 
 Extract the numeric folder names from the matched paths, find the highest, and add 1. If no issues exist, start at 1.
 
@@ -23,7 +23,7 @@ This avoids bash permission issues and handles fresh repos where no issues exist
 mkdir -p .grapes/<id>
 ```
 
-## Step 3: Write meta.yaml
+## Step 3: Write meta.toml
 
 Get the current timestamp first:
 
@@ -33,19 +33,18 @@ date +%Y-%m-%dT%H:%M
 
 Use this value for both `created` and `updated`.
 
-```yaml
-title: "Short description of the issue"
-status: backlog
-priority: medium
-labels: []
-created: YYYY-MM-DDTHH:MM
-updated: YYYY-MM-DDTHH:MM
+```toml
+title = "Short description of the issue"
+status = 'backlog'
+priority = 'medium'
+labels = []
+created = 'YYYY-MM-DDTHH:MM'
+updated = 'YYYY-MM-DDTHH:MM'
 ```
 
 - Set `status` to `backlog` for new issues unless there's reason to start higher.
-- Add `parent: <id>` if this is a sub-issue.
-- Add `blocked_by: [id1, id2]` if the issue depends on other issues being completed first.
-- Quote the title if it contains colons, brackets, or other YAML-special characters.
+- Add `parent = <id>` if this is a sub-issue.
+- Add `blocked_by = [id1, id2]` if the issue depends on other issues being completed first.
 
 ## Step 4: Write content.md
 
@@ -60,32 +59,32 @@ Create the file but leave it empty. Comments are added later via `grapes-comment
 
 ## Sub-Issues
 
-To create a sub-issue, add `parent: <id>` to meta.yaml:
+To create a sub-issue, add `parent = <id>` to meta.toml:
 
-```yaml
-title: "Implement auth callback fix"
-status: todo
-priority: high
-labels: [auth]
-parent: 40
-created: 2026-02-27T09:15
-updated: 2026-02-27T09:15
+```toml
+title = "Implement auth callback fix"
+status = 'todo'
+priority = 'high'
+labels = ['auth']
+parent = 40
+created = '2026-02-27T09:15'
+updated = '2026-02-27T09:15'
 ```
 
 The folder structure stays flat. Nesting is a data relationship only.
 
 ## Dependencies
 
-To mark an issue as blocked by other issues, add `blocked_by` to meta.yaml:
+To mark an issue as blocked by other issues, add `blocked_by` to meta.toml:
 
-```yaml
-title: "Build preferences UI"
-status: backlog
-priority: medium
-labels: [frontend]
-blocked_by: [19, 20]
-created: 2026-03-02T14:10
-updated: 2026-03-02T14:10
+```toml
+title = "Build preferences UI"
+status = 'backlog'
+priority = 'medium'
+labels = ['frontend']
+blocked_by = [19, 20]
+created = '2026-03-02T14:10'
+updated = '2026-03-02T14:10'
 ```
 
 The inverse (`blocks`) is computed at load time — only `blocked_by` is stored on disk.

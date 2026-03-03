@@ -9,7 +9,7 @@ user-invokable: false
 ## Search Titles
 
 ```bash
-grep -l "<query>" .grapes/*/meta.yaml
+grep -l "<query>" .grapes/*/meta.toml
 ```
 
 ## Search Descriptions
@@ -50,4 +50,4 @@ grep -rl "#42" .grapes/
 
 ## After Searching
 
-Once you have matching file paths, read the meta.yaml of each matching issue to get the title, status, and other metadata. Don't read the full content unless you need it.
+Once you have matching file paths, read the meta.toml of each matching issue to get the title, status, and other metadata. Don't read the full content unless you need it.

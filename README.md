@@ -6,7 +6,7 @@ A file-based issue tracker. Issues are plain files in a `.grapes/` folder that a
 
 ## Why
 
-- **Surgical edits** — Change `status: todo` to `status: in_progress` with a single line edit.
+- **Surgical edits** — Change `status = 'todo'` to `status = 'in_progress'` with a single line edit.
 - **Standard tools** — Agents use `grep`, `cat`, `sed`, and regular file operations to work with issues.
 - **Composable** — Pipe, filter, and transform issues with any Unix tool or scripting language.
 
@@ -17,24 +17,24 @@ Each issue is a numbered folder under `.grapes/`:
 ```
 .grapes/
   1/
-    meta.yaml       # structured metadata
+    meta.toml       # structured metadata
     content.md      # description (markdown)
     comments.md     # append-only comment log
   2/
     ...
 ```
 
-### meta.yaml
+### meta.toml
 
-```yaml
-title: Fix login redirect loop
-status: todo
-priority: high
-labels: [bug, auth]
-parent: 1
-blocked_by: [3, 5]
-created: 2026-02-27T14:00
-updated: 2026-02-28T09:30
+```toml
+title = "Fix login redirect loop"
+status = 'todo'
+priority = 'high'
+labels = ['bug', 'auth']
+parent = 1
+blocked_by = [3, 5]
+created = '2026-02-27T14:00'
+updated = '2026-02-28T09:30'
 ```
 
 ### Fields
@@ -65,16 +65,16 @@ Fix deployed. Monitoring for regressions.
 
 ## Relationships
 
-**Sub-issues** — Set `parent: 1` on a child issue to nest it under issue 1. Nesting depth is unlimited. The folder structure stays flat; hierarchy is a data relationship.
+**Sub-issues** — Set `parent = 1` on a child issue to nest it under issue 1. Nesting depth is unlimited. The folder structure stays flat; hierarchy is a data relationship.
 
-**Blocking** — Set `blocked_by: [3, 5]` to indicate dependencies. The inverse (`blocks`) is computed at load time and shown in the TUI.
+**Blocking** — Set `blocked_by = [3, 5]` to indicate dependencies. The inverse (`blocks`) is computed at load time and shown in the TUI.
 
 ## Querying
 
 ```sh
-grep -rl "status: todo" .grapes/*/meta.yaml       # find by status
-grep -rl "priority: urgent" .grapes/*/meta.yaml    # find by priority
-grep -rl "parent: 1" .grapes/*/meta.yaml           # children of issue 1
+grep -rl "status = " .grapes/*/meta.toml           # find by status
+grep -rl "priority = 'urgent'" .grapes/*/meta.toml # find by priority
+grep -rl "parent = 1" .grapes/*/meta.toml          # children of issue 1
 grep -rl "login" .grapes/*/content.md              # full-text search
 ls .grapes/ | sort -n | tail -1                    # latest issue ID
 ```
@@ -86,13 +86,13 @@ ls .grapes/ | sort -n | tail -1                    # latest issue ID
 next=$(( $(ls .grapes/ | sort -n | tail -1) + 1 ))
 mkdir .grapes/$next
 
-cat > .grapes/$next/meta.yaml << 'EOF'
-title: My new issue
-status: todo
-priority: medium
-labels: []
-created: 2026-03-01T10:00
-updated: 2026-03-01T10:00
+cat > .grapes/$next/meta.toml << 'EOF'
+title = "My new issue"
+status = 'todo'
+priority = 'medium'
+labels = []
+created = '2026-03-01T10:00'
+updated = '2026-03-01T10:00'
 EOF
 
 touch .grapes/$next/content.md .grapes/$next/comments.md
