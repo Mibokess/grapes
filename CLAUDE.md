@@ -38,6 +38,8 @@ Use the `Agent` tool with subagent types for coordinated work:
 
 Each agent should have a clear, non-overlapping scope.
 
-## PR Creation
+## Temporary Files
 
-Use `gh pr create` for GitHub PRs. The `/pr` skill handles the full workflow.
+Save temporary outputs to `.grapes/<id>/tmp/` when working on an issue, not `/tmp/`. Use `.grapes/tmp/` when no issue exists yet. Both paths are gitignored.
+
+

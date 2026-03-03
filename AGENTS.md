@@ -215,10 +215,10 @@ Split when the work has 2+ independently testable changes, touches unrelated mod
 
 ## Dependencies
 
-Use `blocked_by` in `meta.toml` to declare dependencies between issues.
+Use `blocked_by` in `meta.yaml` to declare dependencies between issues.
 
-```toml
-blocked_by = [19, 20]
+```yaml
+blocked_by: [19, 20]
 ```
 
 Independent tasks run in parallel. Dependent tasks wait for their blockers to complete.
