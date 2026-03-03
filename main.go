@@ -19,8 +19,19 @@ func main() {
 
 	issuesDir, err := data.FindIssuesDir(cwd)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(1)
+		fmt.Fprintf(os.Stderr, "No .grapes/ directory found.\n")
+		fmt.Fprintf(os.Stderr, "Create one in %s? [y/N] ", cwd)
+		var answer string
+		fmt.Scanln(&answer)
+		if answer != "y" && answer != "Y" {
+			os.Exit(1)
+		}
+		issuesDir = cwd + "/.grapes"
+		if err := os.MkdirAll(issuesDir, 0o755); err != nil {
+			fmt.Fprintf(os.Stderr, "Error creating .grapes/: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Fprintf(os.Stderr, "Created %s\n", issuesDir)
 	}
 
 	// Handle "validate" subcommand
