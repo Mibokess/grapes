@@ -10,14 +10,14 @@ user-invokable: false
 
 Three steps:
 
-1. **Update status** in `.grapes/<id>/meta.yaml`:
+1. **Update status** in `.grapes/<id>/meta.toml`:
    ```
-   status: todo → status: done
+   status = 'todo' → status = 'done'
    ```
 
 2. **Update datetime**:
    ```
-   updated: <current datetime YYYY-MM-DDTHH:MM>
+   updated = '<current datetime YYYY-MM-DDTHH:MM>'
    ```
 
 3. **Add a closing comment** to `.grapes/<id>/comments.md` explaining what was done:
@@ -30,7 +30,7 @@ Always add a closing comment. Future readers need to know what resolved the issu
 
 ## Cancelling an Issue
 
-Same steps but use `status: cancelled` and explain why in the closing comment:
+Same steps but use `status = 'cancelled'` and explain why in the closing comment:
 
 ```markdown
 ### 2026-02-27T14:30
@@ -39,5 +39,5 @@ Cancelled: duplicate of #12.
 
 ## Don't Forget
 
-- Update `updated:` datetime.
+- Update `updated` datetime.
 - Add a closing comment — never close silently.

@@ -9,7 +9,7 @@ user-invokable: false
 ## Metadata Only (Most Common)
 
 ```
-Read .grapes/<id>/meta.yaml
+Read .grapes/<id>/meta.toml
 ```
 
 This is ~7 lines. Enough for status, priority, labels, and title.
@@ -32,7 +32,7 @@ Only read when you need the discussion history.
 
 ## Reading Order
 
-1. **meta.yaml first** — always. It's tiny and tells you if you even need the rest.
+1. **meta.toml first** — always. It's tiny and tells you if you even need the rest.
 2. **content.md second** — only if you need the full description.
 3. **comments.md last** — only if you need the discussion.
 
@@ -43,17 +43,17 @@ Don't read all three by default. Read what you need.
 To find children of an issue:
 
 ```bash
-grep -l "parent: <id>" .grapes/*/meta.yaml
+grep -l "parent = <id>" .grapes/*/meta.toml
 ```
 
-Then read their meta.yaml files to understand the breakdown.
+Then read their meta.toml files to understand the breakdown.
 
 ## Dependencies
 
-If meta.yaml contains `blocked_by: [3, 5]`, this issue depends on issues 3 and 5.
+If meta.toml contains `blocked_by = [3, 5]`, this issue depends on issues 3 and 5.
 
 To find what issues a given issue blocks (the inverse), search for it in other issues' `blocked_by` lists:
 
 ```bash
-grep -l "blocked_by:.*<id>" .grapes/*/meta.yaml
+grep -l "blocked_by.*<id>" .grapes/*/meta.toml
 ```

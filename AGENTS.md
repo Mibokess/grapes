@@ -49,7 +49,7 @@ Transform tasks into verifiable goals:
 
 **Before editing code, have a grapes issue.** No exceptions.
 
-1. Search for an existing issue: `grep -rl "keyword" .grapes/*/content.md` or scan `meta.yaml` titles.
+1. Search for an existing issue: `grep -rl "keyword" .grapes/*/content.md` or scan `meta.toml` titles.
 2. If none exists, create one (see `plugin/skills/grapes-create/SKILL.md`).
 3. New issues start in `backlog`. **Stop and tell the user.** Do not start work until the issue is moved to `todo`.
 4. If the issue is `todo` or `in_progress` — proceed.
@@ -143,6 +143,8 @@ When implementation is complete:
 
 If the reviewer requests changes: revise on the same branch, push new commits, notify the user.
 
+Always use / read the `/pr` skill to create merge requests.
+
 ## Issue Quality Criteria
 
 Every issue must be **self-contained and implementation-ready**. Any agent must be able to implement it correctly on the first try without asking questions.
@@ -213,10 +215,10 @@ Split when the work has 2+ independently testable changes, touches unrelated mod
 
 ## Dependencies
 
-Use `blocked_by` in `meta.yaml` to declare dependencies between issues.
+Use `blocked_by` in `meta.toml` to declare dependencies between issues.
 
-```yaml
-blocked_by: [19, 20]
+```toml
+blocked_by = [19, 20]
 ```
 
 Independent tasks run in parallel. Dependent tasks wait for their blockers to complete.

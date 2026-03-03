@@ -9,26 +9,26 @@ import (
 	"strings"
 	"time"
 
-	"gopkg.in/yaml.v3"
+	toml "github.com/pelletier/go-toml/v2"
 )
 
-// UpdateField runs sed to replace a field value in meta.yaml and updates the
-// "updated:" date. This mirrors what an agent does when editing issue metadata.
+// UpdateField runs sed to replace a field value in meta.toml and updates the
+// "updated" field. This mirrors what an agent does when editing issue metadata.
 //
-//	sed -i 's/^field: .*/field: newValue/' .grapes/<id>/meta.yaml
-//	sed -i 's/^updated: .*/updated: 2026-03-02/' .grapes/<id>/meta.yaml
+//	sed -i "s/^field = .*/field = 'newValue'/" .grapes/<id>/meta.toml
+//	sed -i "s/^updated = .*/updated = '2026-03-02T15:04'/" .grapes/<id>/meta.toml
 func UpdateField(issuesDir string, issueID int, field, newValue string) error {
-	path := filepath.Join(issuesDir, strconv.Itoa(issueID), "meta.yaml")
+	path := filepath.Join(issuesDir, strconv.Itoa(issueID), "meta.toml")
 
 	// Update the target field
-	fieldPattern := fmt.Sprintf("s/^%s: .*/%s: %s/", field, field, newValue)
+	fieldPattern := fmt.Sprintf(`s/^%s = .*/%s = '%s'/`, field, field, newValue)
 	if err := exec.Command("sed", "-i", fieldPattern, path).Run(); err != nil {
 		return fmt.Errorf("sed %s: %w", field, err)
 	}
 
-	// Update the "updated:" datetime
+	// Update the "updated" datetime
 	now := time.Now().Format("2006-01-02T15:04")
-	datePattern := fmt.Sprintf("s/^updated: .*/updated: %s/", now)
+	datePattern := fmt.Sprintf(`s/^updated = .*/updated = '%s'/`, now)
 	if err := exec.Command("sed", "-i", datePattern, path).Run(); err != nil {
 		return fmt.Errorf("sed updated: %w", err)
 	}
@@ -73,31 +73,35 @@ func AppendComment(issuesDir string, issueID int, body string) error {
 }
 
 // SerializeIssue renders a complete issue as an editable text document with
-// YAML frontmatter, description body, and comments section.
+// TOML frontmatter, description body, and comments section.
 func SerializeIssue(issue Issue) string {
 	var sb strings.Builder
 
-	// YAML frontmatter
-	sb.WriteString("---\n")
-	sb.WriteString(fmt.Sprintf("title: %q\n", issue.Title))
-	sb.WriteString(fmt.Sprintf("status: %s\n", issue.Status))
-	sb.WriteString(fmt.Sprintf("priority: %s\n", issue.Priority))
+	// TOML frontmatter
+	sb.WriteString("+++\n")
+	sb.WriteString(fmt.Sprintf("title = %q\n", issue.Title))
+	sb.WriteString(fmt.Sprintf("status = %q\n", string(issue.Status)))
+	sb.WriteString(fmt.Sprintf("priority = %q\n", string(issue.Priority)))
 	if len(issue.Labels) > 0 {
-		sb.WriteString(fmt.Sprintf("labels: [%s]\n", strings.Join(issue.Labels, ", ")))
+		quoted := make([]string, len(issue.Labels))
+		for i, l := range issue.Labels {
+			quoted[i] = fmt.Sprintf("%q", l)
+		}
+		sb.WriteString(fmt.Sprintf("labels = [%s]\n", strings.Join(quoted, ", ")))
 	} else {
-		sb.WriteString("labels: []\n")
+		sb.WriteString("labels = []\n")
 	}
 	if issue.Parent != nil {
-		sb.WriteString(fmt.Sprintf("parent: %d\n", *issue.Parent))
+		sb.WriteString(fmt.Sprintf("parent = %d\n", *issue.Parent))
 	}
 	if len(issue.BlockedBy) > 0 {
 		parts := make([]string, len(issue.BlockedBy))
 		for i, id := range issue.BlockedBy {
 			parts[i] = strconv.Itoa(id)
 		}
-		sb.WriteString(fmt.Sprintf("blocked_by: [%s]\n", strings.Join(parts, ", ")))
+		sb.WriteString(fmt.Sprintf("blocked_by = [%s]\n", strings.Join(parts, ", ")))
 	}
-	sb.WriteString("---\n")
+	sb.WriteString("+++\n")
 
 	// Description
 	if issue.Content != "" {
@@ -134,28 +138,28 @@ func (e *EditValidationError) Error() string {
 
 // editMeta is the frontmatter structure parsed back from the edited document.
 type editMeta struct {
-	Title     string   `yaml:"title"`
-	Status    string   `yaml:"status"`
-	Priority  string   `yaml:"priority"`
-	Labels    []string `yaml:"labels"`
-	Parent    *int     `yaml:"parent,omitempty"`
-	BlockedBy []int    `yaml:"blocked_by,omitempty"`
+	Title     string   `toml:"title"`
+	Status    string   `toml:"status"`
+	Priority  string   `toml:"priority"`
+	Labels    []string `toml:"labels"`
+	Parent    *int     `toml:"parent,omitempty"`
+	BlockedBy []int    `toml:"blocked_by,omitempty"`
 }
 
 // SaveIssueFromText parses an edited issue document and writes the changes
-// back to meta.yaml, content.md, and comments.md.
+// back to meta.toml, content.md, and comments.md.
 func SaveIssueFromText(issuesDir string, issueID int, text string) error {
 	// Split frontmatter from body
-	parts := strings.SplitN(text, "---\n", 3)
+	parts := strings.SplitN(text, "+++\n", 3)
 	if len(parts) < 3 {
-		return fmt.Errorf("invalid format: missing YAML frontmatter delimiters")
+		return fmt.Errorf("invalid format: missing TOML frontmatter delimiters")
 	}
 	frontmatter := parts[1]
 	body := parts[2]
 
 	// Parse frontmatter
 	var em editMeta
-	if err := yaml.Unmarshal([]byte(frontmatter), &em); err != nil {
+	if err := toml.Unmarshal([]byte(frontmatter), &em); err != nil {
 		return fmt.Errorf("parsing frontmatter: %w", err)
 	}
 
@@ -181,17 +185,17 @@ func SaveIssueFromText(issuesDir string, issueID int, text string) error {
 	content = strings.TrimSpace(content)
 	commentsRaw = strings.TrimSpace(commentsRaw)
 
-	// Write meta.yaml
+	// Write meta.toml
 	issueDir := filepath.Join(issuesDir, strconv.Itoa(issueID))
 	now := time.Now().Format("2006-01-02T15:04")
 
 	// Read existing meta to preserve created date
-	existingMeta, err := os.ReadFile(filepath.Join(issueDir, "meta.yaml"))
+	existingMeta, err := os.ReadFile(filepath.Join(issueDir, "meta.toml"))
 	if err != nil {
 		return fmt.Errorf("reading existing meta: %w", err)
 	}
 	var existing meta
-	if err := yaml.Unmarshal(existingMeta, &existing); err != nil {
+	if err := toml.Unmarshal(existingMeta, &existing); err != nil {
 		return fmt.Errorf("parsing existing meta: %w", err)
 	}
 
@@ -205,12 +209,12 @@ func SaveIssueFromText(issuesDir string, issueID int, text string) error {
 		Created:   existing.Created,
 		Updated:   now,
 	}
-	metaBytes, err := yaml.Marshal(&newMeta)
+	metaBytes, err := toml.Marshal(&newMeta)
 	if err != nil {
 		return fmt.Errorf("marshaling meta: %w", err)
 	}
-	if err := os.WriteFile(filepath.Join(issueDir, "meta.yaml"), metaBytes, 0644); err != nil {
-		return fmt.Errorf("writing meta.yaml: %w", err)
+	if err := os.WriteFile(filepath.Join(issueDir, "meta.toml"), metaBytes, 0644); err != nil {
+		return fmt.Errorf("writing meta.toml: %w", err)
 	}
 
 	// Write content.md
