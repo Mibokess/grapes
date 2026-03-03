@@ -61,3 +61,17 @@ Top-level issues (no parent):
 ```bash
 grep -rL "parent:" .grapes/*/meta.yaml
 ```
+
+## Blocked Issues
+
+Issues that are blocked by something:
+
+```bash
+grep -l "blocked_by:" .grapes/*/meta.yaml
+```
+
+Issues blocked by a specific issue (e.g. issue 5):
+
+```bash
+grep -l "blocked_by:.*5" .grapes/*/meta.yaml
+```

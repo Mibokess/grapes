@@ -1,6 +1,6 @@
 ---
 name: grapes-update
-description: "Use when you need to change issue metadata — status, priority, or labels."
+description: "Use when you need to change issue metadata — status, priority, labels, title, parent, or blocked_by."
 user-invokable: false
 ---
 
@@ -35,6 +35,36 @@ Edit .grapes/<id>/meta.yaml
   old: "labels: [bug]"
   new: "labels: [bug, auth]"
 ```
+
+## Changing Title
+
+```
+Edit .grapes/<id>/meta.yaml
+  old: "title: \"Old title\""
+  new: "title: \"New title\""
+```
+
+Quote the title if it contains colons, brackets, or other YAML-special characters.
+
+## Changing Parent
+
+```
+Edit .grapes/<id>/meta.yaml
+  old: "parent: 5"
+  new: "parent: 10"
+```
+
+Add `parent: <id>` to make an issue a sub-issue, or remove the line to make it top-level.
+
+## Changing Blocked By
+
+```
+Edit .grapes/<id>/meta.yaml
+  old: "blocked_by: [3]"
+  new: "blocked_by: [3, 7]"
+```
+
+Add `blocked_by: [id1, id2]` to mark dependencies, or remove the line to clear them. The inverse (`blocks`) is computed at load time — only `blocked_by` is stored on disk.
 
 ## Always Update the Datetime
 

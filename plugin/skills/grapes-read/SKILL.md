@@ -47,3 +47,13 @@ grep -l "parent: <id>" .grapes/*/meta.yaml
 ```
 
 Then read their meta.yaml files to understand the breakdown.
+
+## Dependencies
+
+If meta.yaml contains `blocked_by: [3, 5]`, this issue depends on issues 3 and 5.
+
+To find what issues a given issue blocks (the inverse), search for it in other issues' `blocked_by` lists:
+
+```bash
+grep -l "blocked_by:.*<id>" .grapes/*/meta.yaml
+```

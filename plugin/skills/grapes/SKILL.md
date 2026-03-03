@@ -27,6 +27,7 @@ status: todo
 priority: high
 labels: [bug, auth]
 parent: 40
+blocked_by: [3, 5]
 created: 2026-02-27T09:15
 updated: 2026-02-27T14:30
 ```
@@ -37,6 +38,7 @@ updated: 2026-02-27T14:30
 - **priority**: `urgent`, `high`, `medium`, `low`
 - **labels**: YAML list of freeform tags
 - **parent**: numeric ID of parent issue (omit for top-level issues)
+- **blocked_by**: YAML list of issue IDs this issue depends on (omit if none). The inverse (`blocks`) is computed at load time — only `blocked_by` is stored on disk.
 - **created** / **updated**: `YYYY-MM-DDTHH:MM` (24-hour time)
 
 ### Rules
