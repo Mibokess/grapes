@@ -2,17 +2,9 @@
 
 ---
 
-## Grapes Skills
+## Grapes
 
-Available `/grapes-*` skills for issue tracking:
-
-- `/grapes-create` — Create a new issue or sub-issue
-- `/grapes-read` — Read issue metadata, content, or comments
-- `/grapes-update` — Update issue metadata (status, priority, labels, title, parent, blocked_by)
-- `/grapes-list` — List, filter, or browse issues
-- `/grapes-search` — Search across issues by keyword or content
-- `/grapes-comment` — Add a comment to an issue
-- `/grapes-close` — Complete or cancel an issue
+The `grapes` skill (`.agents/skills/grapes/`) is the reference for the file-based issue tracker. It covers format, rules, and issue creation.
 
 Workflow skills:
 

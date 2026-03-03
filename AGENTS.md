@@ -215,10 +215,10 @@ Split when the work has 2+ independently testable changes, touches unrelated mod
 
 ## Dependencies
 
-Use `blocked_by` in `meta.yaml` to declare dependencies between issues.
+Use `blocked_by` in `meta.toml` to declare dependencies between issues.
 
-```yaml
-blocked_by: [19, 20]
+```toml
+blocked_by = [19, 20]
 ```
 
 Independent tasks run in parallel. Dependent tasks wait for their blockers to complete.
@@ -252,13 +252,4 @@ When delegating to subagents:
 
 ## Grapes Skills Reference
 
-Detailed mechanics for issue manipulation are the grapes skills.
-
-- `.claude/skills/grapes/SKILL.md` — Format reference
-- `.claude/skills/grapes-create/SKILL.md` — Creating issues
-- `.claude/skills/grapes-read/SKILL.md` — Reading issues
-- `.claude/skills/grapes-update/SKILL.md` — Updating metadata
-- `.claude/skills/grapes-list/SKILL.md` — Listing and filtering
-- `.claude/skills/grapes-search/SKILL.md` — Searching
-- `.claude/skills/grapes-comment/SKILL.md` — Adding comments
-- `.claude/skills/grapes-close/SKILL.md` — Closing issues
+- `.agents/skills/grapes/SKILL.md` — Format, rules, and issue creation reference
