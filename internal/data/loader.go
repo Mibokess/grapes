@@ -10,24 +10,24 @@ import (
 	"strings"
 	"time"
 
-	"gopkg.in/yaml.v3"
+	toml "github.com/pelletier/go-toml/v2"
 )
 
 // commentHeader matches "### YYYY-MM-DD" or "### YYYY-MM-DDTHH:MM" headers,
 // as well as legacy "### author — YYYY-MM-DD" headers (em-dash only).
 var commentHeader = regexp.MustCompile(`^### (?:\S+ \x{2014} )?(\d{4}-\d{2}-\d{2}(?:T\d{2}:\d{2})?)$`)
 
-// meta is the on-disk YAML structure.
+// meta is the on-disk TOML structure.
 type meta struct {
-	Title     string    `yaml:"title"`
-	Status    string    `yaml:"status"`
-	Priority  string    `yaml:"priority"`
-	Labels    []string  `yaml:"labels"`
-	Parent    *int      `yaml:"parent,omitempty"`
-	BlockedBy []int     `yaml:"blocked_by,omitempty"`
-	Comments  []Comment `yaml:"comments,omitempty"`
-	Created   string    `yaml:"created"`
-	Updated   string    `yaml:"updated"`
+	Title     string    `toml:"title"`
+	Status    string    `toml:"status"`
+	Priority  string    `toml:"priority"`
+	Labels    []string  `toml:"labels"`
+	Parent    *int      `toml:"parent,omitempty"`
+	BlockedBy []int     `toml:"blocked_by,omitempty"`
+	Comments  []Comment `toml:"comments,omitempty"`
+	Created   string    `toml:"created"`
+	Updated   string    `toml:"updated"`
 }
 
 // maxSearchDepth is how many directory levels deep to search for .grapes/.
@@ -124,13 +124,13 @@ func LoadAllIssues(dir string) ([]Issue, error) {
 }
 
 func loadIssueMeta(dir string, id int) (Issue, error) {
-	path := filepath.Join(dir, strconv.Itoa(id), "meta.yaml")
+	path := filepath.Join(dir, strconv.Itoa(id), "meta.toml")
 	raw, err := os.ReadFile(path)
 	if err != nil {
 		return Issue{}, err
 	}
 	var m meta
-	if err := yaml.Unmarshal(raw, &m); err != nil {
+	if err := toml.Unmarshal(raw, &m); err != nil {
 		return Issue{}, fmt.Errorf("parsing %s: %w", path, err)
 	}
 

@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"strings"
 
-	"gopkg.in/yaml.v3"
+	toml "github.com/pelletier/go-toml/v2"
 )
 
 // ValidationError represents a single validation problem.
@@ -44,16 +44,16 @@ func ValidateIssue(issuesDir string, issueID int) []ValidationError {
 	dir := filepath.Join(issuesDir, strconv.Itoa(issueID))
 	var errs []ValidationError
 
-	// Check meta.yaml exists and is valid
-	metaPath := filepath.Join(dir, "meta.yaml")
+	// Check meta.toml exists and is valid
+	metaPath := filepath.Join(dir, "meta.toml")
 	raw, err := os.ReadFile(metaPath)
 	if err != nil {
-		return []ValidationError{{IssueID: issueID, Field: "meta.yaml", Message: "cannot read file"}}
+		return []ValidationError{{IssueID: issueID, Field: "meta.toml", Message: "cannot read file"}}
 	}
 
 	var m meta
-	if err := yaml.Unmarshal(raw, &m); err != nil {
-		return []ValidationError{{IssueID: issueID, Field: "meta.yaml", Message: "invalid YAML: " + err.Error()}}
+	if err := toml.Unmarshal(raw, &m); err != nil {
+		return []ValidationError{{IssueID: issueID, Field: "meta.toml", Message: "invalid TOML: " + err.Error()}}
 	}
 
 	errs = append(errs, validateMeta(issueID, m)...)
@@ -165,13 +165,13 @@ func ValidateAll(issuesDir string) []ValidationError {
 
 	// Check parent and blocked_by references
 	for _, id := range issueIDs {
-		metaPath := filepath.Join(issuesDir, strconv.Itoa(id), "meta.yaml")
+		metaPath := filepath.Join(issuesDir, strconv.Itoa(id), "meta.toml")
 		raw, err := os.ReadFile(metaPath)
 		if err != nil {
 			continue
 		}
 		var m meta
-		if err := yaml.Unmarshal(raw, &m); err != nil {
+		if err := toml.Unmarshal(raw, &m); err != nil {
 			continue
 		}
 		if m.Parent != nil && !existingIDs[*m.Parent] {

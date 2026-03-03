@@ -169,8 +169,8 @@ func SortIssues(issues []Issue, mode SortMode, asc bool) {
 }
 
 type Comment struct {
-	Date string `yaml:"date"`
-	Body string `yaml:"body"`
+	Date string `toml:"date"`
+	Body string `toml:"body"`
 }
 
 type Issue struct {
