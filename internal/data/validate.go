@@ -39,7 +39,7 @@ var validPriorities = map[string]bool{
 }
 
 // ValidateIssue checks a single issue directory for correctness.
-// It reads meta.yaml and comments.md from disk and returns all problems found.
+// It reads meta.toml and comments.md from disk and returns all problems found.
 func ValidateIssue(issuesDir string, issueID int) []ValidationError {
 	dir := filepath.Join(issuesDir, strconv.Itoa(issueID))
 	var errs []ValidationError
