@@ -6,6 +6,8 @@ user-invokable: false
 
 # Listing & Filtering Issues
 
+**Always** start by globbing for `.grapes/*/meta.yaml`. If no matches, there are no issues yet. The commands below assume at least one issue exists.
+
 ## By Status
 
 ```bash

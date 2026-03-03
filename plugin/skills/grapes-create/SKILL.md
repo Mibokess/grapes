@@ -8,15 +8,14 @@ user-invokable: false
 
 ## Step 1: Generate the Next ID
 
-Scan the main `.grapes/` directory **and** any worktree `.grapes/` directories to find the highest existing ID across all of them:
+Use the **Glob** tool to find all existing issues:
 
-```bash
-{ ls .grapes/; ls .claude/worktrees/*/.grapes/ 2>/dev/null; } | grep -E '^[0-9]+$' | sort -n | tail -1
-```
+1. Glob for `.grapes/*/meta.yaml`
+2. Glob for `.claude/worktrees/*/.grapes/*/meta.yaml` (catches issues created in worktrees)
 
-Add 1 to the result. If no numeric directories exist, start at 1.
+Extract the numeric folder names from the matched paths, find the highest, and add 1. If no issues exist, start at 1.
 
-This prevents ID collisions with issues created in worktrees.
+This avoids bash permission issues and handles fresh repos where no issues exist yet.
 
 ## Step 2: Create the Folder
 
