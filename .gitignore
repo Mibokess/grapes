@@ -21,6 +21,10 @@ Thumbs.db
 # Local
 old/
 
+# Grapes temp files
+.grapes/*/tmp/
+.grapes/tmp/
+
 # Env
 .env
 .env.*

@@ -221,6 +221,16 @@ blocked_by: [19, 20]
 
 Independent tasks run in parallel. Dependent tasks wait for their blockers to complete.
 
+## Temporary Files
+
+**Save temporary outputs to `.grapes/<id>/tmp/`, not `/tmp/`.**
+
+When working on an issue, all temporary files — images, scratch files, debug logs, generated artifacts — go in `.grapes/<id>/tmp/`. Create the directory with `mkdir -p` on first use.
+
+When no issue exists yet (e.g., early exploration before creating an issue), use `.grapes/tmp/` as a project-level scratch space. Once an issue is created for the work, move any relevant files from `.grapes/tmp/` into `.grapes/<id>/tmp/`.
+
+Both paths are gitignored.
+
 ## Surface Results
 
 **If you mention it, show it. If you saved it, say where.**
