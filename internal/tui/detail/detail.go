@@ -137,7 +137,12 @@ func renderIssue(issue data.Issue, allIssues []data.Issue, width int) (string, m
 	idStr := common.StyleFaint.Render(fmt.Sprintf("#%d", issue.ID))
 	title := common.StyleTitle.Render(issue.Title)
 	b.WriteString(" " + idStr + "\n")
-	b.WriteString(" " + title + "\n\n")
+	b.WriteString(" " + title + "\n")
+	if issue.Worktree != "" {
+		wtBadge := common.StyleWorktreeBadge.Render(common.WorktreeIcon() + " " + issue.Worktree)
+		b.WriteString(" " + wtBadge + "\n")
+	}
+	b.WriteString("\n")
 
 	// Metadata box: status pill + priority + labels + dates
 	metaBoxW := width - 4

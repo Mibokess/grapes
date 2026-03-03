@@ -29,6 +29,9 @@ var (
 	colorInProgress = lipgloss.Color("#d29922")
 	colorDone       = lipgloss.Color("#3fb950")
 	colorCancelled  = lipgloss.Color("#6e7681")
+
+	// Worktree color
+	colorWorktree = lipgloss.Color("#f0883e")
 )
 
 // Exported raw colors needed by sub-packages (e.g. bubbles/table styling).
@@ -144,6 +147,20 @@ var (
 	StyleDropTarget = lipgloss.NewStyle().
 			Bold(true).
 			Padding(0, 1)
+
+	StyleWorktreeCard = lipgloss.NewStyle().
+				Border(lipgloss.RoundedBorder()).
+				BorderForeground(colorWorktree).
+				Padding(0, 1)
+
+	StyleWorktreeLabel = lipgloss.NewStyle().
+				Foreground(colorWorktree)
+
+	StyleWorktreeBadge = lipgloss.NewStyle().
+				Foreground(lipgloss.Color("#0d1117")).
+				Background(colorWorktree).
+				Padding(0, 1).
+				Bold(true)
 )
 
 // StatusIcon returns the icon character for a given status.
@@ -231,6 +248,9 @@ func StatusColorFor(s data.Status) color.Color {
 		return colorMuted
 	}
 }
+
+// WorktreeIcon returns the icon for worktree issues.
+func WorktreeIcon() string { return "⑂" }
 
 // FormatKeyHint renders a styled "key action" pair for the status bar.
 func FormatKeyHint(k, action string) string {

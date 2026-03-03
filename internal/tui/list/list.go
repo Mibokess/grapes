@@ -25,6 +25,7 @@ var columnSortModes = []data.SortMode{
 	data.SortByCreated,
 	data.SortByUpdated,
 	-1, // Labels — not sortable
+	-1, // Source — not sortable
 }
 
 // stickyWidth is the rendered width of the sticky ID column (content + padding).
@@ -423,12 +424,12 @@ func (m Model) colWidths() []int {
 	if w < 40 {
 		w = 40
 	}
-	// Fixed widths: 4+13+9+10+10+15 = 61; cell padding: 7 cols × 2 = 14; total overhead = 75.
-	titleW := w - 75
+	// Fixed widths: 4+13+9+10+10+15+12 = 73; cell padding: 8 cols × 2 = 16; total overhead = 89.
+	titleW := w - 89
 	if titleW < 20 {
 		titleW = 20
 	}
-	return []int{4, titleW, 13, 9, 10, 10, 15}
+	return []int{4, titleW, 13, 9, 10, 10, 15, 12}
 }
 
 // tableFullWidth returns the full rendered width of all columns with padding.
@@ -485,6 +486,7 @@ func (m Model) buildTable(issues []data.Issue, width, height int) table.Model {
 		{Title: "Created" + m.sortIndicator(data.SortByCreated), Width: cw[4]},
 		{Title: "Updated" + m.sortIndicator(data.SortByUpdated), Width: cw[5]},
 		{Title: "Labels", Width: cw[6]},
+		{Title: "Source", Width: cw[7]},
 	}
 
 	var rows []table.Row
@@ -498,6 +500,10 @@ func (m Model) buildTable(issues []data.Issue, width, height int) table.Model {
 		prioCell := common.PriorityStyle(iss.Priority).Render(common.PriorityIcon(iss.Priority) + " " + iss.Priority.Label())
 		createdCell := formatDate(iss.Created)
 		updatedCell := formatDate(iss.Updated)
+		var sourceCell string
+		if iss.Worktree != "" {
+			sourceCell = common.StyleWorktreeLabel.Render(common.WorktreeIcon() + " " + iss.Worktree)
+		}
 		rows = append(rows, table.Row{
 			fmt.Sprintf("%d", iss.ID),
 			iss.Title,
@@ -506,6 +512,7 @@ func (m Model) buildTable(issues []data.Issue, width, height int) table.Model {
 			createdCell,
 			updatedCell,
 			labels,
+			sourceCell,
 		})
 	}
 

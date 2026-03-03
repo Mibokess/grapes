@@ -118,5 +118,9 @@ func issueSearchText(iss Issue) string {
 		b.WriteByte(' ')
 		b.WriteString(strings.ToLower(c.Body))
 	}
+	if iss.Worktree != "" {
+		b.WriteByte(' ')
+		b.WriteString(strings.ToLower(iss.Worktree))
+	}
 	return b.String()
 }

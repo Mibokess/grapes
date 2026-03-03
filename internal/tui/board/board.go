@@ -454,6 +454,8 @@ func (m Model) renderCard(issue data.Issue, width int, active bool) string {
 		style = common.StyleDragCard.Width(width - 2)
 	} else if active {
 		style = common.StyleActiveCard.Width(width - 2)
+	} else if issue.Worktree != "" {
+		style = common.StyleWorktreeCard.Width(width - 2)
 	}
 
 	// Inner text width = card width - 2 (border) - 2 (border in Width) - 2 (padding)
@@ -467,6 +469,10 @@ func (m Model) renderCard(issue data.Issue, width int, active bool) string {
 	line1 := idStr
 	if issue.Priority <= data.PriorityHigh {
 		line1 += " " + prioIcon
+	}
+	if issue.Worktree != "" {
+		wtLabel := common.StyleWorktreeLabel.Render(common.WorktreeIcon())
+		line1 += " " + wtLabel
 	}
 
 	// Lines 2-3: Title wraps up to 2 lines, word-wrapping line 1
@@ -686,6 +692,9 @@ func (m Model) renderGhostCard(issue data.Issue, width int) string {
 	line1 := idStr
 	if issue.Priority <= data.PriorityHigh {
 		line1 += " " + prioIcon
+	}
+	if issue.Worktree != "" {
+		line1 += " " + common.StyleFaint.Render(common.WorktreeIcon())
 	}
 
 	titleRunes := []rune(issue.Title)

@@ -187,4 +187,6 @@ type Issue struct {
 	Updated   time.Time
 	Content   string
 	Comments  []Comment
+	SourceDir string // .grapes/ directory this issue was loaded from
+	Worktree  string // worktree name (empty for main issues)
 }

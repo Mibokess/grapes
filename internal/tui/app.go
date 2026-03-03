@@ -35,10 +35,11 @@ type navEntry struct {
 }
 
 type Model struct {
-	issues     []data.Issue
-	issuesDir  string
-	width      int
-	height     int
+	issues      []data.Issue
+	issuesDir   string
+	projectRoot string
+	width       int
+	height      int
 	screen     common.Screen
 	navStack   []navEntry
 	watcher    *fsnotify.Watcher
@@ -61,9 +62,14 @@ type Model struct {
 }
 
 func NewModel(issues []data.Issue, issuesDir string) Model {
+	projectRoot := data.ProjectRoot(issuesDir)
+
 	w, _ := fsnotify.NewWatcher()
 	if w != nil {
 		addWatchDirs(w, issuesDir)
+		for _, dir := range data.FindWorktreeIssuesDirs(projectRoot) {
+			addWatchDirs(w, dir)
+		}
 	}
 
 	sortMode := data.SortByPriority
@@ -81,15 +87,29 @@ func NewModel(issues []data.Issue, issuesDir string) Model {
 	l = l.SetSortState(sortMode, false)
 
 	return Model{
-		issues:    issues,
-		issuesDir: issuesDir,
-		screen:    common.ScreenBoard,
-		sortMode:  sortMode,
-		filters:   filters,
-		board:     board.New(filtered),
-		list:      l,
-		watcher:   w,
+		issues:      issues,
+		issuesDir:   issuesDir,
+		projectRoot: projectRoot,
+		screen:      common.ScreenBoard,
+		sortMode:    sortMode,
+		filters:     filters,
+		board:       board.New(filtered),
+		list:        l,
+		watcher:     w,
 	}
+}
+
+// issueSourceDir returns the .grapes/ directory for the given issue ID.
+func (m Model) issueSourceDir(issueID int) string {
+	for _, iss := range m.issues {
+		if iss.ID == issueID {
+			if iss.SourceDir != "" {
+				return iss.SourceDir
+			}
+			return m.issuesDir
+		}
+	}
+	return m.issuesDir
 }
 
 // addWatchDirs watches the issues directory and all numeric subdirectories.
@@ -298,6 +318,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if err != nil {
 			return m, m.watchCmd()
 		}
+		// Merge worktree-only issues
+		mainIDs := make(map[int]bool)
+		for _, iss := range issues {
+			mainIDs[iss.ID] = true
+		}
+		wtIssues, _ := data.LoadWorktreeIssues(m.projectRoot, mainIDs)
+		if len(wtIssues) > 0 {
+			issues = append(issues, wtIssues...)
+			data.RewireRelationships(issues)
+		}
 		data.SortIssues(issues, m.sortMode, m.sortAsc)
 		m.issues = issues
 		filtered := m.filteredIssues()
@@ -315,6 +345,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Re-sync watched dirs (picks up new issue folders) and keep watching
 		if m.watcher != nil {
 			addWatchDirs(m.watcher, m.issuesDir)
+			for _, dir := range data.FindWorktreeIssuesDirs(m.projectRoot) {
+				addWatchDirs(m.watcher, dir)
+			}
 		}
 		return m, m.watchCmd()
 
@@ -324,8 +357,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case common.MoveIssueMsg:
+		srcDir := m.issueSourceDir(msg.IssueID)
 		return m, func() tea.Msg {
-			if err := data.UpdateField(m.issuesDir, msg.IssueID, "status", string(msg.NewStatus)); err != nil {
+			if err := data.UpdateField(srcDir, msg.IssueID, "status", string(msg.NewStatus)); err != nil {
 				return common.WriteErrMsg{Err: err}
 			}
 			return nil // fsnotify will trigger refresh
@@ -333,8 +367,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case common.PickerResultMsg:
 		m.picker = nil
+		srcDir := m.issueSourceDir(msg.IssueID)
 		return m, func() tea.Msg {
-			if err := data.UpdateField(m.issuesDir, msg.IssueID, msg.Field, msg.Value); err != nil {
+			if err := data.UpdateField(srcDir, msg.IssueID, msg.Field, msg.Value); err != nil {
 				return common.WriteErrMsg{Err: err}
 			}
 			return nil // fsnotify will trigger refresh
@@ -466,8 +501,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		issueID := m.editingIssueID
 		tmpPath := m.editingTmpPath
+		srcDir := m.issueSourceDir(issueID)
 
-		saveErr := data.SaveIssueFromText(m.issuesDir, issueID, cleaned)
+		saveErr := data.SaveIssueFromText(srcDir, issueID, cleaned)
 		if saveErr == nil {
 			os.Remove(tmpPath)
 			return m, nil // fsnotify will trigger refresh
@@ -513,8 +549,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil // empty comment, no-op
 		}
 		issueID := m.editingIssueID
+		srcDir := m.issueSourceDir(issueID)
 		return m, func() tea.Msg {
-			if err := data.AppendComment(m.issuesDir, issueID, trimmed); err != nil {
+			if err := data.AppendComment(srcDir, issueID, trimmed); err != nil {
 				return common.WriteErrMsg{Err: err}
 			}
 			return nil // fsnotify will trigger refresh
@@ -886,6 +923,34 @@ func (m Model) buildFilterPicker(field string) filter.MultiPicker {
 			})
 		}
 		return filter.NewMultiPicker("Label", "labels", opts, m.filters.Labels)
+
+	case "source":
+		sourceSet := make(map[string]bool)
+		for _, iss := range m.issues {
+			if iss.Worktree == "" {
+				sourceSet["main"] = true
+			} else {
+				sourceSet[iss.Worktree] = true
+			}
+		}
+		var opts []filter.PickerOption
+		if sourceSet["main"] {
+			opts = append(opts, filter.PickerOption{
+				Value: "main",
+				Label: "main",
+				Style: common.StyleSubtitle,
+			})
+		}
+		for name := range sourceSet {
+			if name != "main" && name != "" {
+				opts = append(opts, filter.PickerOption{
+					Value: name,
+					Label: common.WorktreeIcon() + " " + name,
+					Style: common.StyleWorktreeLabel,
+				})
+			}
+		}
+		return filter.NewMultiPicker("Source", "source", opts, m.filters.Sources)
 	}
 
 	return filter.NewMultiPicker(field, field, nil, nil)
@@ -900,6 +965,8 @@ func (m *Model) applyFilterSelection(field string, selected []string) {
 		m.filters.SetPriorities(selected)
 	case "labels":
 		m.filters.SetLabels(selected)
+	case "source":
+		m.filters.SetSources(selected)
 	}
 }
 

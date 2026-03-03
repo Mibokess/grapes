@@ -47,6 +47,14 @@ func RenderBar(fs FilterSet, width int) string {
 			return common.RenderLabel(v)
 		}))
 	}
+	if len(fs.Sources) > 0 {
+		chips = append(chips, renderChip("Source", fs.Sources, func(v string) string {
+			if v == "main" {
+				return v
+			}
+			return common.StyleWorktreeLabel.Render(common.WorktreeIcon() + " " + v)
+		}))
+	}
 	if fs.TopLevelOnly {
 		chips = append(chips, renderChip("Scope", []string{"top-level"}, func(v string) string {
 			return v

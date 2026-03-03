@@ -1,12 +1,12 @@
- ID    Title                                                                                  Status         Priority▼  Created     Updated     Labels          
+ ID    Title                                                                    Status         Priority▼  Created     Updated     Labels           Source       
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
- 1     Implement user authentication                                                          ◑ in_progress   ! high    Jan 15 '25  Mar 01 '25  backend securi… 
- 2     Fix dashboard loading performance                                                      ◌ todo         !! urgent  Feb 01 '25  Feb 01 '25  performance fr… 
- 3     Add dark mode support                                                                  ○ backlog       · medium  Feb 10 '25  —           frontend design 
- 4     Write API documentation                                                                ● done            low     Mar 01 '25  Mar 05 '25  docs            
- 5     Implement login endpoint                                                               ● done          ! high    Mar 05 '25  Mar 10 '25  backend         
- 6     Implement token refresh                                                                ◑ in_progress   ! high    Mar 05 '25  Mar 12 '25  backend         
- 7     Remove deprecated v1 API endpoints                                                     × cancelled       low     Jan 15 '25  —                           
+ 1     Implement user authentication                                            ◑ in_progress   ! high    Jan 15 '25  Mar 01 '25  backend securi…               
+ 2     Fix dashboard loading performance                                        ◌ todo         !! urgent  Feb 01 '25  Feb 01 '25  performance fr…               
+ 3     Add dark mode support                                                    ○ backlog       · medium  Feb 10 '25  —           frontend design               
+ 4     Write API documentation                                                  ● done            low     Mar 01 '25  Mar 05 '25  docs                          
+ 5     Implement login endpoint                                                 ● done          ! high    Mar 05 '25  Mar 10 '25  backend                       
+ 6     Implement token refresh                                                  ◑ in_progress   ! high    Mar 05 '25  Mar 12 '25  backend                       
+ 7     Remove deprecated v1 API endpoints                                       × cancelled       low     Jan 15 '25  —                                         
                                                                                                                                                                 
                                                                                                                                                                 
                                                                                                                                                                 

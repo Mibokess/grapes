@@ -30,6 +30,7 @@ func NewMenu(fs FilterSet, labelCount int) Menu {
 		{Field: "status", Label: "Status", ActiveCount: len(fs.Statuses)},
 		{Field: "priority", Label: "Priority", ActiveCount: len(fs.Priorities)},
 		{Field: "labels", Label: "Label", ActiveCount: len(fs.Labels)},
+		{Field: "source", Label: "Source", ActiveCount: len(fs.Sources)},
 	}
 
 	// Top-level only toggle

@@ -45,6 +45,18 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Load worktree-only issues (IDs not in main)
+	projectRoot := data.ProjectRoot(issuesDir)
+	mainIDs := make(map[int]bool)
+	for _, iss := range issues {
+		mainIDs[iss.ID] = true
+	}
+	wtIssues, _ := data.LoadWorktreeIssues(projectRoot, mainIDs)
+	if len(wtIssues) > 0 {
+		issues = append(issues, wtIssues...)
+		data.RewireRelationships(issues)
+	}
+
 	model := tui.NewModel(issues, issuesDir)
 	p := tea.NewProgram(model)
 

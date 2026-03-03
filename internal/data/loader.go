@@ -30,23 +30,40 @@ type meta struct {
 	Updated   string    `yaml:"updated"`
 }
 
-// FindIssuesDir walks up from startDir looking for a .grapes/ directory.
+// maxSearchDepth is how many directory levels deep to search for .grapes/.
+const maxSearchDepth = 10
+
+// FindIssuesDir searches startDir and subdirectories (up to maxSearchDepth) for a .grapes/ directory.
 func FindIssuesDir(startDir string) (string, error) {
 	dir, err := filepath.Abs(startDir)
 	if err != nil {
 		return "", err
 	}
-	for {
-		candidate := filepath.Join(dir, ".grapes")
-		if info, err := os.Stat(candidate); err == nil && info.IsDir() {
-			return candidate, nil
+	var found string
+	baseDepth := strings.Count(dir, string(filepath.Separator))
+	filepath.WalkDir(dir, func(path string, d os.DirEntry, err error) error {
+		if err != nil || found != "" {
+			return filepath.SkipDir
 		}
-		parent := filepath.Dir(dir)
-		if parent == dir {
-			return "", fmt.Errorf(".grapes/ directory not found (searched up from %s)", startDir)
+		if d.IsDir() && d.Name() == ".grapes" {
+			found = path
+			return filepath.SkipAll
 		}
-		dir = parent
+		if d.IsDir() && d.Name() != "." {
+			depth := strings.Count(path, string(filepath.Separator)) - baseDepth
+			if depth >= maxSearchDepth {
+				return filepath.SkipDir
+			}
+			if strings.HasPrefix(d.Name(), ".") || d.Name() == "node_modules" {
+				return filepath.SkipDir
+			}
+		}
+		return nil
+	})
+	if found != "" {
+		return found, nil
 	}
+	return "", fmt.Errorf(".grapes/ directory not found in %s", startDir)
 }
 
 // LoadAllIssues scans the .grapes/ directory and returns all issues with
@@ -77,6 +94,7 @@ func LoadAllIssues(dir string) ([]Issue, error) {
 		issue.Content = readFileOr(filepath.Join(dir, e.Name(), "content.md"), "")
 		issue.Comments = ParseComments(readFileOr(filepath.Join(dir, e.Name(), "comments.md"), ""))
 
+		issue.SourceDir = dir
 		issues = append(issues, issue)
 		if issue.Parent != nil {
 			childrenMap[*issue.Parent] = append(childrenMap[*issue.Parent], id)
@@ -148,6 +166,83 @@ func readFileOr(path, fallback string) string {
 		return fallback
 	}
 	return string(data)
+}
+
+// ProjectRoot returns the parent directory of a .grapes/ path.
+func ProjectRoot(issuesDir string) string {
+	return filepath.Dir(issuesDir)
+}
+
+// FindWorktreeIssuesDirs scans .claude/worktrees/*/.grapes/ relative to
+// projectRoot and returns a map of worktree name → .grapes/ directory path.
+func FindWorktreeIssuesDirs(projectRoot string) map[string]string {
+	worktreesDir := filepath.Join(projectRoot, ".claude", "worktrees")
+	entries, err := os.ReadDir(worktreesDir)
+	if err != nil {
+		return nil
+	}
+	result := make(map[string]string)
+	for _, e := range entries {
+		if !e.IsDir() {
+			continue
+		}
+		grapesDir := filepath.Join(worktreesDir, e.Name(), ".grapes")
+		if info, err := os.Stat(grapesDir); err == nil && info.IsDir() {
+			result[e.Name()] = grapesDir
+		}
+	}
+	return result
+}
+
+// LoadWorktreeIssues loads issues from all worktree .grapes/ directories,
+// returning only issues whose IDs don't exist in mainIDs.
+func LoadWorktreeIssues(projectRoot string, mainIDs map[int]bool) ([]Issue, error) {
+	worktrees := FindWorktreeIssuesDirs(projectRoot)
+	var all []Issue
+	seen := make(map[int]bool) // dedup across worktrees
+	for name, dir := range worktrees {
+		issues, err := LoadAllIssues(dir)
+		if err != nil {
+			continue
+		}
+		for i := range issues {
+			if mainIDs[issues[i].ID] || seen[issues[i].ID] {
+				continue
+			}
+			issues[i].Worktree = name
+			seen[issues[i].ID] = true
+			all = append(all, issues[i])
+		}
+	}
+	sort.Slice(all, func(i, j int) bool { return all[i].ID < all[j].ID })
+	return all, nil
+}
+
+// RewireRelationships rebuilds Children and Blocks slices from all issues'
+// Parent and BlockedBy fields. Use after merging issues from multiple sources.
+func RewireRelationships(issues []Issue) {
+	childrenMap := make(map[int][]int)
+	blocksMap := make(map[int][]int)
+	for _, iss := range issues {
+		if iss.Parent != nil {
+			childrenMap[*iss.Parent] = append(childrenMap[*iss.Parent], iss.ID)
+		}
+		for _, blockerID := range iss.BlockedBy {
+			blocksMap[blockerID] = append(blocksMap[blockerID], iss.ID)
+		}
+	}
+	for i := range issues {
+		issues[i].Children = nil
+		issues[i].Blocks = nil
+		if kids, ok := childrenMap[issues[i].ID]; ok {
+			sort.Ints(kids)
+			issues[i].Children = kids
+		}
+		if blocked, ok := blocksMap[issues[i].ID]; ok {
+			sort.Ints(blocked)
+			issues[i].Blocks = blocked
+		}
+	}
 }
 
 // ParseComments parses comments.md using strict "### YYYY-MM-DD" headers.

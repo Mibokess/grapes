@@ -10,6 +10,7 @@ type FilterSet struct {
 	Statuses     []data.Status
 	Priorities   []data.Priority
 	Labels       []string
+	Sources      []string // worktree names; "main" for main issues
 	HasChildren  *bool
 	TopLevelOnly bool // when true, only show issues without a parent
 	TextQuery    string
@@ -25,6 +26,15 @@ func (f FilterSet) Matches(issue data.Issue) bool {
 	}
 	if len(f.Labels) > 0 && !hasAnyLabel(f.Labels, issue.Labels) {
 		return false
+	}
+	if len(f.Sources) > 0 {
+		src := issue.Worktree
+		if src == "" {
+			src = "main"
+		}
+		if !containsString(f.Sources, src) {
+			return false
+		}
 	}
 	if f.HasChildren != nil {
 		has := len(issue.Children) > 0
@@ -48,6 +58,7 @@ func (f FilterSet) IsEmpty() bool {
 	return len(f.Statuses) == 0 &&
 		len(f.Priorities) == 0 &&
 		len(f.Labels) == 0 &&
+		len(f.Sources) == 0 &&
 		f.HasChildren == nil &&
 		!f.TopLevelOnly &&
 		f.TextQuery == ""
@@ -65,6 +76,9 @@ func (f FilterSet) ActiveCount() int {
 	if len(f.Labels) > 0 {
 		n++
 	}
+	if len(f.Sources) > 0 {
+		n++
+	}
 	if f.HasChildren != nil {
 		n++
 	}
@@ -79,6 +93,7 @@ func (f *FilterSet) Clear() {
 	f.Statuses = nil
 	f.Priorities = nil
 	f.Labels = nil
+	f.Sources = nil
 	f.HasChildren = nil
 	f.TopLevelOnly = false
 	f.TextQuery = ""
@@ -161,6 +176,11 @@ func (f *FilterSet) SetLabels(labels []string) {
 	f.Labels = labels
 }
 
+// SetSources replaces the source filter with the given values.
+func (f *FilterSet) SetSources(sources []string) {
+	f.Sources = sources
+}
+
 func containsStatus(ss []data.Status, s data.Status) bool {
 	for _, v := range ss {
 		if v == s {
@@ -173,6 +193,15 @@ func containsStatus(ss []data.Status, s data.Status) bool {
 func containsPriority(ps []data.Priority, p data.Priority) bool {
 	for _, v := range ps {
 		if v == p {
+			return true
+		}
+	}
+	return false
+}
+
+func containsString(ss []string, s string) bool {
+	for _, v := range ss {
+		if v == s {
 			return true
 		}
 	}

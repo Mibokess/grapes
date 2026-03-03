@@ -8,11 +8,15 @@ user-invokable: false
 
 ## Step 1: Generate the Next ID
 
+Scan the main `.grapes/` directory **and** any worktree `.grapes/` directories to find the highest existing ID across all of them:
+
 ```bash
-ls .grapes/ | sort -n | tail -1
+{ ls .grapes/; ls .claude/worktrees/*/.grapes/ 2>/dev/null; } | grep -E '^[0-9]+$' | sort -n | tail -1
 ```
 
-Add 1 to the result. If the directory is empty, start at 1.
+Add 1 to the result. If no numeric directories exist, start at 1.
+
+This prevents ID collisions with issues created in worktrees.
 
 ## Step 2: Create the Folder
 
