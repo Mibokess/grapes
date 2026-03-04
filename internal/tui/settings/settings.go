@@ -11,6 +11,7 @@ import (
 	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	themes "go.withmatt.com/themes"
 )
 
 var hexColorRe = regexp.MustCompile(`^#[0-9a-fA-F]{6}$`)
@@ -79,6 +80,7 @@ func New(cfg config.Config, issuesDir string, w, h int, theme common.Theme) Mode
 		{
 			name: "Theme",
 			fields: []field{
+				{label: "Preset", cfgKey: "theme_preset", kind: fieldEnum, options: common.CuratedPresets},
 				{label: "Mode", cfgKey: "theme_mode", kind: fieldEnum, options: []string{"auto", "light", "dark"}},
 				{label: "Accent", cfgKey: "accent", kind: fieldColor},
 				{label: "Accent BG", cfgKey: "accent_bg", kind: fieldColor},
@@ -252,10 +254,20 @@ func (m Model) handleMouseClick(mouse tea.Mouse) (Model, tea.Cmd) {
 						if opt == cur {
 							next := f.options[(i+1)%len(f.options)]
 							m.setFieldValue(f.cfgKey, next)
+							if f.cfgKey == "theme_mode" || f.cfgKey == "theme_preset" {
+								newTheme := common.NewThemeFromConfig(m.cfg.Theme, m.termIsDark)
+								m.theme = newTheme
+								return m, func() tea.Msg { return common.ThemeMsg{Theme: newTheme} }
+							}
 							return m, nil
 						}
 					}
 					m.setFieldValue(f.cfgKey, f.options[0])
+					if f.cfgKey == "theme_mode" || f.cfgKey == "theme_preset" {
+						newTheme := common.NewThemeFromConfig(m.cfg.Theme, m.termIsDark)
+						m.theme = newTheme
+						return m, func() tea.Msg { return common.ThemeMsg{Theme: newTheme} }
+					}
 				} else {
 					m.editing = true
 					m.input.SetValue(m.getFieldValue(f.cfgKey))
@@ -398,7 +410,7 @@ func (m Model) updateNavigating(msg tea.KeyPressMsg) (Model, tea.Cmd) {
 				if opt == cur {
 					next := f.options[(i+1)%len(f.options)]
 					m.setFieldValue(f.cfgKey, next)
-					if f.cfgKey == "theme_mode" {
+					if f.cfgKey == "theme_mode" || f.cfgKey == "theme_preset" {
 						newTheme := common.NewThemeFromConfig(m.cfg.Theme, m.termIsDark)
 						m.theme = newTheme
 						return m, func() tea.Msg { return common.ThemeMsg{Theme: newTheme} }
@@ -407,7 +419,7 @@ func (m Model) updateNavigating(msg tea.KeyPressMsg) (Model, tea.Cmd) {
 				}
 			}
 			m.setFieldValue(f.cfgKey, f.options[0])
-			if f.cfgKey == "theme_mode" {
+			if f.cfgKey == "theme_mode" || f.cfgKey == "theme_preset" {
 				newTheme := common.NewThemeFromConfig(m.cfg.Theme, m.termIsDark)
 				m.theme = newTheme
 				return m, func() tea.Msg { return common.ThemeMsg{Theme: newTheme} }
@@ -545,6 +557,18 @@ func (m Model) View() string {
 }
 
 func (m Model) effectiveIsDark() bool {
+	if p := m.cfg.Theme.Preset; p != "" && p != "default" {
+		if ext, err := themes.GetTheme(p); err == nil {
+			isDark := common.PresetIsDark(ext)
+			switch m.cfg.Theme.Mode {
+			case "light":
+				return false
+			case "dark":
+				return true
+			}
+			return isDark
+		}
+	}
 	return m.cfg.Theme.EffectiveIsDark(m.termIsDark)
 }
 
@@ -555,6 +579,11 @@ func (m Model) getFieldValue(cfgKey string) string {
 		return m.cfg.View.DefaultScreen
 	case "default_sort":
 		return m.cfg.View.DefaultSort
+	case "theme_preset":
+		if m.cfg.Theme.Preset == "" {
+			return "default"
+		}
+		return m.cfg.Theme.Preset
 	case "theme_mode":
 		if m.cfg.Theme.Mode == "" {
 			return "auto"
@@ -637,6 +666,12 @@ func (m *Model) setFieldValue(cfgKey, val string) {
 		m.cfg.View.DefaultScreen = val
 	case "default_sort":
 		m.cfg.View.DefaultSort = val
+	case "theme_preset":
+		if val == "default" {
+			m.cfg.Theme.Preset = ""
+		} else {
+			m.cfg.Theme.Preset = val
+		}
 	case "theme_mode":
 		m.cfg.Theme.Mode = val
 	case "accent", "accent_bg", "border", "text", "muted", "faint", "surface",
