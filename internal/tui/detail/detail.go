@@ -372,19 +372,29 @@ func renderIssue(issue data.Issue, allIssues []data.Issue, width int, theme comm
 	if len(issue.Children) > 0 {
 		b.WriteString(" " + theme.StyleSectionHeader.Render("Sub-issues") + " " + sectionUnderline + "\n\n")
 		for _, childID := range issue.Children {
-			childTitle := ""
-			childStatus := data.Status("")
-			for _, iss := range allIssues {
-				if iss.ID == childID {
-					childTitle = iss.Title
-					childStatus = iss.Status
+			var child *data.Issue
+			for i := range allIssues {
+				if allIssues[i].ID == childID {
+					child = &allIssues[i]
 					break
 				}
+			}
+			childTitle := ""
+			childStatus := data.Status("")
+			var childLabels []string
+			if child != nil {
+				childTitle = child.Title
+				childStatus = child.Status
+				childLabels = child.Labels
 			}
 			icon := theme.StatusStyle(childStatus).Render(common.StatusIcon(childStatus) + " " + childStatus.Label())
 			lineNum := strings.Count(b.String(), "\n")
 			clickLines[lineNum] = childID
-			b.WriteString(fmt.Sprintf("  %s  #%d  %s\n", icon, childID, theme.StyleSubtitle.Render(childTitle)))
+			labelStr := ""
+			for _, l := range childLabels {
+				labelStr += "  " + theme.RenderLabelPill(l)
+			}
+			b.WriteString(fmt.Sprintf("  %s  #%d  %s%s\n", icon, childID, theme.StyleSubtitle.Render(childTitle), labelStr))
 		}
 		b.WriteString("\n")
 	}
