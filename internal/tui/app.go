@@ -205,13 +205,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case tea.BackgroundColorMsg:
-		// Detect dark/light and apply config overrides on top
 		m.isDark = msg.IsDark()
-		if m.cfg.Theme != (config.ThemeConfig{}) {
-			m.theme = common.NewThemeFromConfig(m.cfg.Theme, m.isDark)
-		} else {
-			m.theme = common.NewTheme(m.isDark)
-		}
+		m.theme = common.NewThemeFromConfig(m.cfg.Theme, m.isDark)
 		m.board = m.board.SetTheme(m.theme)
 		m.list = m.list.SetTheme(m.theme)
 		m.detail = m.detail.SetTheme(m.theme)

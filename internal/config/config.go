@@ -13,26 +13,101 @@ type ViewConfig struct {
 	DefaultSort   string `toml:"default_sort"`
 }
 
-// ThemeConfig holds all UI color values as hex strings.
-type ThemeConfig struct {
-	Accent   string `toml:"accent"`
-	AccentBg string `toml:"accent_bg"`
-	Border   string `toml:"border"`
-	Text     string `toml:"text"`
-	Muted    string `toml:"muted"`
-	Faint    string `toml:"faint"`
-	Surface  string `toml:"surface"`
+// ColorSetConfig holds color overrides for one theme mode.
+type ColorSetConfig struct {
+	Accent          string `toml:"accent,omitempty"`
+	AccentBg        string `toml:"accent_bg,omitempty"`
+	Border          string `toml:"border,omitempty"`
+	Text            string `toml:"text,omitempty"`
+	Muted           string `toml:"muted,omitempty"`
+	Faint           string `toml:"faint,omitempty"`
+	Surface         string `toml:"surface,omitempty"`
+	ColorBacklog    string `toml:"color_backlog,omitempty"`
+	ColorTodo       string `toml:"color_todo,omitempty"`
+	ColorInProgress string `toml:"color_in_progress,omitempty"`
+	ColorDone       string `toml:"color_done,omitempty"`
+	ColorCancelled  string `toml:"color_cancelled,omitempty"`
+	ColorUrgent     string `toml:"color_urgent,omitempty"`
+	ColorHigh       string `toml:"color_high,omitempty"`
+	ColorMedium     string `toml:"color_medium,omitempty"`
+	ColorLow        string `toml:"color_low,omitempty"`
+}
 
+// ThemeConfig holds theme mode and color values for dark and light modes.
+type ThemeConfig struct {
+	Mode string `toml:"mode"` // "auto", "light", "dark" (empty = auto)
+
+	// Dark-mode colors (top-level for backward compatibility).
+	Accent          string `toml:"accent"`
+	AccentBg        string `toml:"accent_bg"`
+	Border          string `toml:"border"`
+	Text            string `toml:"text"`
+	Muted           string `toml:"muted"`
+	Faint           string `toml:"faint"`
+	Surface         string `toml:"surface"`
 	ColorBacklog    string `toml:"color_backlog"`
 	ColorTodo       string `toml:"color_todo"`
 	ColorInProgress string `toml:"color_in_progress"`
 	ColorDone       string `toml:"color_done"`
 	ColorCancelled  string `toml:"color_cancelled"`
+	ColorUrgent     string `toml:"color_urgent"`
+	ColorHigh       string `toml:"color_high"`
+	ColorMedium     string `toml:"color_medium"`
+	ColorLow        string `toml:"color_low"`
 
-	ColorUrgent string `toml:"color_urgent"`
-	ColorHigh   string `toml:"color_high"`
-	ColorMedium string `toml:"color_medium"`
-	ColorLow    string `toml:"color_low"`
+	// Light-mode colors.
+	Light ColorSetConfig `toml:"light"`
+}
+
+// EffectiveIsDark resolves the mode to a boolean. termIsDark is the terminal-detected value.
+func (tc ThemeConfig) EffectiveIsDark(termIsDark bool) bool {
+	switch tc.Mode {
+	case "light":
+		return false
+	case "dark":
+		return true
+	default:
+		return termIsDark
+	}
+}
+
+// ColorsFor returns the color overrides for the given mode.
+func (tc ThemeConfig) ColorsFor(isDark bool) ColorSetConfig {
+	if isDark {
+		return ColorSetConfig{
+			Accent: tc.Accent, AccentBg: tc.AccentBg, Border: tc.Border,
+			Text: tc.Text, Muted: tc.Muted, Faint: tc.Faint, Surface: tc.Surface,
+			ColorBacklog: tc.ColorBacklog, ColorTodo: tc.ColorTodo,
+			ColorInProgress: tc.ColorInProgress, ColorDone: tc.ColorDone,
+			ColorCancelled: tc.ColorCancelled, ColorUrgent: tc.ColorUrgent,
+			ColorHigh: tc.ColorHigh, ColorMedium: tc.ColorMedium, ColorLow: tc.ColorLow,
+		}
+	}
+	return tc.Light
+}
+
+// SetColorsFor writes a ColorSetConfig back to the appropriate location.
+func (tc *ThemeConfig) SetColorsFor(isDark bool, c ColorSetConfig) {
+	if isDark {
+		tc.Accent = c.Accent
+		tc.AccentBg = c.AccentBg
+		tc.Border = c.Border
+		tc.Text = c.Text
+		tc.Muted = c.Muted
+		tc.Faint = c.Faint
+		tc.Surface = c.Surface
+		tc.ColorBacklog = c.ColorBacklog
+		tc.ColorTodo = c.ColorTodo
+		tc.ColorInProgress = c.ColorInProgress
+		tc.ColorDone = c.ColorDone
+		tc.ColorCancelled = c.ColorCancelled
+		tc.ColorUrgent = c.ColorUrgent
+		tc.ColorHigh = c.ColorHigh
+		tc.ColorMedium = c.ColorMedium
+		tc.ColorLow = c.ColorLow
+	} else {
+		tc.Light = c
+	}
 }
 
 // KeysConfig holds customizable keybinding strings.
@@ -88,6 +163,7 @@ func Defaults() Config {
 			DefaultSort:   "priority",
 		},
 		Theme: ThemeConfig{
+			Mode:            "auto",
 			Accent:          "#a371f7",
 			AccentBg:        "#2d1b69",
 			Border:          "#30363d",
@@ -104,6 +180,24 @@ func Defaults() Config {
 			ColorHigh:       "#d29922",
 			ColorMedium:     "#388bfd",
 			ColorLow:        "#6e7681",
+			Light: ColorSetConfig{
+				Accent:          "#8250df",
+				AccentBg:        "#eddeff",
+				Border:          "#d0d7de",
+				Text:            "#1f2328",
+				Muted:           "#656d76",
+				Faint:           "#afb8c1",
+				Surface:         "#f6f8fa",
+				ColorBacklog:    "#656d76",
+				ColorTodo:       "#0969da",
+				ColorInProgress: "#9a6700",
+				ColorDone:       "#1a7f37",
+				ColorCancelled:  "#8c959f",
+				ColorUrgent:     "#cf222e",
+				ColorHigh:       "#9a6700",
+				ColorMedium:     "#0969da",
+				ColorLow:        "#8c959f",
+			},
 		},
 		Keys: KeysConfig{
 			Quit:          "q",
