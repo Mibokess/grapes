@@ -19,8 +19,8 @@
   • Logout                                                                                          
  Sub-issues ━━                                                                                      
                                                                                                     
-  ●  #5  Implement login endpoint                                                                   
-  ◑  #6  Implement token refresh                                                                    
+  ● done  #5  Implement login endpoint   backend                                                    
+  ◑ in_progress  #6  Implement token refresh   backend                                              
                                                                                                     
  Comments (2) ━━                                                                                    
                                                                                                     
