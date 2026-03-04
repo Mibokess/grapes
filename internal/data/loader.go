@@ -3,11 +3,13 @@ package data
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"sort"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	toml "github.com/pelletier/go-toml/v2"
@@ -171,6 +173,85 @@ func readFileOr(path, fallback string) string {
 // ProjectRoot returns the parent directory of a .grapes/ path.
 func ProjectRoot(issuesDir string) string {
 	return filepath.Dir(issuesDir)
+}
+
+// maxIDInDir returns the highest numeric folder name in dir, or 0 if none.
+func maxIDInDir(dir string) int {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return 0
+	}
+	max := 0
+	for _, e := range entries {
+		if !e.IsDir() {
+			continue
+		}
+		id, err := strconv.Atoi(e.Name())
+		if err != nil {
+			continue
+		}
+		if id > max {
+			max = id
+		}
+	}
+	return max
+}
+
+// FindMainProjectRoot returns the main project root, even when issuesDir is
+// inside a worktree. It uses git rev-parse --git-common-dir to find the shared
+// .git directory, then takes its parent. Falls back to ProjectRoot if git fails.
+func FindMainProjectRoot(issuesDir string) string {
+	projectRoot := ProjectRoot(issuesDir)
+	cmd := exec.Command("git", "rev-parse", "--git-common-dir")
+	cmd.Dir = projectRoot
+	out, err := cmd.Output()
+	if err != nil {
+		return projectRoot
+	}
+	gitCommon := strings.TrimSpace(string(out))
+	if !filepath.IsAbs(gitCommon) {
+		gitCommon = filepath.Join(projectRoot, gitCommon)
+	}
+	return filepath.Dir(filepath.Clean(gitCommon))
+}
+
+// NextID atomically reserves the next available issue ID across the main
+// project and all worktrees. It acquires an exclusive lock, scans all .grapes/
+// directories, creates the new issue directory locally, then releases the lock.
+func NextID(issuesDir string) (int, error) {
+	mainRoot := FindMainProjectRoot(issuesDir)
+	mainGrapes := filepath.Join(mainRoot, ".grapes")
+
+	// Acquire exclusive lock
+	lockPath := filepath.Join(mainGrapes, ".lock")
+	lockFile, err := os.OpenFile(lockPath, os.O_CREATE|os.O_RDWR, 0o644)
+	if err != nil {
+		return 0, fmt.Errorf("opening lock file: %w", err)
+	}
+	defer lockFile.Close()
+	defer os.Remove(lockPath)
+
+	if err := syscall.Flock(int(lockFile.Fd()), syscall.LOCK_EX); err != nil {
+		return 0, fmt.Errorf("acquiring lock: %w", err)
+	}
+	defer syscall.Flock(int(lockFile.Fd()), syscall.LOCK_UN)
+
+	// Find max ID across all sources
+	max := maxIDInDir(mainGrapes)
+	for _, dir := range FindWorktreeIssuesDirs(mainRoot) {
+		if m := maxIDInDir(dir); m > max {
+			max = m
+		}
+	}
+
+	next := max + 1
+
+	// Create the directory in the local .grapes/
+	if err := os.MkdirAll(filepath.Join(issuesDir, strconv.Itoa(next)), 0o755); err != nil {
+		return 0, fmt.Errorf("creating issue directory: %w", err)
+	}
+
+	return next, nil
 }
 
 // FindWorktreeIssuesDirs scans .claude/worktrees/*/.grapes/ relative to

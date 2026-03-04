@@ -19,6 +19,8 @@ Issues are plain files in `.grapes/`. No database, no CLI. You manipulate them d
 
 IDs are numeric folder names. The folder listing is the index.
 
+To reserve the next ID: `next=$(grapes next-id)`. This scans all `.grapes/` directories (main + worktrees) with file locking to prevent concurrent ID collisions. The issue directory is created automatically.
+
 ## meta.toml Schema
 
 ```toml

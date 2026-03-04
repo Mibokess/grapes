@@ -37,9 +37,14 @@ func main() {
 		fmt.Fprintf(os.Stderr, "Created %s\n", issuesDir)
 	}
 
-	// Handle "validate" subcommand
-	if len(os.Args) > 1 && os.Args[1] == "validate" {
-		os.Exit(runValidate(issuesDir, os.Args[2:]))
+	// Handle subcommands
+	if len(os.Args) > 1 {
+		switch os.Args[1] {
+		case "validate":
+			os.Exit(runValidate(issuesDir, os.Args[2:]))
+		case "next-id":
+			os.Exit(runNextID(issuesDir))
+		}
 	}
 
 	projectRoot := data.ProjectRoot(issuesDir)
@@ -57,6 +62,16 @@ func main() {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
+}
+
+func runNextID(issuesDir string) int {
+	id, err := data.NextID(issuesDir)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		return 1
+	}
+	fmt.Println(id)
+	return 0
 }
 
 func runValidate(issuesDir string, args []string) int {
