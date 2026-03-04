@@ -381,7 +381,7 @@ func renderIssue(issue data.Issue, allIssues []data.Issue, width int, theme comm
 					break
 				}
 			}
-			icon := theme.StatusStyle(childStatus).Render(common.StatusIcon(childStatus))
+			icon := theme.StatusStyle(childStatus).Render(common.StatusIcon(childStatus) + " " + childStatus.Label())
 			lineNum := strings.Count(b.String(), "\n")
 			clickLines[lineNum] = childID
 			b.WriteString(fmt.Sprintf("  %s  #%d  %s\n", icon, childID, theme.StyleSubtitle.Render(childTitle)))
