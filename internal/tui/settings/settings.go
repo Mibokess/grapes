@@ -75,6 +75,7 @@ func New(cfg config.Config, issuesDir string, w, h int, theme common.Theme) Mode
 			fields: []field{
 				{label: "Default screen", cfgKey: "default_screen", kind: fieldEnum, options: []string{"board", "list"}},
 				{label: "Default sort", cfgKey: "default_sort", kind: fieldEnum, options: []string{"priority", "updated", "created", "id", "title", "status"}},
+				{label: "Auto-close sub-issues", cfgKey: "auto_close_subs", kind: fieldEnum, options: []string{"off", "on"}},
 			},
 		},
 		{
@@ -584,6 +585,11 @@ func (m Model) getFieldValue(cfgKey string) string {
 			return "default"
 		}
 		return m.cfg.Theme.Preset
+	case "auto_close_subs":
+		if m.cfg.View.AutoCloseSubs {
+			return "on"
+		}
+		return "off"
 	case "theme_mode":
 		if m.cfg.Theme.Mode == "" {
 			return "auto"
@@ -672,6 +678,8 @@ func (m *Model) setFieldValue(cfgKey, val string) {
 		} else {
 			m.cfg.Theme.Preset = val
 		}
+	case "auto_close_subs":
+		m.cfg.View.AutoCloseSubs = val == "on"
 	case "theme_mode":
 		m.cfg.Theme.Mode = val
 	case "accent", "accent_bg", "border", "text", "muted", "faint", "surface",
