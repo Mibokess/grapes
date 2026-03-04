@@ -36,7 +36,8 @@ type ColorSetConfig struct {
 
 // ThemeConfig holds theme mode and color values for dark and light modes.
 type ThemeConfig struct {
-	Mode string `toml:"mode"` // "auto", "light", "dark" (empty = auto)
+	Mode   string `toml:"mode"`   // "auto", "light", "dark" (empty = auto)
+	Preset string `toml:"preset"` // external theme name; empty/"default" = built-in
 
 	// Dark-mode colors (top-level for backward compatibility).
 	Accent          string `toml:"accent"`

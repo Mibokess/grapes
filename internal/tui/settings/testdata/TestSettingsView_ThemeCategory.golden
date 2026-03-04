@@ -1,7 +1,8 @@
 
-  View           │  Mode           auto
-  Theme          │  Accent         ██ #a371f7
-  Keys           │  Accent BG      ██ #2d1b69
+  View           │  Preset         default
+  Theme          │  Mode           auto
+  Keys           │  Accent         ██ #a371f7
+                 │  Accent BG      ██ #2d1b69
                  │  Border         ██ #30363d
                  │  Text           ██ #e6edf3
                  │  Muted          ██ #8b949e
@@ -16,7 +17,6 @@
                  │  High           ██ #d29922
                  │  Medium         ██ #388bfd
                  │  Low            ██ #6e7681
-
 
 
 

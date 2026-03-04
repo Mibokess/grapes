@@ -191,9 +191,10 @@ func TestClickCategory_WithOffset_Keys(t *testing.T) {
 func TestClickDoesNothing_WhenEditing(t *testing.T) {
 	m := newTestModel()
 
-	// Enter edit mode: navigate to Theme, skip Mode (enum), select a color field, press enter
+	// Enter edit mode: navigate to Theme, skip Preset+Mode (enums), select a color field, press enter
 	m, _ = m.Update(keyMsg("j"))                        // Theme category
-	m, _ = m.Update(tea.KeyPressMsg(tea.Key{Code: 9}))  // Tab to fields (lands on Mode)
+	m, _ = m.Update(tea.KeyPressMsg(tea.Key{Code: 9}))  // Tab to fields (lands on Preset)
+	m, _ = m.Update(keyMsg("j"))                        // Move to Mode (enum)
 	m, _ = m.Update(keyMsg("j"))                        // Move to Accent (color field)
 	m, _ = m.Update(tea.KeyPressMsg(tea.Key{Code: 13})) // Enter to edit
 

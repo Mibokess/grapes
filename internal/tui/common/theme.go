@@ -7,6 +7,7 @@ import (
 	"github.com/Mibokess/grapes/internal/config"
 	"github.com/Mibokess/grapes/internal/data"
 	"charm.land/lipgloss/v2"
+	themes "go.withmatt.com/themes"
 )
 
 // AppHeaderHeight is the number of terminal lines occupied by the app header.
@@ -185,6 +186,33 @@ func NewTheme(isDark bool) Theme {
 
 // NewThemeFromConfig creates a theme for the resolved mode, overridden by user config colors.
 func NewThemeFromConfig(cfg config.ThemeConfig, termIsDark bool) Theme {
+	// Try external preset first.
+	if p := cfg.Preset; p != "" && p != "default" {
+		if ext, err := themes.GetTheme(p); err == nil {
+			isDark := PresetIsDark(ext)
+			switch cfg.Mode {
+			case "light":
+				isDark = false
+			case "dark":
+				isDark = true
+			}
+			var t Theme
+			applyPreset(&t, ext)
+			// Override glamour style if mode was explicitly set.
+			if cfg.Mode == "light" || cfg.Mode == "dark" {
+				if isDark {
+					t.GlamourStyle = "dark"
+				} else {
+					t.GlamourStyle = "light"
+				}
+			}
+			applyColorOverrides(&t, cfg.ColorsFor(isDark))
+			t.buildStyles()
+			return t
+		}
+	}
+
+	// Built-in defaults.
 	isDark := cfg.EffectiveIsDark(termIsDark)
 	t := NewTheme(isDark)
 	applyColorOverrides(&t, cfg.ColorsFor(isDark))
