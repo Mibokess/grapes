@@ -112,7 +112,8 @@ func (tc *ThemeConfig) SetColorsFor(isDark bool, c ColorSetConfig) {
 
 // KeysConfig holds customizable keybinding strings.
 type KeysConfig struct {
-	Quit string `toml:"quit"`
+	Quit     string `toml:"quit"`
+	Settings string `toml:"settings"`
 
 	BoardUp       string `toml:"board_up"`
 	BoardDown     string `toml:"board_down"`
@@ -201,6 +202,7 @@ func Defaults() Config {
 		},
 		Keys: KeysConfig{
 			Quit:          "q",
+			Settings:      "C",
 			BoardUp:       "k",
 			BoardDown:     "j",
 			BoardLeft:     "h",

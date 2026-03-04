@@ -264,8 +264,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if key.Matches(msg, common.GlobalKeyMap.Quit) {
 			return m, tea.Quit
 		}
-		// Open settings with ","
-		if msg.String() == "," && m.screen != common.ScreenSettings {
+		// Open settings
+		if key.Matches(msg, common.GlobalKeyMap.Settings) && m.screen != common.ScreenSettings {
 			m.settings = settings.New(m.cfg, m.issuesDir, m.width, m.contentHeight(), m.theme).SetTopOffset(m.topOffset())
 			m.navStack = append(m.navStack, navEntry{screen: m.screen})
 			m.screen = common.ScreenSettings
@@ -289,7 +289,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				// Detect clicks on header tabs (Board / List / Settings)
 				boardTabW := lipgloss.Width(m.theme.StyleTabInactive.Render("Board"))
 				listTabW := lipgloss.Width(m.theme.StyleTabInactive.Render("List"))
-				settingsTabW := lipgloss.Width(m.theme.StyleTabInactive.Render("Settings"))
+				settingsTabW := lipgloss.Width(m.theme.StyleTabInactive.Render("Config"))
 				totalTabsW := boardTabW + 1 + listTabW + 1 + settingsTabW // +1 for spaces
 				tabsStart := m.width - totalTabsW
 				x := mouse.X
@@ -709,7 +709,7 @@ func (m Model) renderHeader() string {
 
 	boardTab := renderTab("Board", common.ScreenBoard)
 	listTab := renderTab("List", common.ScreenList)
-	settingsTab := renderTab("Settings", common.ScreenSettings)
+	settingsTab := renderTab("Config", common.ScreenSettings)
 
 	tabs := lipgloss.JoinHorizontal(lipgloss.Top, boardTab, " ", listTab, " ", settingsTab)
 	spacerW := m.width - lipgloss.Width(title) - lipgloss.Width(tabs)

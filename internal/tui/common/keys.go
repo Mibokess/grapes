@@ -7,8 +7,9 @@ import (
 
 // GlobalKeys are available on every screen.
 type GlobalKeys struct {
-	Quit key.Binding
-	Help key.Binding
+	Quit     key.Binding
+	Help     key.Binding
+	Settings key.Binding
 }
 
 var GlobalKeyMap = GlobalKeys{
@@ -19,6 +20,10 @@ var GlobalKeyMap = GlobalKeys{
 	Help: key.NewBinding(
 		key.WithKeys("?"),
 		key.WithHelp("?", "help"),
+	),
+	Settings: key.NewBinding(
+		key.WithKeys("C"),
+		key.WithHelp("C", "config"),
 	),
 }
 
@@ -258,6 +263,7 @@ var SettingsKeyMap = SettingsKeys{
 // ApplyKeys updates all keybinding vars from a KeysConfig.
 func ApplyKeys(k config.KeysConfig) {
 	GlobalKeyMap.Quit = key.NewBinding(key.WithKeys(k.Quit, "ctrl+c"), key.WithHelp(k.Quit, "quit"))
+	GlobalKeyMap.Settings = key.NewBinding(key.WithKeys(k.Settings), key.WithHelp(k.Settings, "config"))
 
 	BoardKeyMap.Up = key.NewBinding(key.WithKeys(k.BoardUp, "up"), key.WithHelp(k.BoardUp+"/up", "up"))
 	BoardKeyMap.Down = key.NewBinding(key.WithKeys(k.BoardDown, "down"), key.WithHelp(k.BoardDown+"/down", "down"))
