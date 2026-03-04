@@ -67,8 +67,8 @@ func WorktreeIcon() string { return "⑂" }
 var T = NewTheme(true)
 
 // ApplyTheme rebuilds the global theme from user config overrides.
-func ApplyTheme(cfg config.ThemeConfig) {
-	T = NewThemeFromConfig(cfg)
+func ApplyTheme(cfg config.ThemeConfig, termIsDark bool) {
+	T = NewThemeFromConfig(cfg, termIsDark)
 }
 
 // ThemeMsg is sent when the terminal background is detected and the theme changes.
@@ -152,60 +152,65 @@ func NewTheme(isDark bool) Theme {
 	return t
 }
 
-// NewThemeFromConfig creates a dark theme overridden by user config values.
-func NewThemeFromConfig(cfg config.ThemeConfig) Theme {
-	t := NewTheme(true)
-	if cfg.Text != "" {
-		t.ColorText = lipgloss.Color(cfg.Text)
-	}
-	if cfg.Muted != "" {
-		t.ColorMuted = lipgloss.Color(cfg.Muted)
-	}
-	if cfg.Faint != "" {
-		t.ColorFaint = lipgloss.Color(cfg.Faint)
-	}
-	if cfg.Border != "" {
-		t.ColorBorder = lipgloss.Color(cfg.Border)
-	}
-	if cfg.Surface != "" {
-		t.ColorSurface = lipgloss.Color(cfg.Surface)
-	}
-	if cfg.Accent != "" {
-		t.ColorAccent = lipgloss.Color(cfg.Accent)
-	}
-	if cfg.AccentBg != "" {
-		t.ColorAccentBg = lipgloss.Color(cfg.AccentBg)
-	}
-	if cfg.ColorUrgent != "" {
-		t.ColorUrgent = lipgloss.Color(cfg.ColorUrgent)
-		t.ColorError = t.ColorUrgent
-	}
-	if cfg.ColorHigh != "" {
-		t.ColorHigh = lipgloss.Color(cfg.ColorHigh)
-	}
-	if cfg.ColorMedium != "" {
-		t.ColorMedium = lipgloss.Color(cfg.ColorMedium)
-	}
-	if cfg.ColorLow != "" {
-		t.ColorLow = lipgloss.Color(cfg.ColorLow)
-	}
-	if cfg.ColorBacklog != "" {
-		t.ColorBacklog = lipgloss.Color(cfg.ColorBacklog)
-	}
-	if cfg.ColorTodo != "" {
-		t.ColorTodo = lipgloss.Color(cfg.ColorTodo)
-	}
-	if cfg.ColorInProgress != "" {
-		t.ColorInProgress = lipgloss.Color(cfg.ColorInProgress)
-	}
-	if cfg.ColorDone != "" {
-		t.ColorDone = lipgloss.Color(cfg.ColorDone)
-	}
-	if cfg.ColorCancelled != "" {
-		t.ColorCancelled = lipgloss.Color(cfg.ColorCancelled)
-	}
+// NewThemeFromConfig creates a theme for the resolved mode, overridden by user config colors.
+func NewThemeFromConfig(cfg config.ThemeConfig, termIsDark bool) Theme {
+	isDark := cfg.EffectiveIsDark(termIsDark)
+	t := NewTheme(isDark)
+	applyColorOverrides(&t, cfg.ColorsFor(isDark))
 	t.buildStyles()
 	return t
+}
+
+func applyColorOverrides(t *Theme, c config.ColorSetConfig) {
+	if c.Text != "" {
+		t.ColorText = lipgloss.Color(c.Text)
+	}
+	if c.Muted != "" {
+		t.ColorMuted = lipgloss.Color(c.Muted)
+	}
+	if c.Faint != "" {
+		t.ColorFaint = lipgloss.Color(c.Faint)
+	}
+	if c.Border != "" {
+		t.ColorBorder = lipgloss.Color(c.Border)
+	}
+	if c.Surface != "" {
+		t.ColorSurface = lipgloss.Color(c.Surface)
+	}
+	if c.Accent != "" {
+		t.ColorAccent = lipgloss.Color(c.Accent)
+	}
+	if c.AccentBg != "" {
+		t.ColorAccentBg = lipgloss.Color(c.AccentBg)
+	}
+	if c.ColorUrgent != "" {
+		t.ColorUrgent = lipgloss.Color(c.ColorUrgent)
+		t.ColorError = t.ColorUrgent
+	}
+	if c.ColorHigh != "" {
+		t.ColorHigh = lipgloss.Color(c.ColorHigh)
+	}
+	if c.ColorMedium != "" {
+		t.ColorMedium = lipgloss.Color(c.ColorMedium)
+	}
+	if c.ColorLow != "" {
+		t.ColorLow = lipgloss.Color(c.ColorLow)
+	}
+	if c.ColorBacklog != "" {
+		t.ColorBacklog = lipgloss.Color(c.ColorBacklog)
+	}
+	if c.ColorTodo != "" {
+		t.ColorTodo = lipgloss.Color(c.ColorTodo)
+	}
+	if c.ColorInProgress != "" {
+		t.ColorInProgress = lipgloss.Color(c.ColorInProgress)
+	}
+	if c.ColorDone != "" {
+		t.ColorDone = lipgloss.Color(c.ColorDone)
+	}
+	if c.ColorCancelled != "" {
+		t.ColorCancelled = lipgloss.Color(c.ColorCancelled)
+	}
 }
 
 func (t *Theme) setDarkColors() {

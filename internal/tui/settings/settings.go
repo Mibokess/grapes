@@ -47,7 +47,8 @@ type Model struct {
 	cfg       config.Config
 	original  config.Config // snapshot for cancel
 	issuesDir string
-	theme     common.Theme
+	theme      common.Theme
+	termIsDark bool
 
 	categories []category
 	catIdx     int
@@ -78,6 +79,7 @@ func New(cfg config.Config, issuesDir string, w, h int, theme common.Theme) Mode
 		{
 			name: "Theme",
 			fields: []field{
+				{label: "Mode", cfgKey: "theme_mode", kind: fieldEnum, options: []string{"auto", "light", "dark"}},
 				{label: "Accent", cfgKey: "accent", kind: fieldColor},
 				{label: "Accent BG", cfgKey: "accent_bg", kind: fieldColor},
 				{label: "Border", cfgKey: "border", kind: fieldColor},
@@ -164,6 +166,12 @@ func (m Model) SetTopOffset(n int) Model {
 // SetTheme updates the theme used for rendering.
 func (m Model) SetTheme(t common.Theme) Model {
 	m.theme = t
+	return m
+}
+
+// SetDark updates the terminal dark/light detection flag.
+func (m Model) SetDark(isDark bool) Model {
+	m.termIsDark = isDark
 	return m
 }
 
@@ -282,7 +290,7 @@ func (m Model) updateEditing(msg tea.KeyPressMsg) (Model, tea.Cmd) {
 
 		// Live preview for theme colors — rebuild theme and send to app
 		if f.kind == fieldColor {
-			newTheme := common.NewThemeFromConfig(m.cfg.Theme)
+			newTheme := common.NewThemeFromConfig(m.cfg.Theme, m.termIsDark)
 			m.theme = newTheme
 			return m, func() tea.Msg {
 				return common.ThemeMsg{Theme: newTheme}
@@ -316,7 +324,7 @@ func (m Model) updateNavigating(msg tea.KeyPressMsg) (Model, tea.Cmd) {
 
 	case key.Matches(msg, common.SettingsKeyMap.Back):
 		// Cancel — restore original theme and go back
-		origTheme := common.NewThemeFromConfig(m.original.Theme)
+		origTheme := common.NewThemeFromConfig(m.original.Theme, m.termIsDark)
 		return m, tea.Batch(
 			func() tea.Msg { return common.ThemeMsg{Theme: origTheme} },
 			func() tea.Msg { return common.GoBackMsg{} },
@@ -372,10 +380,20 @@ func (m Model) updateNavigating(msg tea.KeyPressMsg) (Model, tea.Cmd) {
 				if opt == cur {
 					next := f.options[(i+1)%len(f.options)]
 					m.setFieldValue(f.cfgKey, next)
+					if f.cfgKey == "theme_mode" {
+						newTheme := common.NewThemeFromConfig(m.cfg.Theme, m.termIsDark)
+						m.theme = newTheme
+						return m, func() tea.Msg { return common.ThemeMsg{Theme: newTheme} }
+					}
 					return m, nil
 				}
 			}
 			m.setFieldValue(f.cfgKey, f.options[0])
+			if f.cfgKey == "theme_mode" {
+				newTheme := common.NewThemeFromConfig(m.cfg.Theme, m.termIsDark)
+				m.theme = newTheme
+				return m, func() tea.Msg { return common.ThemeMsg{Theme: newTheme} }
+			}
 			return m, nil
 		}
 		// Start inline editing
@@ -508,6 +526,10 @@ func (m Model) View() string {
 	return content
 }
 
+func (m Model) effectiveIsDark() bool {
+	return m.cfg.Theme.EffectiveIsDark(m.termIsDark)
+}
+
 // getFieldValue reads the current value for a config key.
 func (m Model) getFieldValue(cfgKey string) string {
 	switch cfgKey {
@@ -515,38 +537,15 @@ func (m Model) getFieldValue(cfgKey string) string {
 		return m.cfg.View.DefaultScreen
 	case "default_sort":
 		return m.cfg.View.DefaultSort
-	case "accent":
-		return m.cfg.Theme.Accent
-	case "accent_bg":
-		return m.cfg.Theme.AccentBg
-	case "border":
-		return m.cfg.Theme.Border
-	case "text":
-		return m.cfg.Theme.Text
-	case "muted":
-		return m.cfg.Theme.Muted
-	case "faint":
-		return m.cfg.Theme.Faint
-	case "surface":
-		return m.cfg.Theme.Surface
-	case "color_backlog":
-		return m.cfg.Theme.ColorBacklog
-	case "color_todo":
-		return m.cfg.Theme.ColorTodo
-	case "color_in_progress":
-		return m.cfg.Theme.ColorInProgress
-	case "color_done":
-		return m.cfg.Theme.ColorDone
-	case "color_cancelled":
-		return m.cfg.Theme.ColorCancelled
-	case "color_urgent":
-		return m.cfg.Theme.ColorUrgent
-	case "color_high":
-		return m.cfg.Theme.ColorHigh
-	case "color_medium":
-		return m.cfg.Theme.ColorMedium
-	case "color_low":
-		return m.cfg.Theme.ColorLow
+	case "theme_mode":
+		if m.cfg.Theme.Mode == "" {
+			return "auto"
+		}
+		return m.cfg.Theme.Mode
+	case "accent", "accent_bg", "border", "text", "muted", "faint", "surface",
+		"color_backlog", "color_todo", "color_in_progress", "color_done", "color_cancelled",
+		"color_urgent", "color_high", "color_medium", "color_low":
+		return getColorFromSet(m.cfg.Theme.ColorsFor(m.effectiveIsDark()), cfgKey)
 	case "quit":
 		return m.cfg.Keys.Quit
 	case "board_up":
@@ -620,38 +619,15 @@ func (m *Model) setFieldValue(cfgKey, val string) {
 		m.cfg.View.DefaultScreen = val
 	case "default_sort":
 		m.cfg.View.DefaultSort = val
-	case "accent":
-		m.cfg.Theme.Accent = val
-	case "accent_bg":
-		m.cfg.Theme.AccentBg = val
-	case "border":
-		m.cfg.Theme.Border = val
-	case "text":
-		m.cfg.Theme.Text = val
-	case "muted":
-		m.cfg.Theme.Muted = val
-	case "faint":
-		m.cfg.Theme.Faint = val
-	case "surface":
-		m.cfg.Theme.Surface = val
-	case "color_backlog":
-		m.cfg.Theme.ColorBacklog = val
-	case "color_todo":
-		m.cfg.Theme.ColorTodo = val
-	case "color_in_progress":
-		m.cfg.Theme.ColorInProgress = val
-	case "color_done":
-		m.cfg.Theme.ColorDone = val
-	case "color_cancelled":
-		m.cfg.Theme.ColorCancelled = val
-	case "color_urgent":
-		m.cfg.Theme.ColorUrgent = val
-	case "color_high":
-		m.cfg.Theme.ColorHigh = val
-	case "color_medium":
-		m.cfg.Theme.ColorMedium = val
-	case "color_low":
-		m.cfg.Theme.ColorLow = val
+	case "theme_mode":
+		m.cfg.Theme.Mode = val
+	case "accent", "accent_bg", "border", "text", "muted", "faint", "surface",
+		"color_backlog", "color_todo", "color_in_progress", "color_done", "color_cancelled",
+		"color_urgent", "color_high", "color_medium", "color_low":
+		isDark := m.effectiveIsDark()
+		colors := m.cfg.Theme.ColorsFor(isDark)
+		setColorOnSet(&colors, cfgKey, val)
+		m.cfg.Theme.SetColorsFor(isDark, colors)
 	case "quit":
 		m.cfg.Keys.Quit = val
 	case "board_up":
@@ -714,5 +690,80 @@ func (m *Model) setFieldValue(cfgKey, val string) {
 		m.cfg.Keys.DetailComment = val
 	case "detail_edit":
 		m.cfg.Keys.DetailEdit = val
+	}
+}
+
+func getColorFromSet(c config.ColorSetConfig, key string) string {
+	switch key {
+	case "accent":
+		return c.Accent
+	case "accent_bg":
+		return c.AccentBg
+	case "border":
+		return c.Border
+	case "text":
+		return c.Text
+	case "muted":
+		return c.Muted
+	case "faint":
+		return c.Faint
+	case "surface":
+		return c.Surface
+	case "color_backlog":
+		return c.ColorBacklog
+	case "color_todo":
+		return c.ColorTodo
+	case "color_in_progress":
+		return c.ColorInProgress
+	case "color_done":
+		return c.ColorDone
+	case "color_cancelled":
+		return c.ColorCancelled
+	case "color_urgent":
+		return c.ColorUrgent
+	case "color_high":
+		return c.ColorHigh
+	case "color_medium":
+		return c.ColorMedium
+	case "color_low":
+		return c.ColorLow
+	}
+	return ""
+}
+
+func setColorOnSet(c *config.ColorSetConfig, key, val string) {
+	switch key {
+	case "accent":
+		c.Accent = val
+	case "accent_bg":
+		c.AccentBg = val
+	case "border":
+		c.Border = val
+	case "text":
+		c.Text = val
+	case "muted":
+		c.Muted = val
+	case "faint":
+		c.Faint = val
+	case "surface":
+		c.Surface = val
+	case "color_backlog":
+		c.ColorBacklog = val
+	case "color_todo":
+		c.ColorTodo = val
+	case "color_in_progress":
+		c.ColorInProgress = val
+	case "color_done":
+		c.ColorDone = val
+	case "color_cancelled":
+		c.ColorCancelled = val
+	case "color_urgent":
+		c.ColorUrgent = val
+	case "color_high":
+		c.ColorHigh = val
+	case "color_medium":
+		c.ColorMedium = val
+	case "color_low":
+		c.ColorLow = val
 	}
 }
