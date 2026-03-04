@@ -1,6 +1,6 @@
-title = "Auto-close sub-issues when parent is set to done"
+title = 'Add theme presets using go.withmatt.com/themes'
 status = 'in_progress'
 priority = 'medium'
-labels = ['feature', 'tui', 'config']
+labels = ['feature', 'theme', 'settings']
 created = '2026-03-04T12:00'
-updated = '2026-03-04T12:00'
+updated = '2026-03-04T13:00'
