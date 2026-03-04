@@ -67,8 +67,8 @@ func WorktreeIcon() string { return "⑂" }
 var T = NewTheme(true)
 
 // ApplyTheme rebuilds the global theme from user config overrides.
-func ApplyTheme(cfg config.ThemeConfig) {
-	T = NewThemeFromConfig(cfg)
+func ApplyTheme(cfg config.ThemeConfig, isDark bool) {
+	T = NewThemeFromConfig(cfg, isDark)
 }
 
 // ThemeMsg is sent when the terminal background is detected and the theme changes.
@@ -152,9 +152,9 @@ func NewTheme(isDark bool) Theme {
 	return t
 }
 
-// NewThemeFromConfig creates a dark theme overridden by user config values.
-func NewThemeFromConfig(cfg config.ThemeConfig) Theme {
-	t := NewTheme(true)
+// NewThemeFromConfig creates a theme for the detected background overridden by user config values.
+func NewThemeFromConfig(cfg config.ThemeConfig, isDark bool) Theme {
+	t := NewTheme(isDark)
 	if cfg.Text != "" {
 		t.ColorText = lipgloss.Color(cfg.Text)
 	}

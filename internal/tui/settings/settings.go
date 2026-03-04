@@ -48,6 +48,7 @@ type Model struct {
 	original  config.Config // snapshot for cancel
 	issuesDir string
 	theme     common.Theme
+	isDark    bool
 
 	categories []category
 	catIdx     int
@@ -167,6 +168,12 @@ func (m Model) SetTheme(t common.Theme) Model {
 	return m
 }
 
+// SetDark updates the dark/light mode flag.
+func (m Model) SetDark(isDark bool) Model {
+	m.isDark = isDark
+	return m
+}
+
 func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyPressMsg:
@@ -282,7 +289,7 @@ func (m Model) updateEditing(msg tea.KeyPressMsg) (Model, tea.Cmd) {
 
 		// Live preview for theme colors — rebuild theme and send to app
 		if f.kind == fieldColor {
-			newTheme := common.NewThemeFromConfig(m.cfg.Theme)
+			newTheme := common.NewThemeFromConfig(m.cfg.Theme, m.isDark)
 			m.theme = newTheme
 			return m, func() tea.Msg {
 				return common.ThemeMsg{Theme: newTheme}
@@ -316,7 +323,7 @@ func (m Model) updateNavigating(msg tea.KeyPressMsg) (Model, tea.Cmd) {
 
 	case key.Matches(msg, common.SettingsKeyMap.Back):
 		// Cancel — restore original theme and go back
-		origTheme := common.NewThemeFromConfig(m.original.Theme)
+		origTheme := common.NewThemeFromConfig(m.original.Theme, m.isDark)
 		return m, tea.Batch(
 			func() tea.Msg { return common.ThemeMsg{Theme: origTheme} },
 			func() tea.Msg { return common.GoBackMsg{} },

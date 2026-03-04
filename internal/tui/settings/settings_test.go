@@ -12,7 +12,7 @@ import (
 
 func newTestModel() settings.Model {
 	cfg := config.Defaults()
-	theme := common.NewThemeFromConfig(cfg.Theme)
+	theme := common.NewThemeFromConfig(cfg.Theme, true)
 	return settings.New(cfg, "", 100, 30, theme).SetTopOffset(1)
 }
 
@@ -162,7 +162,7 @@ func TestMouseWheel_DoesNotScrollPastBounds(t *testing.T) {
 func TestClickCategory_WithOffset_Theme(t *testing.T) {
 	// Test with a larger topOffset to verify offset calculation
 	cfg := config.Defaults()
-	theme := common.NewThemeFromConfig(cfg.Theme)
+	theme := common.NewThemeFromConfig(cfg.Theme, true)
 	m := settings.New(cfg, "", 100, 30, theme).SetTopOffset(3)
 
 	// Theme is at category index 1 → y = topOffset(3) + padding(1) + 1 = 5
@@ -176,7 +176,7 @@ func TestClickCategory_WithOffset_Theme(t *testing.T) {
 
 func TestClickCategory_WithOffset_Keys(t *testing.T) {
 	cfg := config.Defaults()
-	theme := common.NewThemeFromConfig(cfg.Theme)
+	theme := common.NewThemeFromConfig(cfg.Theme, true)
 	m := settings.New(cfg, "", 100, 30, theme).SetTopOffset(3)
 
 	// Keys is at category index 2 → y = topOffset(3) + padding(1) + 2 = 6

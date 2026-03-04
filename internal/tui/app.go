@@ -48,6 +48,7 @@ type Model struct {
 	sortMode data.SortMode
 	sortAsc  bool // ascending order (reversed from default)
 	theme    common.Theme
+	isDark   bool
 
 	cfg    config.Config
 	board  board.Model
@@ -91,7 +92,7 @@ func NewModel(issues []data.Issue, issuesDir string, cfg config.Config) Model {
 	l := list.New(filtered)
 	l = l.SetSortState(sortMode, false)
 
-	theme := common.NewThemeFromConfig(cfg.Theme)
+	theme := common.NewThemeFromConfig(cfg.Theme, true) // dark default until BackgroundColorMsg arrives
 
 	// Apply configured default screen
 	screen := common.ScreenBoard
@@ -205,14 +206,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case tea.BackgroundColorMsg:
 		// Detect dark/light and apply config overrides on top
+		m.isDark = msg.IsDark()
 		if m.cfg.Theme != (config.ThemeConfig{}) {
-			m.theme = common.NewThemeFromConfig(m.cfg.Theme)
+			m.theme = common.NewThemeFromConfig(m.cfg.Theme, m.isDark)
 		} else {
-			m.theme = common.NewTheme(msg.IsDark())
+			m.theme = common.NewTheme(m.isDark)
 		}
 		m.board = m.board.SetTheme(m.theme)
 		m.list = m.list.SetTheme(m.theme)
 		m.detail = m.detail.SetTheme(m.theme)
+		m.settings = m.settings.SetDark(m.isDark)
 		return m, nil
 
 	case tea.KeyPressMsg:
@@ -334,7 +337,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case common.ConfigSavedMsg:
 		m.cfg = msg.Config
-		m.theme = common.NewThemeFromConfig(msg.Config.Theme)
+		m.theme = common.NewThemeFromConfig(msg.Config.Theme, m.isDark)
 		m.board = m.board.SetTheme(m.theme)
 		m.list = m.list.SetTheme(m.theme)
 		m.detail = m.detail.SetTheme(m.theme)
