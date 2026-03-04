@@ -227,6 +227,8 @@ var DetailKeyMap = DetailKeys{
 type SettingsKeys struct {
 	Up    key.Binding
 	Down  key.Binding
+	Left  key.Binding
+	Right key.Binding
 	Tab   key.Binding
 	Enter key.Binding
 	Save  key.Binding
@@ -241,6 +243,14 @@ var SettingsKeyMap = SettingsKeys{
 	Down: key.NewBinding(
 		key.WithKeys("j", "down"),
 		key.WithHelp("j/down", "down"),
+	),
+	Left: key.NewBinding(
+		key.WithKeys("h", "left"),
+		key.WithHelp("h/left", "back"),
+	),
+	Right: key.NewBinding(
+		key.WithKeys("l", "right"),
+		key.WithHelp("l/right", "enter"),
 	),
 	Tab: key.NewBinding(
 		key.WithKeys("tab"),
