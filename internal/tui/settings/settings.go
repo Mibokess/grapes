@@ -491,7 +491,7 @@ func (m Model) View() string {
 		maxLines = len(rightLines)
 	}
 	for len(leftLines) < maxLines {
-		leftLines = append(leftLines, strings.Repeat(" ", catW))
+		leftLines = append(leftLines, strings.Repeat(" ", catW-2))
 	}
 	for len(rightLines) < maxLines {
 		rightLines = append(rightLines, "")

@@ -2,20 +2,20 @@
   View           │  Mode           auto
   Theme          │  Accent         ██ #a371f7
   Keys           │  Accent BG      ██ #2d1b69
-                   │  Border         ██ #30363d
-                   │  Text           ██ #e6edf3
-                   │  Muted          ██ #8b949e
-                   │  Faint          ██ #484f58
-                   │  Surface        ██ #161b22
-                   │  Backlog        ██ #8b949e
-                   │  Todo           ██ #388bfd
-                   │  In Progress    ██ #d29922
-                   │  Done           ██ #3fb950
-                   │  Cancelled      ██ #6e7681
-                   │  Urgent         ██ #f85149
-                   │  High           ██ #d29922
-                   │  Medium         ██ #388bfd
-                   │  Low            ██ #6e7681
+                 │  Border         ██ #30363d
+                 │  Text           ██ #e6edf3
+                 │  Muted          ██ #8b949e
+                 │  Faint          ██ #484f58
+                 │  Surface        ██ #161b22
+                 │  Backlog        ██ #8b949e
+                 │  Todo           ██ #388bfd
+                 │  In Progress    ██ #d29922
+                 │  Done           ██ #3fb950
+                 │  Cancelled      ██ #6e7681
+                 │  Urgent         ██ #f85149
+                 │  High           ██ #d29922
+                 │  Medium         ██ #388bfd
+                 │  Low            ██ #6e7681
 
 
 
