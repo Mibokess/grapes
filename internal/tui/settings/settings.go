@@ -323,12 +323,30 @@ func (m Model) updateNavigating(msg tea.KeyPressMsg) (Model, tea.Cmd) {
 		}
 
 	case key.Matches(msg, common.SettingsKeyMap.Back):
+		if m.focus == paneFields {
+			// Step back to categories pane first
+			m.focus = paneCategories
+			return m, nil
+		}
 		// Cancel — restore original theme and go back
 		origTheme := common.NewThemeFromConfig(m.original.Theme, m.termIsDark)
 		return m, tea.Batch(
 			func() tea.Msg { return common.ThemeMsg{Theme: origTheme} },
 			func() tea.Msg { return common.GoBackMsg{} },
 		)
+
+	case key.Matches(msg, common.SettingsKeyMap.Right):
+		if m.focus == paneCategories {
+			m.focus = paneFields
+			m.fieldIdx = 0
+		}
+		return m, nil
+
+	case key.Matches(msg, common.SettingsKeyMap.Left):
+		if m.focus == paneFields {
+			m.focus = paneCategories
+		}
+		return m, nil
 
 	case key.Matches(msg, common.SettingsKeyMap.Tab):
 		if m.focus == paneCategories {
