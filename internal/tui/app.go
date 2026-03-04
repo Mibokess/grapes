@@ -37,6 +37,7 @@ type navEntry struct {
 }
 
 type Model struct {
+	version     string
 	issues      []data.Issue
 	issuesDir   string
 	projectRoot string
@@ -69,7 +70,7 @@ type Model struct {
 	editingMode    string // "comment" or "edit"
 }
 
-func NewModel(issues []data.Issue, issuesDir string, cfg config.Config) Model {
+func NewModel(issues []data.Issue, issuesDir string, cfg config.Config, version string) Model {
 	projectRoot := data.ProjectRoot(issuesDir)
 
 	w, _ := fsnotify.NewWatcher()
@@ -121,6 +122,7 @@ func NewModel(issues []data.Issue, issuesDir string, cfg config.Config) Model {
 	common.ApplyKeys(cfg.Keys)
 
 	return Model{
+		version:       version,
 		issues:        issues,
 		issuesDir:     issuesDir,
 		projectRoot:   projectRoot,
@@ -690,7 +692,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) renderHeader() string {
-	title := m.theme.StyleAppTitle.Render("grapes")
+	title := m.theme.StyleAppTitle.Render("grapes v" + m.version)
 
 	// Active tab follows the current screen; detail inherits from origin screen.
 	activeScreen := m.screen

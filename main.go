@@ -11,6 +11,8 @@ import (
 	tea "charm.land/bubbletea/v2"
 )
 
+var version = "0.1.2"
+
 func main() {
 	cwd, err := os.Getwd()
 	if err != nil {
@@ -48,7 +50,7 @@ func main() {
 	}
 
 	cfg := config.Load(issuesDir)
-	model := tui.NewModel(issues, issuesDir, cfg)
+	model := tui.NewModel(issues, issuesDir, cfg, version)
 	p := tea.NewProgram(model)
 
 	if _, err := p.Run(); err != nil {
