@@ -82,9 +82,8 @@ ls .grapes/ | sort -n | tail -1                    # latest issue ID
 ## Creating an Issue
 
 ```sh
-# Next ID is one above the highest existing folder
-next=$(( $(ls .grapes/ | sort -n | tail -1) + 1 ))
-mkdir .grapes/$next
+# Reserve the next ID (scans main + all worktrees, uses file locking)
+next=$(grapes next-id)
 
 cat > .grapes/$next/meta.toml << 'EOF'
 title = "My new issue"
