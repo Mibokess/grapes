@@ -271,7 +271,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				// Detect clicks on header tabs (Board / List / Settings)
 				boardTabW := lipgloss.Width(m.theme.StyleTabInactive.Render("Board"))
 				listTabW := lipgloss.Width(m.theme.StyleTabInactive.Render("List"))
-				settingsTabW := lipgloss.Width(m.theme.StyleTabInactive.Render(",Settings"))
+				settingsTabW := lipgloss.Width(m.theme.StyleTabInactive.Render("Settings"))
 				totalTabsW := boardTabW + 1 + listTabW + 1 + settingsTabW // +1 for spaces
 				tabsStart := m.width - totalTabsW
 				x := mouse.X
@@ -673,7 +673,7 @@ func (m Model) renderHeader() string {
 
 	boardTab := renderTab("Board", common.ScreenBoard)
 	listTab := renderTab("List", common.ScreenList)
-	settingsTab := renderTab(",Settings", common.ScreenSettings)
+	settingsTab := renderTab("Settings", common.ScreenSettings)
 
 	tabs := lipgloss.JoinHorizontal(lipgloss.Top, boardTab, " ", listTab, " ", settingsTab)
 	spacerW := m.width - lipgloss.Width(title) - lipgloss.Width(tabs)
