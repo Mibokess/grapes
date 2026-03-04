@@ -173,6 +173,23 @@ type Comment struct {
 	Body string `toml:"body"`
 }
 
+// IssueSource represents one copy of an issue from a specific location.
+type IssueSource struct {
+	Name      string    // "" for main, worktree name otherwise
+	Dir       string    // .grapes/ directory path
+	Mtime     time.Time // max mtime of meta.toml, content.md, comments.md
+	Title     string
+	Status    Status
+	Priority  Priority
+	Labels    []string
+	Parent    *int
+	BlockedBy []int
+	Created   time.Time
+	Updated   time.Time
+	Content   string
+	Comments  []Comment
+}
+
 type Issue struct {
 	ID        int
 	Title     string
@@ -189,4 +206,29 @@ type Issue struct {
 	Comments  []Comment
 	SourceDir string // .grapes/ directory this issue was loaded from
 	Worktree  string // worktree name (empty for main issues)
+
+	// Multi-source tracking
+	Sources      []IssueSource // all copies, sorted: main first, then alpha by name
+	ActiveSource int           // index into Sources for displayed version
+}
+
+// SwitchSource sets the active source by index and copies its fields onto the Issue.
+func (iss *Issue) SwitchSource(idx int) {
+	if idx < 0 || idx >= len(iss.Sources) {
+		return
+	}
+	iss.ActiveSource = idx
+	src := iss.Sources[idx]
+	iss.Title = src.Title
+	iss.Status = src.Status
+	iss.Priority = src.Priority
+	iss.Labels = src.Labels
+	iss.Parent = src.Parent
+	iss.BlockedBy = src.BlockedBy
+	iss.Created = src.Created
+	iss.Updated = src.Updated
+	iss.Content = src.Content
+	iss.Comments = src.Comments
+	iss.SourceDir = src.Dir
+	iss.Worktree = src.Name
 }

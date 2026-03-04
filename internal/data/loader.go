@@ -196,6 +196,7 @@ func FindWorktreeIssuesDirs(projectRoot string) map[string]string {
 
 // LoadWorktreeIssues loads issues from all worktree .grapes/ directories,
 // returning only issues whose IDs don't exist in mainIDs.
+// Deprecated: Use LoadAllSources instead for multi-source tracking.
 func LoadWorktreeIssues(projectRoot string, mainIDs map[int]bool) ([]Issue, error) {
 	worktrees := FindWorktreeIssuesDirs(projectRoot)
 	var all []Issue
@@ -216,6 +217,120 @@ func LoadWorktreeIssues(projectRoot string, mainIDs map[int]bool) ([]Issue, erro
 	}
 	sort.Slice(all, func(i, j int) bool { return all[i].ID < all[j].ID })
 	return all, nil
+}
+
+// computeIssueMtime returns the most recent mtime across meta.toml, content.md,
+// and comments.md for the given issue.
+func computeIssueMtime(dir string, id int) time.Time {
+	idStr := strconv.Itoa(id)
+	files := []string{"meta.toml", "content.md", "comments.md"}
+	var latest time.Time
+	for _, f := range files {
+		info, err := os.Stat(filepath.Join(dir, idStr, f))
+		if err == nil && info.ModTime().After(latest) {
+			latest = info.ModTime()
+		}
+	}
+	return latest
+}
+
+// issueToSource creates an IssueSource from an Issue and its source metadata.
+func issueToSource(iss Issue, name string, dir string, mtime time.Time) IssueSource {
+	return IssueSource{
+		Name:      name,
+		Dir:       dir,
+		Mtime:     mtime,
+		Title:     iss.Title,
+		Status:    iss.Status,
+		Priority:  iss.Priority,
+		Labels:    iss.Labels,
+		Parent:    iss.Parent,
+		BlockedBy: iss.BlockedBy,
+		Created:   iss.Created,
+		Updated:   iss.Updated,
+		Content:   iss.Content,
+		Comments:  iss.Comments,
+	}
+}
+
+// LoadAllSources loads issues from main and all worktree .grapes/ directories,
+// merging copies of the same issue ID into Sources. The active source is set to
+// the one with the most recent file mtime.
+func LoadAllSources(mainDir string, projectRoot string) ([]Issue, error) {
+	mainIssues, err := LoadAllIssues(mainDir)
+	if err != nil {
+		return nil, err
+	}
+
+	// Build map: issueID → *Issue with Sources populated
+	issueMap := make(map[int]*Issue)
+	for _, iss := range mainIssues {
+		mtime := computeIssueMtime(mainDir, iss.ID)
+		src := issueToSource(iss, "", mainDir, mtime)
+		issCopy := iss
+		issCopy.Sources = []IssueSource{src}
+		issCopy.SourceDir = mainDir
+		issueMap[iss.ID] = &issCopy
+	}
+
+	// Load all worktree issues
+	worktrees := FindWorktreeIssuesDirs(projectRoot)
+	var wtNames []string
+	for name := range worktrees {
+		wtNames = append(wtNames, name)
+	}
+	sort.Strings(wtNames)
+
+	for _, name := range wtNames {
+		dir := worktrees[name]
+		wtIssues, err := LoadAllIssues(dir)
+		if err != nil {
+			continue
+		}
+		for _, iss := range wtIssues {
+			mtime := computeIssueMtime(dir, iss.ID)
+			src := issueToSource(iss, name, dir, mtime)
+
+			if existing, ok := issueMap[iss.ID]; ok {
+				existing.Sources = append(existing.Sources, src)
+			} else {
+				issCopy := iss
+				issCopy.Worktree = name
+				issCopy.SourceDir = dir
+				issCopy.Sources = []IssueSource{src}
+				issueMap[iss.ID] = &issCopy
+			}
+		}
+	}
+
+	// For each issue, sort sources and pick the most recent as active
+	var result []Issue
+	for _, iss := range issueMap {
+		// Sort sources: main first, then alphabetical by worktree name
+		sort.SliceStable(iss.Sources, func(i, j int) bool {
+			if iss.Sources[i].Name == "" {
+				return true
+			}
+			if iss.Sources[j].Name == "" {
+				return false
+			}
+			return iss.Sources[i].Name < iss.Sources[j].Name
+		})
+
+		// Find most recent mtime and switch to it
+		bestIdx := 0
+		for i, s := range iss.Sources {
+			if s.Mtime.After(iss.Sources[bestIdx].Mtime) {
+				bestIdx = i
+			}
+		}
+		iss.SwitchSource(bestIdx)
+		result = append(result, *iss)
+	}
+
+	sort.Slice(result, func(i, j int) bool { return result[i].ID < result[j].ID })
+	RewireRelationships(result)
+	return result, nil
 }
 
 // RewireRelationships rebuilds Children and Blocks slices from all issues'

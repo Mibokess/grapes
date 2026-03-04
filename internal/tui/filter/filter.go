@@ -28,11 +28,28 @@ func (f FilterSet) Matches(issue data.Issue) bool {
 		return false
 	}
 	if len(f.Sources) > 0 {
-		src := issue.Worktree
-		if src == "" {
-			src = "main"
+		// Check if any source on the issue matches the filter
+		matched := false
+		if len(issue.Sources) > 0 {
+			for _, s := range issue.Sources {
+				src := s.Name
+				if src == "" {
+					src = "main"
+				}
+				if containsString(f.Sources, src) {
+					matched = true
+					break
+				}
+			}
+		} else {
+			// Fallback for issues without multi-source data
+			src := issue.Worktree
+			if src == "" {
+				src = "main"
+			}
+			matched = containsString(f.Sources, src)
 		}
-		if !containsString(f.Sources, src) {
+		if !matched {
 			return false
 		}
 	}

@@ -42,8 +42,15 @@ type Model struct {
 	scrollX      int // horizontal scroll offset for columns after the sticky ID
 	sortMode     data.SortMode
 	sortAsc      bool
-	topOffset    int // screen lines above this view's content (app header + filter bar)
-	theme        common.Theme
+	topOffset     int // screen lines above this view's content (app header + filter bar)
+	worktreeNames []string // sorted worktree names for consistent color assignment
+	theme         common.Theme
+}
+
+// SetWorktreeNames sets the sorted worktree names for color assignment.
+func (m Model) SetWorktreeNames(names []string) Model {
+	m.worktreeNames = names
+	return m
 }
 
 func (m Model) SetTheme(t common.Theme) Model {
@@ -509,8 +516,11 @@ func (m Model) buildTable(issues []data.Issue, width, height int) table.Model {
 		createdCell := formatDate(iss.Created)
 		updatedCell := formatDate(iss.Updated)
 		var sourceCell string
-		if iss.Worktree != "" {
-			sourceCell = m.theme.StyleWorktreeLabel.Render(common.WorktreeIcon() + " " + iss.Worktree)
+		if len(iss.Sources) > 1 {
+			sourceCell = m.theme.RenderSourceIndicators(iss.Sources, m.worktreeNames)
+		} else if iss.Worktree != "" {
+			c := m.theme.WorktreeColorFor(iss.Worktree, m.worktreeNames)
+			sourceCell = lipgloss.NewStyle().Foreground(c).Render(common.WorktreeIcon() + " " + iss.Worktree)
 		}
 		rows = append(rows, table.Row{
 			fmt.Sprintf("%d", iss.ID),

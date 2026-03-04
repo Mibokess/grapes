@@ -40,22 +40,11 @@ func main() {
 		os.Exit(runValidate(issuesDir, os.Args[2:]))
 	}
 
-	issues, err := data.LoadAllIssues(issuesDir)
+	projectRoot := data.ProjectRoot(issuesDir)
+	issues, err := data.LoadAllSources(issuesDir, projectRoot)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error loading issues: %v\n", err)
 		os.Exit(1)
-	}
-
-	// Load worktree-only issues (IDs not in main)
-	projectRoot := data.ProjectRoot(issuesDir)
-	mainIDs := make(map[int]bool)
-	for _, iss := range issues {
-		mainIDs[iss.ID] = true
-	}
-	wtIssues, _ := data.LoadWorktreeIssues(projectRoot, mainIDs)
-	if len(wtIssues) > 0 {
-		issues = append(issues, wtIssues...)
-		data.RewireRelationships(issues)
 	}
 
 	cfg := config.Load(issuesDir)

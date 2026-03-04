@@ -61,6 +61,8 @@ type Model struct {
 	filterPicker *filter.MultiPicker // non-nil when filter multi-picker is open
 	filters      filter.FilterSet    // structured filter state
 
+	worktreeNames []string // sorted worktree names, for consistent color indexing
+
 	statusMsg      string // transient error/info message for status bar
 	editingIssueID int    // issue ID for in-progress editor session
 	editingTmpPath string // temp file path for editor
@@ -89,6 +91,21 @@ func NewModel(issues []data.Issue, issuesDir string, cfg config.Config) Model {
 		}
 	}
 
+	// Collect sorted worktree names for consistent color assignment
+	wtSet := make(map[string]bool)
+	for _, iss := range issues {
+		for _, s := range iss.Sources {
+			if s.Name != "" {
+				wtSet[s.Name] = true
+			}
+		}
+	}
+	var wtNames []string
+	for n := range wtSet {
+		wtNames = append(wtNames, n)
+	}
+	sort.Strings(wtNames)
+
 	l := list.New(filtered)
 	l = l.SetSortState(sortMode, false)
 
@@ -104,17 +121,18 @@ func NewModel(issues []data.Issue, issuesDir string, cfg config.Config) Model {
 	common.ApplyKeys(cfg.Keys)
 
 	return Model{
-		issues:      issues,
-		issuesDir:   issuesDir,
-		projectRoot: projectRoot,
-		screen:      screen,
-		sortMode:    sortMode,
-		filters:     filters,
-		cfg:         cfg,
-		theme:       theme,
-		board:       board.New(filtered).SetTheme(theme),
-		list:        l.SetTheme(theme),
-		watcher:     w,
+		issues:        issues,
+		issuesDir:     issuesDir,
+		projectRoot:   projectRoot,
+		screen:        screen,
+		sortMode:      sortMode,
+		filters:       filters,
+		cfg:           cfg,
+		theme:         theme,
+		worktreeNames: wtNames,
+		board:         board.New(filtered).SetTheme(theme).SetWorktreeNames(wtNames),
+		list:          l.SetTheme(theme).SetWorktreeNames(wtNames),
+		watcher:       w,
 	}
 }
 
@@ -306,8 +324,20 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if iss != nil {
 			m.navStack = append(m.navStack, navEntry{screen: m.screen, detail: m.detail})
 			m.screen = common.ScreenDetail
-			m.detail = detail.New(*iss, m.issues, m.width, m.contentHeight(), m.theme).SetTopOffset(m.topOffset())
+			m.detail = detail.New(*iss, m.issues, m.width, m.contentHeight(), m.theme).SetTopOffset(m.topOffset()).SetWorktreeNames(m.worktreeNames)
 			return m, m.detail.Init()
+		}
+		return m, nil
+
+	case common.SwitchSourceMsg:
+		for i := range m.issues {
+			if m.issues[i].ID == msg.IssueID {
+				m.issues[i].SwitchSource(msg.SourceIdx)
+				if m.screen == common.ScreenDetail {
+					m.detail = detail.New(m.issues[i], m.issues, m.width, m.contentHeight(), m.theme).SetTopOffset(m.topOffset()).SetWorktreeNames(m.worktreeNames)
+				}
+				break
+			}
 		}
 		return m, nil
 
@@ -386,30 +416,36 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case common.RefreshMsg:
-		issues, err := data.LoadAllIssues(m.issuesDir)
+		issues, err := data.LoadAllSources(m.issuesDir, m.projectRoot)
 		if err != nil {
 			return m, m.watchCmd()
 		}
-		// Merge worktree-only issues
-		mainIDs := make(map[int]bool)
+		// Collect sorted worktree names for consistent color assignment
+		wtSet := make(map[string]bool)
 		for _, iss := range issues {
-			mainIDs[iss.ID] = true
+			for _, s := range iss.Sources {
+				if s.Name != "" {
+					wtSet[s.Name] = true
+				}
+			}
 		}
-		wtIssues, _ := data.LoadWorktreeIssues(m.projectRoot, mainIDs)
-		if len(wtIssues) > 0 {
-			issues = append(issues, wtIssues...)
-			data.RewireRelationships(issues)
+		var wtNames []string
+		for n := range wtSet {
+			wtNames = append(wtNames, n)
 		}
+		sort.Strings(wtNames)
+		m.worktreeNames = wtNames
+
 		data.SortIssues(issues, m.sortMode, m.sortAsc)
 		m.issues = issues
 		filtered := m.filteredIssues()
-		m.board = m.board.SetIssues(filtered)
-		m.list = m.list.SetIssues(filtered)
+		m.board = m.board.SetWorktreeNames(wtNames).SetIssues(filtered)
+		m.list = m.list.SetWorktreeNames(wtNames).SetIssues(filtered)
 		// Re-create detail view if it's showing, so changes are visible
 		if m.screen == common.ScreenDetail {
 			for _, iss := range issues {
 				if iss.ID == m.detail.IssueID() {
-					m.detail = detail.New(iss, issues, m.width, m.contentHeight(), m.theme).SetTopOffset(m.topOffset())
+					m.detail = detail.New(iss, m.issues, m.width, m.contentHeight(), m.theme).SetTopOffset(m.topOffset()).SetWorktreeNames(wtNames)
 					break
 				}
 			}
@@ -1009,26 +1045,30 @@ func (m Model) buildFilterPicker(field string) filter.MultiPicker {
 	case "source":
 		sourceSet := make(map[string]bool)
 		for _, iss := range m.issues {
-			if iss.Worktree == "" {
-				sourceSet["main"] = true
-			} else {
-				sourceSet[iss.Worktree] = true
+			for _, s := range iss.Sources {
+				if s.Name == "" {
+					sourceSet["main"] = true
+				} else {
+					sourceSet[s.Name] = true
+				}
 			}
 		}
 		var opts []filter.PickerOption
 		if sourceSet["main"] {
 			opts = append(opts, filter.PickerOption{
 				Value: "main",
-				Label: "main",
+				Label: common.MainIcon() + " main",
 				Style: m.theme.StyleSubtitle,
 			})
 		}
-		for name := range sourceSet {
-			if name != "main" && name != "" {
+		// Add worktrees in sorted order for consistent colors
+		for _, name := range m.worktreeNames {
+			if sourceSet[name] {
+				c := m.theme.WorktreeColorFor(name, m.worktreeNames)
 				opts = append(opts, filter.PickerOption{
 					Value: name,
 					Label: common.WorktreeIcon() + " " + name,
-					Style: m.theme.StyleWorktreeLabel,
+					Style: lipgloss.NewStyle().Foreground(c),
 				})
 			}
 		}
