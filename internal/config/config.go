@@ -11,6 +11,7 @@ import (
 type ViewConfig struct {
 	DefaultScreen string `toml:"default_screen"`
 	DefaultSort   string `toml:"default_sort"`
+	AutoCloseSubs bool   `toml:"auto_close_subs"`
 }
 
 // ColorSetConfig holds color overrides for one theme mode.

@@ -151,6 +151,45 @@ func (m Model) issueSourceDir(issueID int) string {
 	return m.issuesDir
 }
 
+// childUpdate holds info for cascading a status change to a child issue.
+type childUpdate struct {
+	dir string
+	id  int
+}
+
+// childStatusUpdates returns the list of child issues to cascade to "done"
+// when the given issue is being set to the given status. Returns nil if
+// auto-close is disabled or the new status is not "done".
+func (m Model) childStatusUpdates(issueID int, newStatus string) []childUpdate {
+	if !m.cfg.View.AutoCloseSubs || newStatus != string(data.StatusDone) {
+		return nil
+	}
+	var issue *data.Issue
+	for i := range m.issues {
+		if m.issues[i].ID == issueID {
+			issue = &m.issues[i]
+			break
+		}
+	}
+	if issue == nil || len(issue.Children) == 0 {
+		return nil
+	}
+	var updates []childUpdate
+	for _, childID := range issue.Children {
+		for _, iss := range m.issues {
+			if iss.ID == childID && iss.Status != data.StatusDone && iss.Status != data.StatusCancelled {
+				dir := iss.SourceDir
+				if dir == "" {
+					dir = m.issuesDir
+				}
+				updates = append(updates, childUpdate{dir: dir, id: childID})
+				break
+			}
+		}
+	}
+	return updates
+}
+
 // addWatchDirs watches the issues directory and all numeric subdirectories.
 func addWatchDirs(w *fsnotify.Watcher, issuesDir string) {
 	w.Add(issuesDir)
@@ -468,9 +507,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case common.MoveIssueMsg:
 		srcDir := m.issueSourceDir(msg.IssueID)
+		childUpdates := m.childStatusUpdates(msg.IssueID, string(msg.NewStatus))
 		return m, func() tea.Msg {
 			if err := data.UpdateField(srcDir, msg.IssueID, "status", string(msg.NewStatus)); err != nil {
 				return common.WriteErrMsg{Err: err}
+			}
+			for _, cu := range childUpdates {
+				data.UpdateField(cu.dir, cu.id, "status", "done")
 			}
 			return nil // fsnotify will trigger refresh
 		}
@@ -478,9 +521,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case common.PickerResultMsg:
 		m.picker = nil
 		srcDir := m.issueSourceDir(msg.IssueID)
+		childUpdates := m.childStatusUpdates(msg.IssueID, msg.Value)
 		return m, func() tea.Msg {
 			if err := data.UpdateField(srcDir, msg.IssueID, msg.Field, msg.Value); err != nil {
 				return common.WriteErrMsg{Err: err}
+			}
+			for _, cu := range childUpdates {
+				data.UpdateField(cu.dir, cu.id, "status", "done")
 			}
 			return nil // fsnotify will trigger refresh
 		}
