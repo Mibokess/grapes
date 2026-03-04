@@ -57,8 +57,9 @@ type Model struct {
 	input      textinput.Model
 	statusMsg  string
 
-	width  int
-	height int
+	width     int
+	height    int
+	topOffset int // screen lines above this view's content (app header + filter bar)
 }
 
 // New creates a new settings screen model.
@@ -154,6 +155,12 @@ func (m Model) SetSize(w, h int) Model {
 	return m
 }
 
+// SetTopOffset sets the number of screen lines above this view's content.
+func (m Model) SetTopOffset(n int) Model {
+	m.topOffset = n
+	return m
+}
+
 // SetTheme updates the theme used for rendering.
 func (m Model) SetTheme(t common.Theme) Model {
 	m.theme = t
@@ -167,6 +174,91 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 			return m.updateEditing(msg)
 		}
 		return m.updateNavigating(msg)
+
+	case tea.MouseClickMsg:
+		if msg.Button == tea.MouseLeft {
+			return m.handleMouseClick(msg.Mouse())
+		}
+
+	case tea.MouseWheelMsg:
+		if msg.Button == tea.MouseWheelUp {
+			if m.fieldIdx > 0 {
+				m.fieldIdx--
+			}
+		} else if msg.Button == tea.MouseWheelDown {
+			fields := m.categories[m.catIdx].fields
+			if m.fieldIdx < len(fields)-1 {
+				m.fieldIdx++
+			}
+		}
+		return m, nil
+	}
+	return m, nil
+}
+
+func (m Model) handleMouseClick(mouse tea.Mouse) (Model, tea.Cmd) {
+	if m.editing {
+		return m, nil
+	}
+
+	const catW = 18
+	// Mouse Y is absolute (0 = top of terminal). Subtract topOffset for
+	// the app header/filter bar, then 1 more for the view's own top padding line.
+	row := mouse.Y - m.topOffset - 1
+
+	if row < 0 {
+		return m, nil
+	}
+
+	sepX := catW // approximate separator x position
+
+	if mouse.X < sepX {
+		// Clicked in categories pane
+		if row >= 0 && row < len(m.categories) {
+			m.catIdx = row
+			m.fieldIdx = 0
+			m.focus = paneCategories
+		}
+	} else {
+		// Clicked in fields pane
+		fields := m.categories[m.catIdx].fields
+
+		// Account for scroll offset (same logic as View)
+		visibleH := m.height - 2
+		if visibleH < 1 {
+			visibleH = 1
+		}
+		scrollOffset := 0
+		if len(fields) > visibleH && m.fieldIdx >= visibleH {
+			scrollOffset = m.fieldIdx - visibleH + 1
+		}
+
+		idx := row + scrollOffset
+		if idx >= 0 && idx < len(fields) {
+			if m.focus == paneFields && m.fieldIdx == idx {
+				// Already selected — activate (same as pressing Enter)
+				f := fields[idx]
+				if f.kind == fieldEnum {
+					cur := m.getFieldValue(f.cfgKey)
+					for i, opt := range f.options {
+						if opt == cur {
+							next := f.options[(i+1)%len(f.options)]
+							m.setFieldValue(f.cfgKey, next)
+							return m, nil
+						}
+					}
+					m.setFieldValue(f.cfgKey, f.options[0])
+				} else {
+					m.editing = true
+					m.input.SetValue(m.getFieldValue(f.cfgKey))
+					m.input.Focus()
+					m.input.CursorEnd()
+				}
+			} else {
+				m.fieldIdx = idx
+				m.focus = paneFields
+			}
+		}
 	}
 	return m, nil
 }
