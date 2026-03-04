@@ -167,6 +167,94 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 			return m.updateEditing(msg)
 		}
 		return m.updateNavigating(msg)
+
+	case tea.MouseClickMsg:
+		if msg.Button == tea.MouseLeft {
+			return m.handleMouseClick(msg.Mouse())
+		}
+
+	case tea.MouseWheelMsg:
+		if msg.Button == tea.MouseWheelUp {
+			if m.fieldIdx > 0 {
+				m.fieldIdx--
+			}
+		} else if msg.Button == tea.MouseWheelDown {
+			fields := m.categories[m.catIdx].fields
+			if m.fieldIdx < len(fields)-1 {
+				m.fieldIdx++
+			}
+		}
+		return m, nil
+	}
+	return m, nil
+}
+
+func (m Model) handleMouseClick(mouse tea.Mouse) (Model, tea.Cmd) {
+	if m.editing {
+		return m, nil
+	}
+
+	const catW = 18
+	// View has 1 line of top padding, so content rows start at y offset 1
+	// relative to the settings content area. The app header is at y=0 in
+	// absolute coordinates; the settings view is rendered below it. Bubble
+	// Tea translates mouse coordinates so y=0 here is the first line of the
+	// settings view. Row 0 is the empty padding line, so content starts at 1.
+	row := mouse.Y - 1 // adjust for top padding line
+
+	if row < 0 {
+		return m, nil
+	}
+
+	sepX := catW // approximate separator x position
+
+	if mouse.X < sepX {
+		// Clicked in categories pane
+		if row >= 0 && row < len(m.categories) {
+			m.catIdx = row
+			m.fieldIdx = 0
+			m.focus = paneCategories
+		}
+	} else {
+		// Clicked in fields pane
+		fields := m.categories[m.catIdx].fields
+
+		// Account for scroll offset (same logic as View)
+		visibleH := m.height - 2
+		if visibleH < 1 {
+			visibleH = 1
+		}
+		scrollOffset := 0
+		if len(fields) > visibleH && m.fieldIdx >= visibleH {
+			scrollOffset = m.fieldIdx - visibleH + 1
+		}
+
+		idx := row + scrollOffset
+		if idx >= 0 && idx < len(fields) {
+			if m.focus == paneFields && m.fieldIdx == idx {
+				// Already selected — activate (same as pressing Enter)
+				f := fields[idx]
+				if f.kind == fieldEnum {
+					cur := m.getFieldValue(f.cfgKey)
+					for i, opt := range f.options {
+						if opt == cur {
+							next := f.options[(i+1)%len(f.options)]
+							m.setFieldValue(f.cfgKey, next)
+							return m, nil
+						}
+					}
+					m.setFieldValue(f.cfgKey, f.options[0])
+				} else {
+					m.editing = true
+					m.input.SetValue(m.getFieldValue(f.cfgKey))
+					m.input.Focus()
+					m.input.CursorEnd()
+				}
+			} else {
+				m.fieldIdx = idx
+				m.focus = paneFields
+			}
+		}
 	}
 	return m, nil
 }
