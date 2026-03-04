@@ -47,6 +47,7 @@ type Model struct {
 	cfg       config.Config
 	original  config.Config // snapshot for cancel
 	issuesDir string
+	theme     common.Theme
 
 	categories []category
 	catIdx     int
@@ -61,7 +62,7 @@ type Model struct {
 }
 
 // New creates a new settings screen model.
-func New(cfg config.Config, issuesDir string, w, h int) Model {
+func New(cfg config.Config, issuesDir string, w, h int, theme common.Theme) Model {
 	ti := textinput.New()
 	ti.CharLimit = 32
 
@@ -136,6 +137,7 @@ func New(cfg config.Config, issuesDir string, w, h int) Model {
 		cfg:        cfg,
 		original:   cfg,
 		issuesDir:  issuesDir,
+		theme:      theme,
 		categories: cats,
 		input:      ti,
 		width:      w,
@@ -149,6 +151,12 @@ func (m Model) Init() tea.Cmd { return nil }
 func (m Model) SetSize(w, h int) Model {
 	m.width = w
 	m.height = h
+	return m
+}
+
+// SetTheme updates the theme used for rendering.
+func (m Model) SetTheme(t common.Theme) Model {
+	m.theme = t
 	return m
 }
 
@@ -180,9 +188,13 @@ func (m Model) updateEditing(msg tea.KeyPressMsg) (Model, tea.Cmd) {
 		m.editing = false
 		m.statusMsg = ""
 
-		// Live preview for theme colors
+		// Live preview for theme colors — rebuild theme and send to app
 		if f.kind == fieldColor {
-			common.ApplyTheme(m.cfg.Theme)
+			newTheme := common.NewThemeFromConfig(m.cfg.Theme)
+			m.theme = newTheme
+			return m, func() tea.Msg {
+				return common.ThemeMsg{Theme: newTheme}
+			}
 		}
 		return m, nil
 
@@ -205,18 +217,18 @@ func (m Model) updateNavigating(msg tea.KeyPressMsg) (Model, tea.Cmd) {
 			m.statusMsg = "Save error: " + err.Error()
 			return m, nil
 		}
-		common.ApplyTheme(m.cfg.Theme)
 		common.ApplyKeys(m.cfg.Keys)
 		return m, func() tea.Msg {
 			return common.ConfigSavedMsg{Config: m.cfg}
 		}
 
 	case key.Matches(msg, common.SettingsKeyMap.Back):
-		// Cancel — restore original config
-		common.ApplyTheme(m.original.Theme)
-		return m, func() tea.Msg {
-			return common.GoBackMsg{}
-		}
+		// Cancel — restore original theme and go back
+		origTheme := common.NewThemeFromConfig(m.original.Theme)
+		return m, tea.Batch(
+			func() tea.Msg { return common.ThemeMsg{Theme: origTheme} },
+			func() tea.Msg { return common.GoBackMsg{} },
+		)
 
 	case key.Matches(msg, common.SettingsKeyMap.Tab):
 		if m.focus == paneCategories {
@@ -291,19 +303,19 @@ func (m Model) currentField() field {
 
 func (m Model) View() string {
 	catW := 18
-	sep := common.T.StyleFaint.Render("│")
+	sep := m.theme.StyleFaint.Render("│")
 
 	var leftLines []string
 	for i, cat := range m.categories {
 		line := fmt.Sprintf("  %-*s", catW-4, cat.name)
 		if i == m.catIdx {
 			if m.focus == paneCategories {
-				line = common.T.StyleSectionHeader.Render(line)
+				line = m.theme.StyleSectionHeader.Render(line)
 			} else {
-				line = common.T.StyleTitle.Render(line)
+				line = m.theme.StyleTitle.Render(line)
 			}
 		} else {
-			line = common.T.StyleSubtitle.Render(line)
+			line = m.theme.StyleSubtitle.Render(line)
 		}
 		leftLines = append(leftLines, line)
 	}
@@ -351,13 +363,13 @@ func (m Model) View() string {
 		}
 
 		if i == m.fieldIdx && m.focus == paneFields {
-			label = common.T.StyleTitle.Render(label)
+			label = m.theme.StyleTitle.Render(label)
 			if !m.editing {
-				valStr = common.T.StyleSectionHeader.Render(valStr)
+				valStr = m.theme.StyleSectionHeader.Render(valStr)
 			}
 		} else {
-			label = common.T.StyleSubtitle.Render(label)
-			valStr = common.T.StyleFaint.Render(valStr)
+			label = m.theme.StyleSubtitle.Render(label)
+			valStr = m.theme.StyleFaint.Render(valStr)
 		}
 
 		rightLines = append(rightLines, label+"  "+valStr)
@@ -388,7 +400,7 @@ func (m Model) View() string {
 
 	// Status message at bottom
 	if m.statusMsg != "" {
-		errStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#f85149"))
+		errStyle := lipgloss.NewStyle().Foreground(m.theme.ColorError)
 		lines = append(lines, "")
 		lines = append(lines, "  "+errStyle.Render(m.statusMsg))
 	}
@@ -407,12 +419,10 @@ func (m Model) View() string {
 // getFieldValue reads the current value for a config key.
 func (m Model) getFieldValue(cfgKey string) string {
 	switch cfgKey {
-	// View
 	case "default_screen":
 		return m.cfg.View.DefaultScreen
 	case "default_sort":
 		return m.cfg.View.DefaultSort
-	// Theme
 	case "accent":
 		return m.cfg.Theme.Accent
 	case "accent_bg":
@@ -445,7 +455,6 @@ func (m Model) getFieldValue(cfgKey string) string {
 		return m.cfg.Theme.ColorMedium
 	case "color_low":
 		return m.cfg.Theme.ColorLow
-	// Keys
 	case "quit":
 		return m.cfg.Keys.Quit
 	case "board_up":
@@ -515,12 +524,10 @@ func (m Model) getFieldValue(cfgKey string) string {
 // setFieldValue writes a value to the config for a given key.
 func (m *Model) setFieldValue(cfgKey, val string) {
 	switch cfgKey {
-	// View
 	case "default_screen":
 		m.cfg.View.DefaultScreen = val
 	case "default_sort":
 		m.cfg.View.DefaultSort = val
-	// Theme
 	case "accent":
 		m.cfg.Theme.Accent = val
 	case "accent_bg":
@@ -553,7 +560,6 @@ func (m *Model) setFieldValue(cfgKey, val string) {
 		m.cfg.Theme.ColorMedium = val
 	case "color_low":
 		m.cfg.Theme.ColorLow = val
-	// Keys
 	case "quit":
 		m.cfg.Keys.Quit = val
 	case "board_up":

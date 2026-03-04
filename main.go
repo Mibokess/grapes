@@ -5,6 +5,7 @@ import (
 	"os"
 	"strconv"
 
+	"github.com/Mibokess/grapes/internal/config"
 	"github.com/Mibokess/grapes/internal/data"
 	"github.com/Mibokess/grapes/internal/tui"
 	tea "charm.land/bubbletea/v2"
@@ -57,7 +58,8 @@ func main() {
 		data.RewireRelationships(issues)
 	}
 
-	model := tui.NewModel(issues, issuesDir)
+	cfg := config.Load(issuesDir)
+	model := tui.NewModel(issues, issuesDir, cfg)
 	p := tea.NewProgram(model)
 
 	if _, err := p.Run(); err != nil {

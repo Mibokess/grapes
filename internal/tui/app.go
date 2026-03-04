@@ -11,6 +11,7 @@ import (
 
 	"sort"
 
+	"github.com/Mibokess/grapes/internal/config"
 	"github.com/Mibokess/grapes/internal/data"
 	"github.com/Mibokess/grapes/internal/tui/board"
 	"github.com/Mibokess/grapes/internal/tui/common"
@@ -18,6 +19,7 @@ import (
 	"github.com/Mibokess/grapes/internal/tui/filter"
 	"github.com/Mibokess/grapes/internal/tui/list"
 	"github.com/Mibokess/grapes/internal/tui/picker"
+	"github.com/Mibokess/grapes/internal/tui/settings"
 	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
@@ -47,9 +49,11 @@ type Model struct {
 	sortAsc  bool // ascending order (reversed from default)
 	theme    common.Theme
 
+	cfg    config.Config
 	board  board.Model
 	list   list.Model
 	detail detail.Model
+	settings settings.Model
 
 	picker       *picker.Model       // non-nil when picker overlay is active
 	filterMenu   *filter.Menu        // non-nil when filter menu is open
@@ -62,7 +66,7 @@ type Model struct {
 	editingMode    string // "comment" or "edit"
 }
 
-func NewModel(issues []data.Issue, issuesDir string) Model {
+func NewModel(issues []data.Issue, issuesDir string, cfg config.Config) Model {
 	projectRoot := data.ProjectRoot(issuesDir)
 
 	w, _ := fsnotify.NewWatcher()
@@ -87,15 +91,25 @@ func NewModel(issues []data.Issue, issuesDir string) Model {
 	l := list.New(filtered)
 	l = l.SetSortState(sortMode, false)
 
-	theme := common.T
+	theme := common.NewThemeFromConfig(cfg.Theme)
+
+	// Apply configured default screen
+	screen := common.ScreenBoard
+	if cfg.View.DefaultScreen == "list" {
+		screen = common.ScreenList
+	}
+
+	// Apply configured keybindings
+	common.ApplyKeys(cfg.Keys)
 
 	return Model{
 		issues:      issues,
 		issuesDir:   issuesDir,
 		projectRoot: projectRoot,
-		screen:      common.ScreenBoard,
+		screen:      screen,
 		sortMode:    sortMode,
 		filters:     filters,
+		cfg:         cfg,
 		theme:       theme,
 		board:       board.New(filtered).SetTheme(theme),
 		list:        l.SetTheme(theme),
@@ -186,10 +200,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.board = m.board.SetTopOffset(off).SetSize(m.width, contentHeight)
 		m.list = m.list.SetTopOffset(off).SetSize(m.width, contentHeight)
 		m.detail = m.detail.SetTopOffset(off).SetSize(m.width, contentHeight)
+		m.settings = m.settings.SetSize(m.width, contentHeight)
 		return m, nil
 
 	case tea.BackgroundColorMsg:
-		m.theme = common.NewTheme(msg.IsDark())
+		// Detect dark/light and apply config overrides on top
+		if m.cfg.Theme != (config.ThemeConfig{}) {
+			m.theme = common.NewThemeFromConfig(m.cfg.Theme)
+		} else {
+			m.theme = common.NewTheme(msg.IsDark())
+		}
 		m.board = m.board.SetTheme(m.theme)
 		m.list = m.list.SetTheme(m.theme)
 		m.detail = m.detail.SetTheme(m.theme)
@@ -226,6 +246,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if key.Matches(msg, common.GlobalKeyMap.Quit) {
 			return m, tea.Quit
 		}
+		// Open settings with ","
+		if msg.String() == "," && m.screen != common.ScreenSettings {
+			m.settings = settings.New(m.cfg, m.issuesDir, m.width, m.contentHeight(), m.theme)
+			m.navStack = append(m.navStack, navEntry{screen: m.screen})
+			m.screen = common.ScreenSettings
+			return m, nil
+		}
 
 	case tea.MouseClickMsg, tea.MouseMotionMsg:
 		// When picker is active, route all mouse events to it
@@ -241,18 +268,29 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if click, ok := msg.(tea.MouseClickMsg); ok {
 			mouse := click.Mouse()
 			if click.Button == tea.MouseLeft && mouse.Y == 0 {
-				// Detect clicks on header tabs (Board / List)
+				// Detect clicks on header tabs (Board / List / Settings)
 				boardTabW := lipgloss.Width(m.theme.StyleTabInactive.Render("Board"))
 				listTabW := lipgloss.Width(m.theme.StyleTabInactive.Render("List"))
-				tabsStart := m.width - boardTabW - listTabW
-				if mouse.X >= tabsStart && mouse.X < tabsStart+boardTabW {
+				settingsTabW := lipgloss.Width(m.theme.StyleTabInactive.Render(",Settings"))
+				totalTabsW := boardTabW + 1 + listTabW + 1 + settingsTabW // +1 for spaces
+				tabsStart := m.width - totalTabsW
+				x := mouse.X
+				if x >= tabsStart && x < tabsStart+boardTabW {
 					m.navStack = nil
 					m.screen = common.ScreenBoard
 					return m, nil
 				}
-				if mouse.X >= tabsStart+boardTabW && mouse.X < m.width {
+				listStart := tabsStart + boardTabW + 1
+				if x >= listStart && x < listStart+listTabW {
 					m.navStack = nil
 					m.screen = common.ScreenList
+					return m, nil
+				}
+				settingsStart := listStart + listTabW + 1
+				if x >= settingsStart && x < settingsStart+settingsTabW {
+					m.settings = settings.New(m.cfg, m.issuesDir, m.width, m.contentHeight(), m.theme)
+					m.navStack = append(m.navStack, navEntry{screen: m.screen})
+					m.screen = common.ScreenSettings
 					return m, nil
 				}
 			}
@@ -292,6 +330,31 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case common.SwitchScreenMsg:
 		m.navStack = nil
 		m.screen = msg.Screen
+		return m, nil
+
+	case common.ConfigSavedMsg:
+		m.cfg = msg.Config
+		m.theme = common.NewThemeFromConfig(msg.Config.Theme)
+		m.board = m.board.SetTheme(m.theme)
+		m.list = m.list.SetTheme(m.theme)
+		m.detail = m.detail.SetTheme(m.theme)
+		common.ApplyKeys(msg.Config.Keys)
+		// Go back to previous screen
+		if len(m.navStack) > 0 {
+			top := m.navStack[len(m.navStack)-1]
+			m.navStack = m.navStack[:len(m.navStack)-1]
+			m.screen = top.screen
+		} else {
+			m.screen = common.ScreenBoard
+		}
+		return m, nil
+
+	case common.ThemeMsg:
+		m.theme = msg.Theme
+		m.board = m.board.SetTheme(m.theme)
+		m.list = m.list.SetTheme(m.theme)
+		m.detail = m.detail.SetTheme(m.theme)
+		m.settings = m.settings.SetTheme(m.theme)
 		return m, nil
 
 	case common.CycleSortMsg:
@@ -586,6 +649,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.list, cmd = m.list.Update(msg)
 	case common.ScreenDetail:
 		m.detail, cmd = m.detail.Update(msg)
+	case common.ScreenSettings:
+		m.settings, cmd = m.settings.Update(msg)
 	}
 	return m, cmd
 }
@@ -599,19 +664,18 @@ func (m Model) renderHeader() string {
 		activeScreen = m.originScreen()
 	}
 
-	var boardTab, listTab string
-	if activeScreen == common.ScreenBoard {
-		boardTab = m.theme.StyleTabActive.Render("Board")
-	} else {
-		boardTab = m.theme.StyleTabInactive.Render("Board")
-	}
-	if activeScreen == common.ScreenList {
-		listTab = m.theme.StyleTabActive.Render("List")
-	} else {
-		listTab = m.theme.StyleTabInactive.Render("List")
+	renderTab := func(label string, screen common.Screen) string {
+		if activeScreen == screen {
+			return m.theme.StyleTabActive.Render(label)
+		}
+		return m.theme.StyleTabInactive.Render(label)
 	}
 
-	tabs := lipgloss.JoinHorizontal(lipgloss.Top, boardTab, " ", listTab)
+	boardTab := renderTab("Board", common.ScreenBoard)
+	listTab := renderTab("List", common.ScreenList)
+	settingsTab := renderTab(",Settings", common.ScreenSettings)
+
+	tabs := lipgloss.JoinHorizontal(lipgloss.Top, boardTab, " ", listTab, " ", settingsTab)
 	spacerW := m.width - lipgloss.Width(title) - lipgloss.Width(tabs)
 	if spacerW < 0 {
 		spacerW = 0
@@ -690,6 +754,15 @@ func (m Model) View() tea.View {
 			m.theme.FormatKeyHint("c", "comment"),
 			m.theme.FormatKeyHint("esc", "back"),
 			m.theme.FormatKeyHint("q", "quit"),
+		}
+	case common.ScreenSettings:
+		content = m.settings.View()
+		helpParts = []string{
+			m.theme.FormatKeyHint("jk", "navigate"),
+			m.theme.FormatKeyHint("tab", "pane"),
+			m.theme.FormatKeyHint("enter", "edit"),
+			m.theme.FormatKeyHint("ctrl+s", "save"),
+			m.theme.FormatKeyHint("esc", "back"),
 		}
 	}
 
