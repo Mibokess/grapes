@@ -200,7 +200,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.board = m.board.SetTopOffset(off).SetSize(m.width, contentHeight)
 		m.list = m.list.SetTopOffset(off).SetSize(m.width, contentHeight)
 		m.detail = m.detail.SetTopOffset(off).SetSize(m.width, contentHeight)
-		m.settings = m.settings.SetSize(m.width, contentHeight)
+		m.settings = m.settings.SetTopOffset(off).SetSize(m.width, contentHeight)
 		return m, nil
 
 	case tea.BackgroundColorMsg:
@@ -248,7 +248,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		// Open settings with ","
 		if msg.String() == "," && m.screen != common.ScreenSettings {
-			m.settings = settings.New(m.cfg, m.issuesDir, m.width, m.contentHeight(), m.theme)
+			m.settings = settings.New(m.cfg, m.issuesDir, m.width, m.contentHeight(), m.theme).SetTopOffset(m.topOffset())
 			m.navStack = append(m.navStack, navEntry{screen: m.screen})
 			m.screen = common.ScreenSettings
 			return m, nil
@@ -288,7 +288,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				settingsStart := listStart + listTabW + 1
 				if x >= settingsStart && x < settingsStart+settingsTabW {
-					m.settings = settings.New(m.cfg, m.issuesDir, m.width, m.contentHeight(), m.theme)
+					m.settings = settings.New(m.cfg, m.issuesDir, m.width, m.contentHeight(), m.theme).SetTopOffset(m.topOffset())
 					m.navStack = append(m.navStack, navEntry{screen: m.screen})
 					m.screen = common.ScreenSettings
 					return m, nil

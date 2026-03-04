@@ -57,8 +57,9 @@ type Model struct {
 	input      textinput.Model
 	statusMsg  string
 
-	width  int
-	height int
+	width     int
+	height    int
+	topOffset int // screen lines above this view's content (app header + filter bar)
 }
 
 // New creates a new settings screen model.
@@ -154,6 +155,12 @@ func (m Model) SetSize(w, h int) Model {
 	return m
 }
 
+// SetTopOffset sets the number of screen lines above this view's content.
+func (m Model) SetTopOffset(n int) Model {
+	m.topOffset = n
+	return m
+}
+
 // SetTheme updates the theme used for rendering.
 func (m Model) SetTheme(t common.Theme) Model {
 	m.theme = t
@@ -195,12 +202,9 @@ func (m Model) handleMouseClick(mouse tea.Mouse) (Model, tea.Cmd) {
 	}
 
 	const catW = 18
-	// View has 1 line of top padding, so content rows start at y offset 1
-	// relative to the settings content area. The app header is at y=0 in
-	// absolute coordinates; the settings view is rendered below it. Bubble
-	// Tea translates mouse coordinates so y=0 here is the first line of the
-	// settings view. Row 0 is the empty padding line, so content starts at 1.
-	row := mouse.Y - 1 // adjust for top padding line
+	// Mouse Y is absolute (0 = top of terminal). Subtract topOffset for
+	// the app header/filter bar, then 1 more for the view's own top padding line.
+	row := mouse.Y - m.topOffset - 1
 
 	if row < 0 {
 		return m, nil
