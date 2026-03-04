@@ -1,5 +1,5 @@
 # Go binary
-grapes
+/grapes
 
 # Go build/test artifacts
 *.exe
