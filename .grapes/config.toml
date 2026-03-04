@@ -1,5 +1,5 @@
 [view]
-default_screen = 'list'
+default_screen = 'board'
 default_sort = 'priority'
 
 [theme]
