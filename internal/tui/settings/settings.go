@@ -1,0 +1,620 @@
+package settings
+
+import (
+	"fmt"
+	"regexp"
+	"strings"
+
+	"github.com/Mibokess/grapes/internal/config"
+	"github.com/Mibokess/grapes/internal/tui/common"
+	"charm.land/bubbles/v2/key"
+	"charm.land/bubbles/v2/textinput"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
+)
+
+var hexColorRe = regexp.MustCompile(`^#[0-9a-fA-F]{6}$`)
+
+type pane int
+
+const (
+	paneCategories pane = iota
+	paneFields
+)
+
+type fieldKind int
+
+const (
+	fieldEnum fieldKind = iota
+	fieldColor
+	fieldKey
+)
+
+type field struct {
+	label   string
+	cfgKey  string   // key used to get/set on Config
+	kind    fieldKind
+	options []string // for enum fields
+}
+
+type category struct {
+	name   string
+	fields []field
+}
+
+// Model is the settings screen model.
+type Model struct {
+	cfg       config.Config
+	original  config.Config // snapshot for cancel
+	issuesDir string
+
+	categories []category
+	catIdx     int
+	fieldIdx   int
+	focus      pane
+	editing    bool
+	input      textinput.Model
+	statusMsg  string
+
+	width  int
+	height int
+}
+
+// New creates a new settings screen model.
+func New(cfg config.Config, issuesDir string, w, h int) Model {
+	ti := textinput.New()
+	ti.CharLimit = 32
+
+	cats := []category{
+		{
+			name: "View",
+			fields: []field{
+				{label: "Default screen", cfgKey: "default_screen", kind: fieldEnum, options: []string{"board", "list"}},
+				{label: "Default sort", cfgKey: "default_sort", kind: fieldEnum, options: []string{"priority", "updated", "created", "id", "title", "status"}},
+			},
+		},
+		{
+			name: "Theme",
+			fields: []field{
+				{label: "Accent", cfgKey: "accent", kind: fieldColor},
+				{label: "Accent BG", cfgKey: "accent_bg", kind: fieldColor},
+				{label: "Border", cfgKey: "border", kind: fieldColor},
+				{label: "Text", cfgKey: "text", kind: fieldColor},
+				{label: "Muted", cfgKey: "muted", kind: fieldColor},
+				{label: "Faint", cfgKey: "faint", kind: fieldColor},
+				{label: "Surface", cfgKey: "surface", kind: fieldColor},
+				{label: "Backlog", cfgKey: "color_backlog", kind: fieldColor},
+				{label: "Todo", cfgKey: "color_todo", kind: fieldColor},
+				{label: "In Progress", cfgKey: "color_in_progress", kind: fieldColor},
+				{label: "Done", cfgKey: "color_done", kind: fieldColor},
+				{label: "Cancelled", cfgKey: "color_cancelled", kind: fieldColor},
+				{label: "Urgent", cfgKey: "color_urgent", kind: fieldColor},
+				{label: "High", cfgKey: "color_high", kind: fieldColor},
+				{label: "Medium", cfgKey: "color_medium", kind: fieldColor},
+				{label: "Low", cfgKey: "color_low", kind: fieldColor},
+			},
+		},
+		{
+			name: "Keys",
+			fields: []field{
+				{label: "Quit", cfgKey: "quit", kind: fieldKey},
+				{label: "Board: Up", cfgKey: "board_up", kind: fieldKey},
+				{label: "Board: Down", cfgKey: "board_down", kind: fieldKey},
+				{label: "Board: Left", cfgKey: "board_left", kind: fieldKey},
+				{label: "Board: Right", cfgKey: "board_right", kind: fieldKey},
+				{label: "Board: Open", cfgKey: "board_open", kind: fieldKey},
+				{label: "Board: Edit", cfgKey: "board_edit", kind: fieldKey},
+				{label: "Board: To list", cfgKey: "board_to_list", kind: fieldKey},
+				{label: "Board: Filter", cfgKey: "board_filter", kind: fieldKey},
+				{label: "Board: Status", cfgKey: "board_status", kind: fieldKey},
+				{label: "Board: Priority", cfgKey: "board_priority", kind: fieldKey},
+				{label: "Board: Sort", cfgKey: "board_sort", kind: fieldKey},
+				{label: "Board: Reverse", cfgKey: "board_reverse", kind: fieldKey},
+				{label: "List: Up", cfgKey: "list_up", kind: fieldKey},
+				{label: "List: Down", cfgKey: "list_down", kind: fieldKey},
+				{label: "List: Open", cfgKey: "list_open", kind: fieldKey},
+				{label: "List: Edit", cfgKey: "list_edit", kind: fieldKey},
+				{label: "List: To board", cfgKey: "list_to_board", kind: fieldKey},
+				{label: "List: Search", cfgKey: "list_search", kind: fieldKey},
+				{label: "List: Filter", cfgKey: "list_filter", kind: fieldKey},
+				{label: "List: Status", cfgKey: "list_status", kind: fieldKey},
+				{label: "List: Priority", cfgKey: "list_priority", kind: fieldKey},
+				{label: "List: Sort", cfgKey: "list_sort", kind: fieldKey},
+				{label: "List: Reverse", cfgKey: "list_reverse", kind: fieldKey},
+				{label: "Detail: Back", cfgKey: "detail_back", kind: fieldKey},
+				{label: "Detail: To board", cfgKey: "detail_to_board", kind: fieldKey},
+				{label: "Detail: To list", cfgKey: "detail_to_list", kind: fieldKey},
+				{label: "Detail: Status", cfgKey: "detail_status", kind: fieldKey},
+				{label: "Detail: Priority", cfgKey: "detail_priority", kind: fieldKey},
+				{label: "Detail: Comment", cfgKey: "detail_comment", kind: fieldKey},
+				{label: "Detail: Edit", cfgKey: "detail_edit", kind: fieldKey},
+			},
+		},
+	}
+
+	return Model{
+		cfg:        cfg,
+		original:   cfg,
+		issuesDir:  issuesDir,
+		categories: cats,
+		input:      ti,
+		width:      w,
+		height:     h,
+	}
+}
+
+func (m Model) Init() tea.Cmd { return nil }
+
+// SetSize updates the viewport dimensions.
+func (m Model) SetSize(w, h int) Model {
+	m.width = w
+	m.height = h
+	return m
+}
+
+func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
+	switch msg := msg.(type) {
+	case tea.KeyPressMsg:
+		if m.editing {
+			return m.updateEditing(msg)
+		}
+		return m.updateNavigating(msg)
+	}
+	return m, nil
+}
+
+func (m Model) updateEditing(msg tea.KeyPressMsg) (Model, tea.Cmd) {
+	f := m.currentField()
+
+	switch {
+	case key.Matches(msg, key.NewBinding(key.WithKeys("enter"))):
+		val := m.input.Value()
+
+		// Validate color fields
+		if f.kind == fieldColor && !hexColorRe.MatchString(val) {
+			m.statusMsg = "Invalid hex color (use #RRGGBB)"
+			return m, nil
+		}
+
+		m.setFieldValue(f.cfgKey, val)
+		m.editing = false
+		m.statusMsg = ""
+
+		// Live preview for theme colors
+		if f.kind == fieldColor {
+			common.ApplyTheme(m.cfg.Theme)
+		}
+		return m, nil
+
+	case key.Matches(msg, key.NewBinding(key.WithKeys("esc"))):
+		m.editing = false
+		m.statusMsg = ""
+		return m, nil
+	}
+
+	var cmd tea.Cmd
+	m.input, cmd = m.input.Update(msg)
+	return m, cmd
+}
+
+func (m Model) updateNavigating(msg tea.KeyPressMsg) (Model, tea.Cmd) {
+	switch {
+	case key.Matches(msg, common.SettingsKeyMap.Save):
+		// Save and go back
+		if err := config.Save(m.issuesDir, m.cfg); err != nil {
+			m.statusMsg = "Save error: " + err.Error()
+			return m, nil
+		}
+		common.ApplyTheme(m.cfg.Theme)
+		common.ApplyKeys(m.cfg.Keys)
+		return m, func() tea.Msg {
+			return common.ConfigSavedMsg{Config: m.cfg}
+		}
+
+	case key.Matches(msg, common.SettingsKeyMap.Back):
+		// Cancel — restore original config
+		common.ApplyTheme(m.original.Theme)
+		return m, func() tea.Msg {
+			return common.GoBackMsg{}
+		}
+
+	case key.Matches(msg, common.SettingsKeyMap.Tab):
+		if m.focus == paneCategories {
+			m.focus = paneFields
+		} else {
+			m.focus = paneCategories
+		}
+		m.fieldIdx = 0
+		return m, nil
+
+	case key.Matches(msg, common.SettingsKeyMap.Up):
+		if m.focus == paneCategories {
+			if m.catIdx > 0 {
+				m.catIdx--
+				m.fieldIdx = 0
+			}
+		} else {
+			if m.fieldIdx > 0 {
+				m.fieldIdx--
+			}
+		}
+		return m, nil
+
+	case key.Matches(msg, common.SettingsKeyMap.Down):
+		if m.focus == paneCategories {
+			if m.catIdx < len(m.categories)-1 {
+				m.catIdx++
+				m.fieldIdx = 0
+			}
+		} else {
+			fields := m.categories[m.catIdx].fields
+			if m.fieldIdx < len(fields)-1 {
+				m.fieldIdx++
+			}
+		}
+		return m, nil
+
+	case key.Matches(msg, common.SettingsKeyMap.Enter):
+		if m.focus == paneCategories {
+			m.focus = paneFields
+			m.fieldIdx = 0
+			return m, nil
+		}
+		f := m.currentField()
+		if f.kind == fieldEnum {
+			// Cycle through options
+			cur := m.getFieldValue(f.cfgKey)
+			for i, opt := range f.options {
+				if opt == cur {
+					next := f.options[(i+1)%len(f.options)]
+					m.setFieldValue(f.cfgKey, next)
+					return m, nil
+				}
+			}
+			m.setFieldValue(f.cfgKey, f.options[0])
+			return m, nil
+		}
+		// Start inline editing
+		m.editing = true
+		m.input.SetValue(m.getFieldValue(f.cfgKey))
+		m.input.Focus()
+		m.input.CursorEnd()
+		return m, nil
+	}
+
+	return m, nil
+}
+
+func (m Model) currentField() field {
+	return m.categories[m.catIdx].fields[m.fieldIdx]
+}
+
+func (m Model) View() string {
+	catW := 18
+	sep := common.T.StyleFaint.Render("│")
+
+	var leftLines []string
+	for i, cat := range m.categories {
+		line := fmt.Sprintf("  %-*s", catW-4, cat.name)
+		if i == m.catIdx {
+			if m.focus == paneCategories {
+				line = common.T.StyleSectionHeader.Render(line)
+			} else {
+				line = common.T.StyleTitle.Render(line)
+			}
+		} else {
+			line = common.T.StyleSubtitle.Render(line)
+		}
+		leftLines = append(leftLines, line)
+	}
+
+	fields := m.categories[m.catIdx].fields
+	labelW := 0
+	for _, f := range fields {
+		if len(f.label) > labelW {
+			labelW = len(f.label)
+		}
+	}
+
+	// Scrolling: if there are more fields than fit in the visible area,
+	// scroll to keep the selected field visible
+	visibleH := m.height - 2 // leave room for padding
+	if visibleH < 1 {
+		visibleH = 1
+	}
+	scrollOffset := 0
+	if len(fields) > visibleH {
+		if m.fieldIdx >= visibleH {
+			scrollOffset = m.fieldIdx - visibleH + 1
+		}
+	}
+
+	var rightLines []string
+	for i := scrollOffset; i < len(fields) && i < scrollOffset+visibleH; i++ {
+		f := fields[i]
+		val := m.getFieldValue(f.cfgKey)
+		label := fmt.Sprintf(" %-*s", labelW+2, f.label)
+
+		var valStr string
+		if m.editing && m.focus == paneFields && i == m.fieldIdx {
+			valStr = m.input.View()
+		} else {
+			switch f.kind {
+			case fieldColor:
+				swatch := lipgloss.NewStyle().Foreground(lipgloss.Color(val)).Render("██")
+				valStr = swatch + " " + val
+			case fieldEnum:
+				valStr = val
+			case fieldKey:
+				valStr = val
+			}
+		}
+
+		if i == m.fieldIdx && m.focus == paneFields {
+			label = common.T.StyleTitle.Render(label)
+			if !m.editing {
+				valStr = common.T.StyleSectionHeader.Render(valStr)
+			}
+		} else {
+			label = common.T.StyleSubtitle.Render(label)
+			valStr = common.T.StyleFaint.Render(valStr)
+		}
+
+		rightLines = append(rightLines, label+"  "+valStr)
+	}
+
+	// Pad shorter column
+	maxLines := len(leftLines)
+	if len(rightLines) > maxLines {
+		maxLines = len(rightLines)
+	}
+	for len(leftLines) < maxLines {
+		leftLines = append(leftLines, strings.Repeat(" ", catW))
+	}
+	for len(rightLines) < maxLines {
+		rightLines = append(rightLines, "")
+	}
+
+	var lines []string
+	lines = append(lines, "") // top padding
+	for i := 0; i < maxLines; i++ {
+		left := leftLines[i]
+		right := ""
+		if i < len(rightLines) {
+			right = rightLines[i]
+		}
+		lines = append(lines, left+" "+sep+" "+right)
+	}
+
+	// Status message at bottom
+	if m.statusMsg != "" {
+		errStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#f85149"))
+		lines = append(lines, "")
+		lines = append(lines, "  "+errStyle.Render(m.statusMsg))
+	}
+
+	content := strings.Join(lines, "\n")
+
+	// Pad to fill height
+	contentLines := strings.Count(content, "\n") + 1
+	if contentLines < m.height {
+		content += strings.Repeat("\n", m.height-contentLines)
+	}
+
+	return content
+}
+
+// getFieldValue reads the current value for a config key.
+func (m Model) getFieldValue(cfgKey string) string {
+	switch cfgKey {
+	// View
+	case "default_screen":
+		return m.cfg.View.DefaultScreen
+	case "default_sort":
+		return m.cfg.View.DefaultSort
+	// Theme
+	case "accent":
+		return m.cfg.Theme.Accent
+	case "accent_bg":
+		return m.cfg.Theme.AccentBg
+	case "border":
+		return m.cfg.Theme.Border
+	case "text":
+		return m.cfg.Theme.Text
+	case "muted":
+		return m.cfg.Theme.Muted
+	case "faint":
+		return m.cfg.Theme.Faint
+	case "surface":
+		return m.cfg.Theme.Surface
+	case "color_backlog":
+		return m.cfg.Theme.ColorBacklog
+	case "color_todo":
+		return m.cfg.Theme.ColorTodo
+	case "color_in_progress":
+		return m.cfg.Theme.ColorInProgress
+	case "color_done":
+		return m.cfg.Theme.ColorDone
+	case "color_cancelled":
+		return m.cfg.Theme.ColorCancelled
+	case "color_urgent":
+		return m.cfg.Theme.ColorUrgent
+	case "color_high":
+		return m.cfg.Theme.ColorHigh
+	case "color_medium":
+		return m.cfg.Theme.ColorMedium
+	case "color_low":
+		return m.cfg.Theme.ColorLow
+	// Keys
+	case "quit":
+		return m.cfg.Keys.Quit
+	case "board_up":
+		return m.cfg.Keys.BoardUp
+	case "board_down":
+		return m.cfg.Keys.BoardDown
+	case "board_left":
+		return m.cfg.Keys.BoardLeft
+	case "board_right":
+		return m.cfg.Keys.BoardRight
+	case "board_open":
+		return m.cfg.Keys.BoardOpen
+	case "board_edit":
+		return m.cfg.Keys.BoardEdit
+	case "board_to_list":
+		return m.cfg.Keys.BoardToList
+	case "board_filter":
+		return m.cfg.Keys.BoardFilter
+	case "board_status":
+		return m.cfg.Keys.BoardStatus
+	case "board_priority":
+		return m.cfg.Keys.BoardPriority
+	case "board_sort":
+		return m.cfg.Keys.BoardSort
+	case "board_reverse":
+		return m.cfg.Keys.BoardReverse
+	case "list_up":
+		return m.cfg.Keys.ListUp
+	case "list_down":
+		return m.cfg.Keys.ListDown
+	case "list_open":
+		return m.cfg.Keys.ListOpen
+	case "list_edit":
+		return m.cfg.Keys.ListEdit
+	case "list_to_board":
+		return m.cfg.Keys.ListToBoard
+	case "list_search":
+		return m.cfg.Keys.ListSearch
+	case "list_filter":
+		return m.cfg.Keys.ListFilter
+	case "list_status":
+		return m.cfg.Keys.ListStatus
+	case "list_priority":
+		return m.cfg.Keys.ListPriority
+	case "list_sort":
+		return m.cfg.Keys.ListSort
+	case "list_reverse":
+		return m.cfg.Keys.ListReverse
+	case "detail_back":
+		return m.cfg.Keys.DetailBack
+	case "detail_to_board":
+		return m.cfg.Keys.DetailToBoard
+	case "detail_to_list":
+		return m.cfg.Keys.DetailToList
+	case "detail_status":
+		return m.cfg.Keys.DetailStatus
+	case "detail_priority":
+		return m.cfg.Keys.DetailPriority
+	case "detail_comment":
+		return m.cfg.Keys.DetailComment
+	case "detail_edit":
+		return m.cfg.Keys.DetailEdit
+	}
+	return ""
+}
+
+// setFieldValue writes a value to the config for a given key.
+func (m *Model) setFieldValue(cfgKey, val string) {
+	switch cfgKey {
+	// View
+	case "default_screen":
+		m.cfg.View.DefaultScreen = val
+	case "default_sort":
+		m.cfg.View.DefaultSort = val
+	// Theme
+	case "accent":
+		m.cfg.Theme.Accent = val
+	case "accent_bg":
+		m.cfg.Theme.AccentBg = val
+	case "border":
+		m.cfg.Theme.Border = val
+	case "text":
+		m.cfg.Theme.Text = val
+	case "muted":
+		m.cfg.Theme.Muted = val
+	case "faint":
+		m.cfg.Theme.Faint = val
+	case "surface":
+		m.cfg.Theme.Surface = val
+	case "color_backlog":
+		m.cfg.Theme.ColorBacklog = val
+	case "color_todo":
+		m.cfg.Theme.ColorTodo = val
+	case "color_in_progress":
+		m.cfg.Theme.ColorInProgress = val
+	case "color_done":
+		m.cfg.Theme.ColorDone = val
+	case "color_cancelled":
+		m.cfg.Theme.ColorCancelled = val
+	case "color_urgent":
+		m.cfg.Theme.ColorUrgent = val
+	case "color_high":
+		m.cfg.Theme.ColorHigh = val
+	case "color_medium":
+		m.cfg.Theme.ColorMedium = val
+	case "color_low":
+		m.cfg.Theme.ColorLow = val
+	// Keys
+	case "quit":
+		m.cfg.Keys.Quit = val
+	case "board_up":
+		m.cfg.Keys.BoardUp = val
+	case "board_down":
+		m.cfg.Keys.BoardDown = val
+	case "board_left":
+		m.cfg.Keys.BoardLeft = val
+	case "board_right":
+		m.cfg.Keys.BoardRight = val
+	case "board_open":
+		m.cfg.Keys.BoardOpen = val
+	case "board_edit":
+		m.cfg.Keys.BoardEdit = val
+	case "board_to_list":
+		m.cfg.Keys.BoardToList = val
+	case "board_filter":
+		m.cfg.Keys.BoardFilter = val
+	case "board_status":
+		m.cfg.Keys.BoardStatus = val
+	case "board_priority":
+		m.cfg.Keys.BoardPriority = val
+	case "board_sort":
+		m.cfg.Keys.BoardSort = val
+	case "board_reverse":
+		m.cfg.Keys.BoardReverse = val
+	case "list_up":
+		m.cfg.Keys.ListUp = val
+	case "list_down":
+		m.cfg.Keys.ListDown = val
+	case "list_open":
+		m.cfg.Keys.ListOpen = val
+	case "list_edit":
+		m.cfg.Keys.ListEdit = val
+	case "list_to_board":
+		m.cfg.Keys.ListToBoard = val
+	case "list_search":
+		m.cfg.Keys.ListSearch = val
+	case "list_filter":
+		m.cfg.Keys.ListFilter = val
+	case "list_status":
+		m.cfg.Keys.ListStatus = val
+	case "list_priority":
+		m.cfg.Keys.ListPriority = val
+	case "list_sort":
+		m.cfg.Keys.ListSort = val
+	case "list_reverse":
+		m.cfg.Keys.ListReverse = val
+	case "detail_back":
+		m.cfg.Keys.DetailBack = val
+	case "detail_to_board":
+		m.cfg.Keys.DetailToBoard = val
+	case "detail_to_list":
+		m.cfg.Keys.DetailToList = val
+	case "detail_status":
+		m.cfg.Keys.DetailStatus = val
+	case "detail_priority":
+		m.cfg.Keys.DetailPriority = val
+	case "detail_comment":
+		m.cfg.Keys.DetailComment = val
+	case "detail_edit":
+		m.cfg.Keys.DetailEdit = val
+	}
+}

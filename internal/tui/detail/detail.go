@@ -31,10 +31,11 @@ type Model struct {
 	clickLines map[int]int  // content line number → issue ID for clickable links
 	clickZones []clickZone  // rectangular click zones for metadata fields
 	topOffset  int          // screen lines above this view's content (app header + filter bar)
+	theme      common.Theme
 }
 
-func New(issue data.Issue, allIssues []data.Issue, width, height int) Model {
-	content, clickLines, clickZones := renderIssue(issue, allIssues, width)
+func New(issue data.Issue, allIssues []data.Issue, width, height int, theme common.Theme) Model {
+	content, clickLines, clickZones := renderIssue(issue, allIssues, width, theme)
 	vp := viewport.New(viewport.WithWidth(width), viewport.WithHeight(height))
 	vp.SetContent(content)
 
@@ -46,7 +47,13 @@ func New(issue data.Issue, allIssues []data.Issue, width, height int) Model {
 		height:     height,
 		clickLines: clickLines,
 		clickZones: clickZones,
+		theme:      theme,
 	}
+}
+
+func (m Model) SetTheme(t common.Theme) Model {
+	m.theme = t
+	return m
 }
 
 func (m Model) Init() tea.Cmd { return nil }
@@ -129,17 +136,17 @@ func (m Model) View() string {
 	return m.viewport.View()
 }
 
-func renderIssue(issue data.Issue, allIssues []data.Issue, width int) (string, map[int]int, []clickZone) {
+func renderIssue(issue data.Issue, allIssues []data.Issue, width int, theme common.Theme) (string, map[int]int, []clickZone) {
 	clickLines := make(map[int]int)
 	var b strings.Builder
 
 	// Title header
-	idStr := common.StyleFaint.Render(fmt.Sprintf("#%d", issue.ID))
-	title := common.StyleTitle.Render(issue.Title)
+	idStr := theme.StyleFaint.Render(fmt.Sprintf("#%d", issue.ID))
+	title := theme.StyleTitle.Render(issue.Title)
 	b.WriteString(" " + idStr + "\n")
 	b.WriteString(" " + title + "\n")
 	if issue.Worktree != "" {
-		wtBadge := common.StyleWorktreeBadge.Render(common.WorktreeIcon() + " " + issue.Worktree)
+		wtBadge := theme.StyleWorktreeBadge.Render(common.WorktreeIcon() + " " + issue.Worktree)
 		b.WriteString(" " + wtBadge + "\n")
 	}
 	b.WriteString("\n")
@@ -152,9 +159,9 @@ func renderIssue(issue data.Issue, allIssues []data.Issue, width int) (string, m
 	var metaLines []string
 
 	// Row 1: status pill + priority
-	statusPill := common.StatusPillStyle(issue.Status).
+	statusPill := theme.StatusPillStyle(issue.Status).
 		Render(common.StatusIcon(issue.Status) + " " + issue.Status.Label())
-	prioStr := common.PriorityStyle(issue.Priority).
+	prioStr := theme.PriorityStyle(issue.Priority).
 		Render(strings.TrimSpace(common.PriorityIcon(issue.Priority)) + " " + issue.Priority.Label())
 	statusPillWidth := lipgloss.Width(statusPill)
 	prioStrWidth := lipgloss.Width(prioStr)
@@ -165,7 +172,7 @@ func renderIssue(issue data.Issue, allIssues []data.Issue, width int) (string, m
 	if len(issue.Labels) > 0 {
 		var labelStrs []string
 		for _, l := range issue.Labels {
-			labelStrs = append(labelStrs, common.RenderLabelPill(l))
+			labelStrs = append(labelStrs, theme.RenderLabelPill(l))
 		}
 		metaLines = append(metaLines, strings.Join(labelStrs, " "))
 	}
@@ -179,7 +186,7 @@ func renderIssue(issue data.Issue, allIssues []data.Issue, width int) (string, m
 		dateParts = append(dateParts, "Updated "+issue.Updated.Format("2006-01-02 15:04"))
 	}
 	if len(dateParts) > 0 {
-		metaLines = append(metaLines, common.StyleFaint.Render(strings.Join(dateParts, "  ·  ")))
+		metaLines = append(metaLines, theme.StyleFaint.Render(strings.Join(dateParts, "  ·  ")))
 	}
 
 	// Track clickable lines within meta box (lineIdx → issueID)
@@ -198,10 +205,10 @@ func renderIssue(issue data.Issue, allIssues []data.Issue, width int) (string, m
 				break
 			}
 		}
-		parentLink := common.StyleSectionHeader.Render("↑") +
-			common.StyleFaint.Render(" Parent: ") +
-			common.StyleSectionHeader.Render(fmt.Sprintf("#%d", *issue.Parent)) +
-			"  " + common.StyleSubtitle.Render(parentTitle)
+		parentLink := theme.StyleSectionHeader.Render("↑") +
+			theme.StyleFaint.Render(" Parent: ") +
+			theme.StyleSectionHeader.Render(fmt.Sprintf("#%d", *issue.Parent)) +
+			"  " + theme.StyleSubtitle.Render(parentTitle)
 		metaClicks = append(metaClicks, metaClick{lineIdx: len(metaLines), issueID: *issue.Parent})
 		metaLines = append(metaLines, parentLink)
 	}
@@ -215,10 +222,10 @@ func renderIssue(issue data.Issue, allIssues []data.Issue, width int) (string, m
 				break
 			}
 		}
-		link := common.StyleSectionHeader.Render("⊘") +
-			common.StyleFaint.Render(" Blocked by: ") +
-			common.StyleSectionHeader.Render(fmt.Sprintf("#%d", blockerID)) +
-			"  " + common.StyleSubtitle.Render(blockerTitle)
+		link := theme.StyleSectionHeader.Render("⊘") +
+			theme.StyleFaint.Render(" Blocked by: ") +
+			theme.StyleSectionHeader.Render(fmt.Sprintf("#%d", blockerID)) +
+			"  " + theme.StyleSubtitle.Render(blockerTitle)
 		metaClicks = append(metaClicks, metaClick{lineIdx: len(metaLines), issueID: blockerID})
 		metaLines = append(metaLines, link)
 	}
@@ -232,17 +239,17 @@ func renderIssue(issue data.Issue, allIssues []data.Issue, width int) (string, m
 				break
 			}
 		}
-		link := common.StyleSectionHeader.Render("▸") +
-			common.StyleFaint.Render(" Blocks: ") +
-			common.StyleSectionHeader.Render(fmt.Sprintf("#%d", blockedID)) +
-			"  " + common.StyleSubtitle.Render(blockedTitle)
+		link := theme.StyleSectionHeader.Render("▸") +
+			theme.StyleFaint.Render(" Blocks: ") +
+			theme.StyleSectionHeader.Render(fmt.Sprintf("#%d", blockedID)) +
+			"  " + theme.StyleSubtitle.Render(blockedTitle)
 		metaClicks = append(metaClicks, metaClick{lineIdx: len(metaLines), issueID: blockedID})
 		metaLines = append(metaLines, link)
 	}
 
 	metaBoxStartLine := strings.Count(b.String(), "\n")
 	metaContent := strings.Join(metaLines, "\n")
-	metaBox := common.StyleMetaBox.Width(metaBoxW).Render(metaContent)
+	metaBox := theme.StyleMetaBox.Width(metaBoxW).Render(metaContent)
 	b.WriteString(metaBox + "\n")
 
 	// Register click lines for all links inside the meta box
@@ -275,16 +282,16 @@ func renderIssue(issue data.Issue, allIssues []data.Issue, width int) (string, m
 		mdWidth = 40
 	}
 
-	sectionUnderline := common.StyleSectionHeader.Render(strings.Repeat("━", 2))
+	sectionUnderline := theme.StyleSectionHeader.Render(strings.Repeat("━", 2))
 
 	if issue.Content != "" {
-		b.WriteString(" " + common.StyleSectionHeader.Render("Description") + " " + sectionUnderline + "\n\n")
-		rendered := renderMarkdown(issue.Content, mdWidth)
+		b.WriteString(" " + theme.StyleSectionHeader.Render("Description") + " " + sectionUnderline + "\n\n")
+		rendered := renderMarkdown(issue.Content, mdWidth, theme.GlamourStyle)
 		b.WriteString(rendered + "\n")
 	}
 
 	if len(issue.Children) > 0 {
-		b.WriteString(" " + common.StyleSectionHeader.Render("Sub-issues") + " " + sectionUnderline + "\n\n")
+		b.WriteString(" " + theme.StyleSectionHeader.Render("Sub-issues") + " " + sectionUnderline + "\n\n")
 		for _, childID := range issue.Children {
 			childTitle := ""
 			childStatus := data.Status("")
@@ -295,26 +302,26 @@ func renderIssue(issue data.Issue, allIssues []data.Issue, width int) (string, m
 					break
 				}
 			}
-			icon := common.StatusStyle(childStatus).Render(common.StatusIcon(childStatus))
+			icon := theme.StatusStyle(childStatus).Render(common.StatusIcon(childStatus))
 			lineNum := strings.Count(b.String(), "\n")
 			clickLines[lineNum] = childID
-			b.WriteString(fmt.Sprintf("  %s  #%d  %s\n", icon, childID, common.StyleSubtitle.Render(childTitle)))
+			b.WriteString(fmt.Sprintf("  %s  #%d  %s\n", icon, childID, theme.StyleSubtitle.Render(childTitle)))
 		}
 		b.WriteString("\n")
 	}
 
 	if len(issue.Comments) > 0 {
-		b.WriteString(" " + common.StyleSectionHeader.Render(fmt.Sprintf("Comments (%d)", len(issue.Comments))) + " " + sectionUnderline + "\n\n")
+		b.WriteString(" " + theme.StyleSectionHeader.Render(fmt.Sprintf("Comments (%d)", len(issue.Comments))) + " " + sectionUnderline + "\n\n")
 
 		commentW := width - 6
 		if commentW < 30 {
 			commentW = 30
 		}
 		for _, c := range issue.Comments {
-			commentBox := common.StyleCommentBox.Width(commentW).
+			commentBox := theme.StyleCommentBox.Width(commentW).
 				Render(
-					common.StyleFaint.Render(c.Date) + "\n" +
-						renderMarkdown(c.Body, commentW-4),
+					theme.StyleFaint.Render(c.Date) + "\n" +
+						renderMarkdown(c.Body, commentW-4, theme.GlamourStyle),
 				)
 			b.WriteString(commentBox + "\n\n")
 		}
@@ -323,9 +330,9 @@ func renderIssue(issue data.Issue, allIssues []data.Issue, width int) (string, m
 	return b.String(), clickLines, zones
 }
 
-func renderMarkdown(content string, width int) string {
+func renderMarkdown(content string, width int, glamourStyle string) string {
 	r, err := glamour.NewTermRenderer(
-		glamour.WithStandardStyle("dark"),
+		glamour.WithStandardStyle(glamourStyle),
 		glamour.WithWordWrap(width),
 		glamour.WithColorProfile(termenv.TrueColor),
 	)

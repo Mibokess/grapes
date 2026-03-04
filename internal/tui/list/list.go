@@ -43,6 +43,13 @@ type Model struct {
 	sortMode     data.SortMode
 	sortAsc      bool
 	topOffset    int // screen lines above this view's content (app header + filter bar)
+	theme        common.Theme
+}
+
+func (m Model) SetTheme(t common.Theme) Model {
+	m.theme = t
+	m.table = m.buildTable(m.filteredIssues(), m.width, m.height-3)
+	return m
 }
 
 func New(issues []data.Issue) Model {
@@ -53,6 +60,7 @@ func New(issues []data.Issue) Model {
 	m := Model{
 		allIssues: issues,
 		filter:    ti,
+		theme:     common.NewTheme(true),
 	}
 	m.table = m.buildTable(issues, 80, 20)
 	return m
@@ -288,7 +296,7 @@ func (m Model) View() string {
 	if m.filtering {
 		filterLine = "  / " + m.filter.View()
 	} else if m.filter.Value() != "" {
-		filterLine = common.StyleSubtitle.Render(fmt.Sprintf("  Filter: %s", m.filter.Value()))
+		filterLine = m.theme.StyleSubtitle.Render(fmt.Sprintf("  Filter: %s", m.filter.Value()))
 	}
 
 	tableView := m.table.View()
@@ -328,7 +336,7 @@ func (m Model) injectSnippets(tableView, query string) string {
 		if issueIdx < len(issues) {
 			if snippet := data.MatchSnippet(issues[issueIdx], query); snippet != "" {
 				indent := strings.Repeat(" ", stickyWidth+2)
-				snippetLine := indent + common.StyleFaint.Render("· "+snippet)
+				snippetLine := indent + m.theme.StyleFaint.Render("· "+snippet)
 				out = append(out, snippetLine)
 			}
 		}
@@ -347,7 +355,7 @@ func (m Model) injectSnippets(tableView, query string) string {
 // A thin vertical line separates the frozen ID pane from the scrollable area.
 func (m Model) applyHScroll(view string) string {
 	lines := strings.Split(view, "\n")
-	sep := common.StyleFaint.Render("│")
+	sep := m.theme.StyleFaint.Render("│")
 	sepW := lipgloss.Width(sep)
 	avail := m.width - stickyWidth - sepW
 	if avail < 1 {
@@ -493,16 +501,16 @@ func (m Model) buildTable(issues []data.Issue, width, height int) table.Model {
 	for _, iss := range issues {
 		var labelParts []string
 		for _, l := range iss.Labels {
-			labelParts = append(labelParts, common.RenderLabel(l))
+			labelParts = append(labelParts, m.theme.RenderLabel(l))
 		}
 		labels := strings.Join(labelParts, " ")
-		statusCell := common.StatusStyle(iss.Status).Render(common.StatusIcon(iss.Status) + " " + iss.Status.Label())
-		prioCell := common.PriorityStyle(iss.Priority).Render(common.PriorityIcon(iss.Priority) + " " + iss.Priority.Label())
+		statusCell := m.theme.StatusStyle(iss.Status).Render(common.StatusIcon(iss.Status) + " " + iss.Status.Label())
+		prioCell := m.theme.PriorityStyle(iss.Priority).Render(common.PriorityIcon(iss.Priority) + " " + iss.Priority.Label())
 		createdCell := formatDate(iss.Created)
 		updatedCell := formatDate(iss.Updated)
 		var sourceCell string
 		if iss.Worktree != "" {
-			sourceCell = common.StyleWorktreeLabel.Render(common.WorktreeIcon() + " " + iss.Worktree)
+			sourceCell = m.theme.StyleWorktreeLabel.Render(common.WorktreeIcon() + " " + iss.Worktree)
 		}
 		rows = append(rows, table.Row{
 			fmt.Sprintf("%d", iss.ID),
@@ -535,13 +543,13 @@ func (m Model) buildTable(issues []data.Issue, width, height int) table.Model {
 	s := table.DefaultStyles()
 	s.Header = s.Header.
 		BorderStyle(lipgloss.ThickBorder()).
-		BorderForeground(common.ColorBorder).
+		BorderForeground(m.theme.ColorBorder).
 		BorderBottom(true).
-		Foreground(common.ColorMuted).
+		Foreground(m.theme.ColorMuted).
 		Bold(true)
 	s.Selected = s.Selected.
-		Foreground(lipgloss.Color("#e6edf3")).
-		Background(common.ColorAccent).
+		Foreground(m.theme.ColorText).
+		Background(m.theme.ColorAccent).
 		Bold(false)
 	t.SetStyles(s)
 

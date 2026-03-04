@@ -45,6 +45,7 @@ type Model struct {
 	watcher    *fsnotify.Watcher
 	sortMode data.SortMode
 	sortAsc  bool // ascending order (reversed from default)
+	theme    common.Theme
 
 	board  board.Model
 	list   list.Model
@@ -86,6 +87,8 @@ func NewModel(issues []data.Issue, issuesDir string) Model {
 	l := list.New(filtered)
 	l = l.SetSortState(sortMode, false)
 
+	theme := common.T
+
 	return Model{
 		issues:      issues,
 		issuesDir:   issuesDir,
@@ -93,8 +96,9 @@ func NewModel(issues []data.Issue, issuesDir string) Model {
 		screen:      common.ScreenBoard,
 		sortMode:    sortMode,
 		filters:     filters,
-		board:       board.New(filtered),
-		list:        l,
+		theme:       theme,
+		board:       board.New(filtered).SetTheme(theme),
+		list:        l.SetTheme(theme),
 		watcher:     w,
 	}
 }
@@ -169,7 +173,7 @@ func (m Model) watchCmd() tea.Cmd {
 }
 
 func (m Model) Init() tea.Cmd {
-	return tea.Batch(m.board.Init(), m.list.Init(), m.watchCmd())
+	return tea.Batch(m.board.Init(), m.list.Init(), m.watchCmd(), tea.RequestBackgroundColor)
 }
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -182,6 +186,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.board = m.board.SetTopOffset(off).SetSize(m.width, contentHeight)
 		m.list = m.list.SetTopOffset(off).SetSize(m.width, contentHeight)
 		m.detail = m.detail.SetTopOffset(off).SetSize(m.width, contentHeight)
+		return m, nil
+
+	case tea.BackgroundColorMsg:
+		m.theme = common.NewTheme(msg.IsDark())
+		m.board = m.board.SetTheme(m.theme)
+		m.list = m.list.SetTheme(m.theme)
+		m.detail = m.detail.SetTheme(m.theme)
 		return m, nil
 
 	case tea.KeyPressMsg:
@@ -231,8 +242,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			mouse := click.Mouse()
 			if click.Button == tea.MouseLeft && mouse.Y == 0 {
 				// Detect clicks on header tabs (Board / List)
-				boardTabW := lipgloss.Width(common.StyleTabInactive.Render("Board"))
-				listTabW := lipgloss.Width(common.StyleTabInactive.Render("List"))
+				boardTabW := lipgloss.Width(m.theme.StyleTabInactive.Render("Board"))
+				listTabW := lipgloss.Width(m.theme.StyleTabInactive.Render("List"))
 				tabsStart := m.width - boardTabW - listTabW
 				if mouse.X >= tabsStart && mouse.X < tabsStart+boardTabW {
 					m.navStack = nil
@@ -259,7 +270,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if iss != nil {
 			m.navStack = append(m.navStack, navEntry{screen: m.screen, detail: m.detail})
 			m.screen = common.ScreenDetail
-			m.detail = detail.New(*iss, m.issues, m.width, m.contentHeight()).SetTopOffset(m.topOffset())
+			m.detail = detail.New(*iss, m.issues, m.width, m.contentHeight(), m.theme).SetTopOffset(m.topOffset())
 			return m, m.detail.Init()
 		}
 		return m, nil
@@ -337,7 +348,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.screen == common.ScreenDetail {
 			for _, iss := range issues {
 				if iss.ID == m.detail.IssueID() {
-					m.detail = detail.New(iss, issues, m.width, m.contentHeight()).SetTopOffset(m.topOffset())
+					m.detail = detail.New(iss, issues, m.width, m.contentHeight(), m.theme).SetTopOffset(m.topOffset())
 					break
 				}
 			}
@@ -380,7 +391,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case common.ShowFilterMenuMsg:
-		menu := filter.NewMenu(m.filters, len(m.collectAllLabels()))
+		menu := filter.NewMenu(m.filters, len(m.collectAllLabels()), m.theme)
 		m.filterMenu = &menu
 		return m, nil
 
@@ -580,7 +591,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) renderHeader() string {
-	title := common.StyleAppTitle.Render("grapes")
+	title := m.theme.StyleAppTitle.Render("grapes")
 
 	// Active tab follows the current screen; detail inherits from origin screen.
 	activeScreen := m.screen
@@ -590,14 +601,14 @@ func (m Model) renderHeader() string {
 
 	var boardTab, listTab string
 	if activeScreen == common.ScreenBoard {
-		boardTab = common.StyleTabActive.Render("Board")
+		boardTab = m.theme.StyleTabActive.Render("Board")
 	} else {
-		boardTab = common.StyleTabInactive.Render("Board")
+		boardTab = m.theme.StyleTabInactive.Render("Board")
 	}
 	if activeScreen == common.ScreenList {
-		listTab = common.StyleTabActive.Render("List")
+		listTab = m.theme.StyleTabActive.Render("List")
 	} else {
-		listTab = common.StyleTabInactive.Render("List")
+		listTab = m.theme.StyleTabInactive.Render("List")
 	}
 
 	tabs := lipgloss.JoinHorizontal(lipgloss.Top, boardTab, " ", listTab)
@@ -606,7 +617,7 @@ func (m Model) renderHeader() string {
 		spacerW = 0
 	}
 	row := title + strings.Repeat(" ", spacerW) + tabs
-	sep := common.StyleSeparator.Render(strings.Repeat("━", m.width))
+	sep := m.theme.StyleSeparator.Render(strings.Repeat("━", m.width))
 	return lipgloss.JoinVertical(lipgloss.Left, row, sep)
 }
 
@@ -626,7 +637,7 @@ func (m Model) View() tea.View {
 
 	var content string
 	var helpParts []string
-	dot := common.StyleStatusSep.Render(" · ")
+	dot := m.theme.StyleStatusSep.Render(" · ")
 
 	contentHeight := m.contentHeight()
 
@@ -640,16 +651,16 @@ func (m Model) View() tea.View {
 	case common.ScreenBoard:
 		content = m.board.View()
 		helpParts = []string{
-			common.FormatKeyHint("hjkl", "navigate"),
-			common.FormatKeyHint("enter", "open"),
-			common.FormatKeyHint("e", "edit"),
-			common.FormatKeyHint("s", "status"),
-			common.FormatKeyHint("p", "priority"),
-			common.FormatKeyHint("drag", "move"),
-			common.FormatKeyHint("f", "filter"),
-			common.FormatKeyHint("o/O", sortLabel),
-			common.FormatKeyHint("L", "list"),
-			common.FormatKeyHint("q", "quit"),
+			m.theme.FormatKeyHint("hjkl", "navigate"),
+			m.theme.FormatKeyHint("enter", "open"),
+			m.theme.FormatKeyHint("e", "edit"),
+			m.theme.FormatKeyHint("s", "status"),
+			m.theme.FormatKeyHint("p", "priority"),
+			m.theme.FormatKeyHint("drag", "move"),
+			m.theme.FormatKeyHint("f", "filter"),
+			m.theme.FormatKeyHint("o/O", sortLabel),
+			m.theme.FormatKeyHint("L", "list"),
+			m.theme.FormatKeyHint("q", "quit"),
 		}
 	case common.ScreenList:
 		content = m.list.View()
@@ -658,27 +669,27 @@ func (m Model) View() tea.View {
 			navHint = "hjkl"
 		}
 		helpParts = []string{
-			common.FormatKeyHint(navHint, "navigate"),
-			common.FormatKeyHint("enter", "open"),
-			common.FormatKeyHint("e", "edit"),
-			common.FormatKeyHint("s", "status"),
-			common.FormatKeyHint("p", "priority"),
-			common.FormatKeyHint("o/O", sortLabel),
-			common.FormatKeyHint("f", "filter"),
-			common.FormatKeyHint("/", "search"),
-			common.FormatKeyHint("B", "board"),
-			common.FormatKeyHint("q", "quit"),
+			m.theme.FormatKeyHint(navHint, "navigate"),
+			m.theme.FormatKeyHint("enter", "open"),
+			m.theme.FormatKeyHint("e", "edit"),
+			m.theme.FormatKeyHint("s", "status"),
+			m.theme.FormatKeyHint("p", "priority"),
+			m.theme.FormatKeyHint("o/O", sortLabel),
+			m.theme.FormatKeyHint("f", "filter"),
+			m.theme.FormatKeyHint("/", "search"),
+			m.theme.FormatKeyHint("B", "board"),
+			m.theme.FormatKeyHint("q", "quit"),
 		}
 	case common.ScreenDetail:
 		content = m.detail.View()
 		helpParts = []string{
-			common.FormatKeyHint("jk", "scroll"),
-			common.FormatKeyHint("e", "edit"),
-			common.FormatKeyHint("s", "status"),
-			common.FormatKeyHint("p", "priority"),
-			common.FormatKeyHint("c", "comment"),
-			common.FormatKeyHint("esc", "back"),
-			common.FormatKeyHint("q", "quit"),
+			m.theme.FormatKeyHint("jk", "scroll"),
+			m.theme.FormatKeyHint("e", "edit"),
+			m.theme.FormatKeyHint("s", "status"),
+			m.theme.FormatKeyHint("p", "priority"),
+			m.theme.FormatKeyHint("c", "comment"),
+			m.theme.FormatKeyHint("esc", "back"),
+			m.theme.FormatKeyHint("q", "quit"),
 		}
 	}
 
@@ -692,9 +703,9 @@ func (m Model) View() tea.View {
 	if m.picker != nil {
 		content = overlayCenter(content, m.picker.View(), m.width, contentHeight)
 		helpParts = []string{
-			common.FormatKeyHint("jk", "navigate"),
-			common.FormatKeyHint("enter", "select"),
-			common.FormatKeyHint("esc", "cancel"),
+			m.theme.FormatKeyHint("jk", "navigate"),
+			m.theme.FormatKeyHint("enter", "select"),
+			m.theme.FormatKeyHint("esc", "cancel"),
 		}
 	}
 
@@ -702,17 +713,17 @@ func (m Model) View() tea.View {
 	if m.filterPicker != nil {
 		content = overlayCenter(content, m.filterPicker.View(), m.width, contentHeight)
 		helpParts = []string{
-			common.FormatKeyHint("jk", "navigate"),
-			common.FormatKeyHint("space", "toggle"),
-			common.FormatKeyHint("enter", "apply"),
-			common.FormatKeyHint("esc", "cancel"),
+			m.theme.FormatKeyHint("jk", "navigate"),
+			m.theme.FormatKeyHint("space", "toggle"),
+			m.theme.FormatKeyHint("enter", "apply"),
+			m.theme.FormatKeyHint("esc", "cancel"),
 		}
 	} else if m.filterMenu != nil {
 		content = overlayCenter(content, m.filterMenu.View(), m.width, contentHeight)
 		helpParts = []string{
-			common.FormatKeyHint("jk", "navigate"),
-			common.FormatKeyHint("enter", "select"),
-			common.FormatKeyHint("esc", "cancel"),
+			m.theme.FormatKeyHint("jk", "navigate"),
+			m.theme.FormatKeyHint("enter", "select"),
+			m.theme.FormatKeyHint("esc", "cancel"),
 		}
 	}
 
@@ -723,10 +734,10 @@ func (m Model) View() tea.View {
 	} else {
 		helpText = "  " + strings.Join(helpParts, dot)
 	}
-	bar := common.StyleStatusBar.Width(m.width).Render(helpText)
+	bar := m.theme.StyleStatusBar.Width(m.width).Render(helpText)
 
 	// Render filter bar between header and content when filters are active
-	filterBar := filter.RenderBar(m.filters, m.width)
+	filterBar := filter.RenderBar(m.filters, m.width, m.theme)
 	var full string
 	if filterBar != "" {
 		full = lipgloss.JoinVertical(lipgloss.Left, header, filterBar, content, bar)
@@ -769,10 +780,10 @@ func (m Model) buildPicker(issueID int, field string) picker.Model {
 				Value: string(s),
 				Label: s.Label(),
 				Icon:  common.StatusIcon(s),
-				Style: common.StatusStyle(s),
+				Style: m.theme.StatusStyle(s),
 			})
 		}
-		return picker.New("Status", opts, current, issueID, field)
+		return picker.New("Status", opts, current, issueID, field, m.theme)
 
 	case "priority":
 		var opts []picker.Option
@@ -785,14 +796,14 @@ func (m Model) buildPicker(issueID int, field string) picker.Model {
 				Value: string(p),
 				Label: p.Label(),
 				Icon:  strings.TrimSpace(common.PriorityIcon(p)),
-				Style: common.PriorityStyle(p),
+				Style: m.theme.PriorityStyle(p),
 			})
 		}
-		return picker.New("Priority", opts, current, issueID, field)
+		return picker.New("Priority", opts, current, issueID, field, m.theme)
 	}
 
 	// Fallback (shouldn't happen)
-	return picker.New(field, nil, 0, issueID, field)
+	return picker.New(field, nil, 0, issueID, field, m.theme)
 }
 
 // updatePickerPosition computes the centered screen position of the picker
@@ -882,13 +893,13 @@ func (m Model) buildFilterPicker(field string) filter.MultiPicker {
 				Value: string(s),
 				Label: s.Label(),
 				Icon:  common.StatusIcon(s),
-				Style: common.StatusStyle(s),
+				Style: m.theme.StatusStyle(s),
 			})
 		}
 		for _, s := range m.filters.Statuses {
 			preSelected = append(preSelected, string(s))
 		}
-		return filter.NewMultiPicker("Status", "status", opts, preSelected)
+		return filter.NewMultiPicker("Status", "status", opts, preSelected, m.theme)
 
 	case "priority":
 		present := make(map[data.Priority]bool)
@@ -905,13 +916,13 @@ func (m Model) buildFilterPicker(field string) filter.MultiPicker {
 				Value: string(p),
 				Label: p.Label(),
 				Icon:  strings.TrimSpace(common.PriorityIcon(p)),
-				Style: common.PriorityStyle(p),
+				Style: m.theme.PriorityStyle(p),
 			})
 		}
 		for _, p := range m.filters.Priorities {
 			preSelected = append(preSelected, string(p))
 		}
-		return filter.NewMultiPicker("Priority", "priority", opts, preSelected)
+		return filter.NewMultiPicker("Priority", "priority", opts, preSelected, m.theme)
 
 	case "labels":
 		var opts []filter.PickerOption
@@ -919,10 +930,10 @@ func (m Model) buildFilterPicker(field string) filter.MultiPicker {
 			opts = append(opts, filter.PickerOption{
 				Value: l,
 				Label: l,
-				Style: common.StatusStyle(data.StatusTodo), // neutral color
+				Style: m.theme.StatusStyle(data.StatusTodo), // neutral color
 			})
 		}
-		return filter.NewMultiPicker("Label", "labels", opts, m.filters.Labels)
+		return filter.NewMultiPicker("Label", "labels", opts, m.filters.Labels, m.theme)
 
 	case "source":
 		sourceSet := make(map[string]bool)
@@ -938,7 +949,7 @@ func (m Model) buildFilterPicker(field string) filter.MultiPicker {
 			opts = append(opts, filter.PickerOption{
 				Value: "main",
 				Label: "main",
-				Style: common.StyleSubtitle,
+				Style: m.theme.StyleSubtitle,
 			})
 		}
 		for name := range sourceSet {
@@ -946,14 +957,14 @@ func (m Model) buildFilterPicker(field string) filter.MultiPicker {
 				opts = append(opts, filter.PickerOption{
 					Value: name,
 					Label: common.WorktreeIcon() + " " + name,
-					Style: common.StyleWorktreeLabel,
+					Style: m.theme.StyleWorktreeLabel,
 				})
 			}
 		}
-		return filter.NewMultiPicker("Source", "source", opts, m.filters.Sources)
+		return filter.NewMultiPicker("Source", "source", opts, m.filters.Sources, m.theme)
 	}
 
-	return filter.NewMultiPicker(field, field, nil, nil)
+	return filter.NewMultiPicker(field, field, nil, nil, m.theme)
 }
 
 // applyFilterSelection updates the filter set from a multi-picker result.

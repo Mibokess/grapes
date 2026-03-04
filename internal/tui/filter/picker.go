@@ -24,35 +24,27 @@ type MultiPicker struct {
 	options  []PickerOption
 	selected map[string]bool
 	cursor   int
+	theme    common.Theme
 }
 
-var (
-	colorAccent   = lipgloss.Color("#a371f7")
-	colorAccentBg = lipgloss.Color("#2d1b69")
-	colorGreen    = lipgloss.Color("#3fb950")
-	colorMuted    = lipgloss.Color("#8b949e")
-	colorFaint    = lipgloss.Color("#484f58")
-
-	pickerStyleTitle = lipgloss.NewStyle().
-				Bold(true).
-				Foreground(colorAccent)
-
-	pickerStyleCursor = lipgloss.NewStyle().
-				Foreground(colorAccent).
-				Bold(true)
-
-	pickerStyleCheck = lipgloss.NewStyle().
-				Foreground(colorGreen)
-
-	pickerStyleRowActive = lipgloss.NewStyle().
-				Background(colorAccentBg)
-
-	pickerStyleHint = lipgloss.NewStyle().
-			Foreground(colorFaint)
-)
+func pickerStyleTitle(t common.Theme) lipgloss.Style {
+	return lipgloss.NewStyle().Bold(true).Foreground(t.ColorAccent)
+}
+func pickerStyleCursor(t common.Theme) lipgloss.Style {
+	return lipgloss.NewStyle().Foreground(t.ColorAccent).Bold(true)
+}
+func pickerStyleCheck(t common.Theme) lipgloss.Style {
+	return lipgloss.NewStyle().Foreground(t.ColorDone)
+}
+func pickerStyleRowActive(t common.Theme) lipgloss.Style {
+	return lipgloss.NewStyle().Background(t.ColorAccentBg)
+}
+func pickerStyleHint(t common.Theme) lipgloss.Style {
+	return lipgloss.NewStyle().Foreground(t.ColorFaint)
+}
 
 // NewMultiPicker creates a multi-select picker for a filter field.
-func NewMultiPicker(title, field string, options []PickerOption, preSelected []string) MultiPicker {
+func NewMultiPicker(title, field string, options []PickerOption, preSelected []string, theme common.Theme) MultiPicker {
 	sel := make(map[string]bool, len(preSelected))
 	for _, v := range preSelected {
 		sel[v] = true
@@ -62,6 +54,7 @@ func NewMultiPicker(title, field string, options []PickerOption, preSelected []s
 		field:    field,
 		options:  options,
 		selected: sel,
+		theme:    theme,
 	}
 }
 
@@ -107,6 +100,7 @@ func (m MultiPicker) Update(msg tea.Msg) (MultiPicker, tea.Cmd) {
 }
 
 func (m MultiPicker) View() string {
+	t := m.theme
 	const rowWidth = 30
 	var rows []string
 
@@ -117,15 +111,15 @@ func (m MultiPicker) View() string {
 		// Checkbox
 		var check string
 		if isSelected {
-			check = pickerStyleCheck.Render("[✓]")
+			check = pickerStyleCheck(t).Render("[✓]")
 		} else {
-			check = pickerStyleHint.Render("[ ]")
+			check = pickerStyleHint(t).Render("[ ]")
 		}
 
 		// Cursor indicator
 		var cursor string
 		if isCursor {
-			cursor = pickerStyleCursor.Render("›") + " "
+			cursor = pickerStyleCursor(t).Render("›") + " "
 		} else {
 			cursor = "  "
 		}
@@ -142,24 +136,24 @@ func (m MultiPicker) View() string {
 		}
 
 		if isCursor {
-			row = pickerStyleRowActive.Render(row)
+			row = pickerStyleRowActive(t).Render(row)
 		}
 
 		rows = append(rows, row)
 	}
 
 	// Footer hint
-	hint := pickerStyleHint.Render("space toggle · enter apply · esc cancel")
+	hint := pickerStyleHint(t).Render("space toggle · enter apply · esc cancel")
 	rows = append(rows, "")
 	rows = append(rows, hint)
 
 	content := strings.Join(rows, "\n")
 
 	// Box with rounded border and accent color
-	title := " " + pickerStyleTitle.Render(m.title) + " "
+	title := " " + pickerStyleTitle(t).Render(m.title) + " "
 	box := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
-		BorderForeground(colorAccent).
+		BorderForeground(t.ColorAccent).
 		Padding(1, 2).
 		Render(content)
 

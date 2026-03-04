@@ -25,34 +25,14 @@ type Model struct {
 	current int    // index of the issue's current value (shown with ✓)
 	issueID int    // which issue this picker is for
 	field   string // "status" or "priority"
+	theme   common.Theme
 
 	// Screen position of the picker box, set by the app for mouse handling.
 	ScreenX, ScreenY int
 }
 
-var (
-	colorAccent   = lipgloss.Color("#a371f7")
-	colorAccentBg = lipgloss.Color("#2d1b69")
-	colorGreen    = lipgloss.Color("#3fb950")
-	colorMuted = lipgloss.Color("#8b949e")
-
-	styleTitle = lipgloss.NewStyle().
-			Bold(true).
-			Foreground(colorAccent)
-
-	styleCursor = lipgloss.NewStyle().
-			Foreground(colorAccent).
-			Bold(true)
-
-	styleCheck = lipgloss.NewStyle().
-			Foreground(colorGreen)
-
-	styleRowActive = lipgloss.NewStyle().
-			Background(colorAccentBg)
-)
-
 // New creates a picker model. current is the index of the currently active value.
-func New(title string, options []Option, current, issueID int, field string) Model {
+func New(title string, options []Option, current, issueID int, field string, theme common.Theme) Model {
 	cursor := current
 	if cursor < 0 || cursor >= len(options) {
 		cursor = 0
@@ -64,6 +44,7 @@ func New(title string, options []Option, current, issueID int, field string) Mod
 		current: current,
 		issueID: issueID,
 		field:   field,
+		theme:   theme,
 	}
 }
 
@@ -136,6 +117,11 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 }
 
 func (m Model) View() string {
+	cursorStyle := lipgloss.NewStyle().Foreground(m.theme.ColorAccent).Bold(true)
+	checkStyle := lipgloss.NewStyle().Foreground(m.theme.ColorDone)
+	rowActiveStyle := lipgloss.NewStyle().Background(m.theme.ColorAccentBg)
+	titleStyle := lipgloss.NewStyle().Bold(true).Foreground(m.theme.ColorAccent)
+
 	// Build each option row
 	const rowWidth = 24
 	var rows []string
@@ -146,9 +132,9 @@ func (m Model) View() string {
 
 		switch {
 		case isCursor:
-			prefix = styleCursor.Render("›") + " "
+			prefix = cursorStyle.Render("›") + " "
 		case isCurrent:
-			prefix = styleCheck.Render("✓") + " "
+			prefix = checkStyle.Render("✓") + " "
 		default:
 			prefix = "  "
 		}
@@ -164,7 +150,7 @@ func (m Model) View() string {
 		}
 
 		if isCursor {
-			row = styleRowActive.Render(row)
+			row = rowActiveStyle.Render(row)
 		}
 
 		rows = append(rows, row)
@@ -173,10 +159,10 @@ func (m Model) View() string {
 	content := strings.Join(rows, "\n")
 
 	// Box with rounded border and accent color
-	title := " " + styleTitle.Render(m.title) + " "
+	title := " " + titleStyle.Render(m.title) + " "
 	box := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
-		BorderForeground(colorAccent).
+		BorderForeground(m.theme.ColorAccent).
 		Padding(1, 2).
 		Render(content)
 

@@ -27,6 +27,7 @@ type Model struct {
 	height    int
 	visCols   int // number of visible columns
 	sortMode  data.SortMode
+	theme     common.Theme
 
 	statusFilter []data.Status // non-empty when user has a status filter active
 	topOffset    int            // screen lines above this view's content (app header + filter bar)
@@ -38,6 +39,11 @@ type Model struct {
 	dragFromCol int
 	dragOverCol int // column cursor is hovering over (-1 = none)
 	dragX, dragY int // current cursor position (screen coords)
+}
+
+func (m Model) SetTheme(t common.Theme) Model {
+	m.theme = t
+	return m
 }
 
 func (m Model) SetTopOffset(n int) Model {
@@ -52,7 +58,7 @@ func (m Model) SetStatusFilter(statuses []data.Status) Model {
 }
 
 func New(issues []data.Issue) Model {
-	m := Model{visCols: 3}
+	m := Model{visCols: 3, theme: common.NewTheme(true)}
 	m.columns = groupByStatus(issues, nil)
 	return m
 }
@@ -354,7 +360,7 @@ func (m Model) View() string {
 func (m Model) renderColumn(col column, width int, isActive bool) string {
 	icon := common.StatusIcon(col.status)
 	label := strings.ToUpper(col.status.Label())
-	count := common.StyleFaint.Render(fmt.Sprintf("(%d)", len(col.issues)))
+	count := m.theme.StyleFaint.Render(fmt.Sprintf("(%d)", len(col.issues)))
 
 	// Highlight column header when it's the drop target during a drag
 	isDropTarget := m.dragging && m.dragOverCol >= 0 && m.dragOverCol < len(m.columns) &&
@@ -362,18 +368,18 @@ func (m Model) renderColumn(col column, width int, isActive bool) string {
 
 	var headerText, separator string
 	if isDropTarget {
-		headerText = common.StyleDropTarget.
-			Foreground(common.StatusColorFor(col.status)).
-			Background(common.StatusColorFor(col.status)).
+		headerText = m.theme.StyleDropTarget.
+			Foreground(m.theme.StatusColorFor(col.status)).
+			Background(m.theme.StatusColorFor(col.status)).
 			Width(width).
 			Render(fmt.Sprintf(" %s %s ", icon, label) + count)
 		separator = lipgloss.NewStyle().
-			Foreground(common.StatusColorFor(col.status)).
+			Foreground(m.theme.StatusColorFor(col.status)).
 			Render(strings.Repeat("━", width))
 	} else {
-		headerText = common.StatusHeaderStyle(col.status).Width(width).
+		headerText = m.theme.StatusHeaderStyle(col.status).Width(width).
 			Render(fmt.Sprintf(" %s %s ", icon, label) + count)
-		sepStyle := lipgloss.NewStyle().Foreground(common.StatusColorFor(col.status))
+		sepStyle := lipgloss.NewStyle().Foreground(m.theme.StatusColorFor(col.status))
 		separator = sepStyle.Render(strings.Repeat("━", width))
 	}
 	header := lipgloss.JoinVertical(lipgloss.Left, headerText, separator)
@@ -418,7 +424,7 @@ func (m Model) renderColumn(col column, width int, isActive bool) string {
 	var cards []string
 
 	if startIdx > 0 {
-		cards = append(cards, common.StyleSubtitle.Render(
+		cards = append(cards, m.theme.StyleSubtitle.Render(
 			fmt.Sprintf("  ↑ %d more", startIdx)))
 	}
 
@@ -438,7 +444,7 @@ func (m Model) renderColumn(col column, width int, isActive bool) string {
 
 	if endIdx < len(col.issues) {
 		remaining := len(col.issues) - endIdx
-		cards = append(cards, common.StyleSubtitle.Render(
+		cards = append(cards, m.theme.StyleSubtitle.Render(
 			fmt.Sprintf("  +%d more", remaining)))
 	}
 
@@ -449,13 +455,13 @@ func (m Model) renderColumn(col column, width int, isActive bool) string {
 func (m Model) renderCard(issue data.Issue, width int, active bool) string {
 	isDragged := m.dragging && issue.ID == m.dragIssueID
 
-	style := common.StyleCard.Width(width - 2) // -2 for border chars
+	style := m.theme.StyleCard.Width(width - 2) // -2 for border chars
 	if isDragged {
-		style = common.StyleDragCard.Width(width - 2)
+		style = m.theme.StyleDragCard.Width(width - 2)
 	} else if active {
-		style = common.StyleActiveCard.Width(width - 2)
+		style = m.theme.StyleActiveCard.Width(width - 2)
 	} else if issue.Worktree != "" {
-		style = common.StyleWorktreeCard.Width(width - 2)
+		style = m.theme.StyleWorktreeCard.Width(width - 2)
 	}
 
 	// Inner text width = card width - 2 (border) - 2 (border in Width) - 2 (padding)
@@ -463,15 +469,15 @@ func (m Model) renderCard(issue data.Issue, width int, active bool) string {
 	innerW := width - 6
 
 	// Line 1: #ID + priority icon (small, muted — like Linear's "ETA-502")
-	idStr := common.StyleFaint.Render(fmt.Sprintf("#%d", issue.ID))
-	prioIcon := common.PriorityStyle(issue.Priority).Render(
+	idStr := m.theme.StyleFaint.Render(fmt.Sprintf("#%d", issue.ID))
+	prioIcon := m.theme.PriorityStyle(issue.Priority).Render(
 		strings.TrimSpace(common.PriorityIcon(issue.Priority)))
 	line1 := idStr
 	if issue.Priority <= data.PriorityHigh {
 		line1 += " " + prioIcon
 	}
 	if issue.Worktree != "" {
-		wtLabel := common.StyleWorktreeLabel.Render(common.WorktreeIcon())
+		wtLabel := m.theme.StyleWorktreeLabel.Render(common.WorktreeIcon())
 		line1 += " " + wtLabel
 	}
 
@@ -500,9 +506,9 @@ func (m Model) renderCard(issue data.Issue, width int, active bool) string {
 	// Always render title as exactly 2 lines so all cards have the same height.
 	title := titleLine1 + "\n" + titleLine2
 	if isDragged {
-		title = common.StyleFaint.Render(titleLine1 + "\n" + titleLine2)
+		title = m.theme.StyleFaint.Render(titleLine1 + "\n" + titleLine2)
 	} else if active {
-		title = common.StyleTitle.Render(title)
+		title = m.theme.StyleTitle.Render(title)
 	}
 
 	// Line 4: labels (compact, muted)
@@ -519,9 +525,9 @@ func (m Model) renderCard(issue data.Issue, width int, active bool) string {
 			break
 		}
 		if isDragged {
-			meta = append(meta, common.StyleFaint.Render(l))
+			meta = append(meta, m.theme.StyleFaint.Render(l))
 		} else {
-			meta = append(meta, common.RenderLabel(l))
+			meta = append(meta, m.theme.RenderLabel(l))
 		}
 		used += sep + lw
 	}
@@ -532,14 +538,14 @@ func (m Model) renderCard(issue data.Issue, width int, active bool) string {
 	// Line 5: Date — show "Updated" when sorting by updated, otherwise "Created"
 	var dateLine string
 	if m.sortMode == data.SortByUpdated && !issue.Updated.IsZero() {
-		dateLine = common.StyleFaint.Render("Updated " + issue.Updated.Format("Jan 2 15:04"))
+		dateLine = m.theme.StyleFaint.Render("Updated " + issue.Updated.Format("Jan 2 15:04"))
 	} else if !issue.Created.IsZero() {
-		dateLine = common.StyleFaint.Render("Created " + issue.Created.Format("Jan 2 15:04"))
+		dateLine = m.theme.StyleFaint.Render("Created " + issue.Created.Format("Jan 2 15:04"))
 	}
 
 	// When dragged, force all content to faint
 	if isDragged {
-		line1 = common.StyleFaint.Render(fmt.Sprintf("#%d", issue.ID))
+		line1 = m.theme.StyleFaint.Render(fmt.Sprintf("#%d", issue.ID))
 	}
 
 	// Always include all 5 lines: ID, title (2), meta, date — for uniform card height.
@@ -683,18 +689,18 @@ func max(a, b int) int {
 
 // renderGhostCard renders a card in the ghost/dim style for the drop preview.
 func (m Model) renderGhostCard(issue data.Issue, width int) string {
-	style := common.StyleDragCard.Width(width - 2)
+	style := m.theme.StyleDragCard.Width(width - 2)
 	innerW := width - 6
 
-	idStr := common.StyleFaint.Render(fmt.Sprintf("#%d", issue.ID))
-	prioIcon := common.PriorityStyle(issue.Priority).Render(
+	idStr := m.theme.StyleFaint.Render(fmt.Sprintf("#%d", issue.ID))
+	prioIcon := m.theme.PriorityStyle(issue.Priority).Render(
 		strings.TrimSpace(common.PriorityIcon(issue.Priority)))
 	line1 := idStr
 	if issue.Priority <= data.PriorityHigh {
 		line1 += " " + prioIcon
 	}
 	if issue.Worktree != "" {
-		line1 += " " + common.StyleFaint.Render(common.WorktreeIcon())
+		line1 += " " + m.theme.StyleFaint.Render(common.WorktreeIcon())
 	}
 
 	titleRunes := []rune(issue.Title)
@@ -716,7 +722,7 @@ func (m Model) renderGhostCard(issue data.Issue, width int) string {
 		}
 		titleLine2 = truncate(string(rest), innerW)
 	}
-	title := common.StyleFaint.Render(titleLine1 + "\n" + titleLine2)
+	title := m.theme.StyleFaint.Render(titleLine1 + "\n" + titleLine2)
 
 	var metaLine string
 	var meta []string
@@ -730,7 +736,7 @@ func (m Model) renderGhostCard(issue data.Issue, width int) string {
 		if used+sep+lw > innerW {
 			break
 		}
-		meta = append(meta, common.StyleFaint.Render(l))
+		meta = append(meta, m.theme.StyleFaint.Render(l))
 		used += sep + lw
 	}
 	if len(meta) > 0 {
@@ -739,9 +745,9 @@ func (m Model) renderGhostCard(issue data.Issue, width int) string {
 
 	var dateLine string
 	if m.sortMode == data.SortByUpdated && !issue.Updated.IsZero() {
-		dateLine = common.StyleFaint.Render("Updated " + issue.Updated.Format("Jan 2 15:04"))
+		dateLine = m.theme.StyleFaint.Render("Updated " + issue.Updated.Format("Jan 2 15:04"))
 	} else if !issue.Created.IsZero() {
-		dateLine = common.StyleFaint.Render("Created " + issue.Created.Format("Jan 2 15:04"))
+		dateLine = m.theme.StyleFaint.Render("Created " + issue.Created.Format("Jan 2 15:04"))
 	}
 
 	content := line1 + "\n" + title + "\n" + metaLine + "\n" + dateLine

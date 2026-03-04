@@ -1,6 +1,9 @@
 package common
 
-import "github.com/Mibokess/grapes/internal/data"
+import (
+	"github.com/Mibokess/grapes/internal/config"
+	"github.com/Mibokess/grapes/internal/data"
+)
 
 // Screen identifies which view is active.
 type Screen int
@@ -9,6 +12,7 @@ const (
 	ScreenBoard Screen = iota
 	ScreenList
 	ScreenDetail
+	ScreenSettings
 )
 
 // Messages for screen routing (sent by views, handled by app).
@@ -52,3 +56,7 @@ type FilterToggleChildrenMsg struct{}
 type FilterToggleTopLevelMsg struct{}
 type FilterCancelMsg struct{}
 type ClearAllFiltersMsg struct{}
+
+// Settings screen messages.
+type OpenSettingsMsg struct{}
+type ConfigSavedMsg struct{ Config config.Config }

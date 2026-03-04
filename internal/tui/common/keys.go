@@ -1,6 +1,9 @@
 package common
 
-import "charm.land/bubbles/v2/key"
+import (
+	"github.com/Mibokess/grapes/internal/config"
+	"charm.land/bubbles/v2/key"
+)
 
 // GlobalKeys are available on every screen.
 type GlobalKeys struct {
@@ -213,4 +216,79 @@ var DetailKeyMap = DetailKeys{
 		key.WithKeys("e"),
 		key.WithHelp("e", "edit"),
 	),
+}
+
+// SettingsKeys are available on the settings screen.
+type SettingsKeys struct {
+	Up    key.Binding
+	Down  key.Binding
+	Tab   key.Binding
+	Enter key.Binding
+	Save  key.Binding
+	Back  key.Binding
+}
+
+var SettingsKeyMap = SettingsKeys{
+	Up: key.NewBinding(
+		key.WithKeys("k", "up"),
+		key.WithHelp("k/up", "up"),
+	),
+	Down: key.NewBinding(
+		key.WithKeys("j", "down"),
+		key.WithHelp("j/down", "down"),
+	),
+	Tab: key.NewBinding(
+		key.WithKeys("tab"),
+		key.WithHelp("tab", "switch pane"),
+	),
+	Enter: key.NewBinding(
+		key.WithKeys("enter"),
+		key.WithHelp("enter", "edit"),
+	),
+	Save: key.NewBinding(
+		key.WithKeys("ctrl+s"),
+		key.WithHelp("ctrl+s", "save"),
+	),
+	Back: key.NewBinding(
+		key.WithKeys("esc"),
+		key.WithHelp("esc", "back"),
+	),
+}
+
+// ApplyKeys updates all keybinding vars from a KeysConfig.
+func ApplyKeys(k config.KeysConfig) {
+	GlobalKeyMap.Quit = key.NewBinding(key.WithKeys(k.Quit, "ctrl+c"), key.WithHelp(k.Quit, "quit"))
+
+	BoardKeyMap.Up = key.NewBinding(key.WithKeys(k.BoardUp, "up"), key.WithHelp(k.BoardUp+"/up", "up"))
+	BoardKeyMap.Down = key.NewBinding(key.WithKeys(k.BoardDown, "down"), key.WithHelp(k.BoardDown+"/down", "down"))
+	BoardKeyMap.Left = key.NewBinding(key.WithKeys(k.BoardLeft, "left"), key.WithHelp(k.BoardLeft+"/left", "left"))
+	BoardKeyMap.Right = key.NewBinding(key.WithKeys(k.BoardRight, "right"), key.WithHelp(k.BoardRight+"/right", "right"))
+	BoardKeyMap.Open = key.NewBinding(key.WithKeys(k.BoardOpen), key.WithHelp(k.BoardOpen, "open"))
+	BoardKeyMap.EditIssue = key.NewBinding(key.WithKeys(k.BoardEdit), key.WithHelp(k.BoardEdit, "edit"))
+	BoardKeyMap.ToList = key.NewBinding(key.WithKeys(k.BoardToList), key.WithHelp(k.BoardToList, "list view"))
+	BoardKeyMap.Filter = key.NewBinding(key.WithKeys(k.BoardFilter), key.WithHelp(k.BoardFilter, "filter"))
+	BoardKeyMap.CycleStatus = key.NewBinding(key.WithKeys(k.BoardStatus), key.WithHelp(k.BoardStatus, "status"))
+	BoardKeyMap.CyclePriority = key.NewBinding(key.WithKeys(k.BoardPriority), key.WithHelp(k.BoardPriority, "priority"))
+	BoardKeyMap.CycleSort = key.NewBinding(key.WithKeys(k.BoardSort), key.WithHelp(k.BoardSort, "order"))
+	BoardKeyMap.ReverseSort = key.NewBinding(key.WithKeys(k.BoardReverse), key.WithHelp(k.BoardReverse, "reverse"))
+
+	ListKeyMap.Up = key.NewBinding(key.WithKeys(k.ListUp, "up"), key.WithHelp(k.ListUp+"/up", "up"))
+	ListKeyMap.Down = key.NewBinding(key.WithKeys(k.ListDown, "down"), key.WithHelp(k.ListDown+"/down", "down"))
+	ListKeyMap.Open = key.NewBinding(key.WithKeys(k.ListOpen), key.WithHelp(k.ListOpen, "open"))
+	ListKeyMap.EditIssue = key.NewBinding(key.WithKeys(k.ListEdit), key.WithHelp(k.ListEdit, "edit"))
+	ListKeyMap.ToBoard = key.NewBinding(key.WithKeys(k.ListToBoard), key.WithHelp(k.ListToBoard, "board view"))
+	ListKeyMap.Filter = key.NewBinding(key.WithKeys(k.ListSearch), key.WithHelp(k.ListSearch, "search"))
+	ListKeyMap.StructuredFilter = key.NewBinding(key.WithKeys(k.ListFilter), key.WithHelp(k.ListFilter, "filter"))
+	ListKeyMap.CycleStatus = key.NewBinding(key.WithKeys(k.ListStatus), key.WithHelp(k.ListStatus, "status"))
+	ListKeyMap.CyclePriority = key.NewBinding(key.WithKeys(k.ListPriority), key.WithHelp(k.ListPriority, "priority"))
+	ListKeyMap.CycleSort = key.NewBinding(key.WithKeys(k.ListSort), key.WithHelp(k.ListSort, "order"))
+	ListKeyMap.ReverseSort = key.NewBinding(key.WithKeys(k.ListReverse), key.WithHelp(k.ListReverse, "reverse"))
+
+	DetailKeyMap.Back = key.NewBinding(key.WithKeys(k.DetailBack), key.WithHelp(k.DetailBack, "back"))
+	DetailKeyMap.ToBoard = key.NewBinding(key.WithKeys(k.DetailToBoard), key.WithHelp(k.DetailToBoard, "board view"))
+	DetailKeyMap.ToList = key.NewBinding(key.WithKeys(k.DetailToList), key.WithHelp(k.DetailToList, "list view"))
+	DetailKeyMap.CycleStatus = key.NewBinding(key.WithKeys(k.DetailStatus), key.WithHelp(k.DetailStatus, "status"))
+	DetailKeyMap.CyclePriority = key.NewBinding(key.WithKeys(k.DetailPriority), key.WithHelp(k.DetailPriority, "priority"))
+	DetailKeyMap.AddComment = key.NewBinding(key.WithKeys(k.DetailComment), key.WithHelp(k.DetailComment, "comment"))
+	DetailKeyMap.EditIssue = key.NewBinding(key.WithKeys(k.DetailEdit), key.WithHelp(k.DetailEdit, "edit"))
 }

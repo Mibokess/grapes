@@ -8,14 +8,6 @@ import (
 	"charm.land/lipgloss/v2"
 )
 
-var (
-	barStyleLabel = lipgloss.NewStyle().
-			Bold(true).
-			Foreground(lipgloss.Color("#e6edf3"))
-	barStyleBracket = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#484f58"))
-)
-
 // BarHeight returns the number of lines the filter bar occupies (0 or 1).
 func BarHeight(fs FilterSet) int {
 	if fs.ActiveCount() == 0 {
@@ -25,38 +17,41 @@ func BarHeight(fs FilterSet) int {
 }
 
 // RenderBar renders the filter chip bar. Returns "" when no filters are active.
-func RenderBar(fs FilterSet, width int) string {
+func RenderBar(fs FilterSet, width int, theme common.Theme) string {
 	if fs.ActiveCount() == 0 {
 		return ""
 	}
 
 	var chips []string
 
+	barLabel := lipgloss.NewStyle().Bold(true).Foreground(theme.ColorText)
+	barBracket := lipgloss.NewStyle().Foreground(theme.ColorFaint)
+
 	if len(fs.Statuses) > 0 {
-		chips = append(chips, renderChip("Status", statusValues(fs.Statuses), func(v string) string {
-			return common.StatusStyle(data.Status(v)).Render(v)
+		chips = append(chips, renderChip("Status", statusValues(fs.Statuses), barBracket, func(v string) string {
+			return theme.StatusStyle(data.Status(v)).Render(v)
 		}))
 	}
 	if len(fs.Priorities) > 0 {
-		chips = append(chips, renderChip("Priority", priorityValues(fs.Priorities), func(v string) string {
-			return common.PriorityStyle(data.Priority(v)).Render(v)
+		chips = append(chips, renderChip("Priority", priorityValues(fs.Priorities), barBracket, func(v string) string {
+			return theme.PriorityStyle(data.Priority(v)).Render(v)
 		}))
 	}
 	if len(fs.Labels) > 0 {
-		chips = append(chips, renderChip("Label", fs.Labels, func(v string) string {
-			return common.RenderLabel(v)
+		chips = append(chips, renderChip("Label", fs.Labels, barBracket, func(v string) string {
+			return theme.RenderLabel(v)
 		}))
 	}
 	if len(fs.Sources) > 0 {
-		chips = append(chips, renderChip("Source", fs.Sources, func(v string) string {
+		chips = append(chips, renderChip("Source", fs.Sources, barBracket, func(v string) string {
 			if v == "main" {
 				return v
 			}
-			return common.StyleWorktreeLabel.Render(common.WorktreeIcon() + " " + v)
+			return theme.StyleWorktreeLabel.Render(common.WorktreeIcon() + " " + v)
 		}))
 	}
 	if fs.TopLevelOnly {
-		chips = append(chips, renderChip("Scope", []string{"top-level"}, func(v string) string {
+		chips = append(chips, renderChip("Scope", []string{"top-level"}, barBracket, func(v string) string {
 			return v
 		}))
 	}
@@ -65,20 +60,20 @@ func RenderBar(fs FilterSet, width int) string {
 		if *fs.HasChildren {
 			val = "yes"
 		}
-		chips = append(chips, renderChip("Sub-issues", []string{val}, func(v string) string {
+		chips = append(chips, renderChip("Sub-issues", []string{val}, barBracket, func(v string) string {
 			return v
 		}))
 	}
 
-	prefix := "  " + barStyleLabel.Render("Filters:") + " "
+	prefix := "  " + barLabel.Render("Filters:") + " "
 	line := prefix + strings.Join(chips, " ")
 
 	return line
 }
 
-func renderChip(category string, values []string, styleFn func(string) string) string {
-	open := barStyleBracket.Render("[")
-	close := barStyleBracket.Render("]")
+func renderChip(category string, values []string, bracketStyle lipgloss.Style, styleFn func(string) string) string {
+	open := bracketStyle.Render("[")
+	close := bracketStyle.Render("]")
 
 	var styled []string
 	for _, v := range values {

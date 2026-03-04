@@ -22,10 +22,11 @@ type MenuCategory struct {
 type Menu struct {
 	categories []MenuCategory
 	cursor     int
+	theme      common.Theme
 }
 
 // NewMenu creates a filter menu from the current filter state.
-func NewMenu(fs FilterSet, labelCount int) Menu {
+func NewMenu(fs FilterSet, labelCount int, theme common.Theme) Menu {
 	cats := []MenuCategory{
 		{Field: "status", Label: "Status", ActiveCount: len(fs.Statuses)},
 		{Field: "priority", Label: "Priority", ActiveCount: len(fs.Priorities)},
@@ -67,7 +68,7 @@ func NewMenu(fs FilterSet, labelCount int) Menu {
 		})
 	}
 
-	return Menu{categories: cats}
+	return Menu{categories: cats, theme: theme}
 }
 
 func (m Menu) Init() tea.Cmd { return nil }
@@ -105,6 +106,7 @@ func (m Menu) Update(msg tea.Msg) (Menu, tea.Cmd) {
 }
 
 func (m Menu) View() string {
+	t := m.theme
 	const rowWidth = 28
 	var rows []string
 
@@ -113,22 +115,22 @@ func (m Menu) View() string {
 
 		var cursor string
 		if isCursor {
-			cursor = pickerStyleCursor.Render("›") + " "
+			cursor = pickerStyleCursor(t).Render("›") + " "
 		} else {
 			cursor = "  "
 		}
 
 		label := cat.Label
 		if cat.Field == "clear_all" {
-			label = pickerStyleHint.Render(cat.Label)
+			label = pickerStyleHint(t).Render(cat.Label)
 		}
 
 		// Right-aligned indicator
 		var indicator string
 		if cat.ToggleLabel != "" {
-			indicator = pickerStyleCheck.Render(cat.ToggleLabel)
+			indicator = pickerStyleCheck(t).Render(cat.ToggleLabel)
 		} else if cat.ActiveCount > 0 {
-			indicator = pickerStyleCheck.Render(fmt.Sprintf("(%d)", cat.ActiveCount))
+			indicator = pickerStyleCheck(t).Render(fmt.Sprintf("(%d)", cat.ActiveCount))
 		}
 
 		row := cursor + label
@@ -149,7 +151,7 @@ func (m Menu) View() string {
 		}
 
 		if isCursor {
-			row = pickerStyleRowActive.Render(row)
+			row = pickerStyleRowActive(t).Render(row)
 		}
 
 		rows = append(rows, row)
@@ -158,10 +160,10 @@ func (m Menu) View() string {
 	content := strings.Join(rows, "\n")
 
 	// Box with rounded border
-	title := " " + pickerStyleTitle.Render("Filter") + " "
+	title := " " + pickerStyleTitle(t).Render("Filter") + " "
 	box := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
-		BorderForeground(colorAccent).
+		BorderForeground(t.ColorAccent).
 		Padding(1, 2).
 		Render(content)
 
