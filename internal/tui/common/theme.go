@@ -198,6 +198,14 @@ func NewThemeFromConfig(cfg config.ThemeConfig, termIsDark bool) Theme {
 			}
 			var t Theme
 			applyPreset(&t, ext)
+			// Override glamour style if mode was explicitly set.
+			if cfg.Mode == "light" || cfg.Mode == "dark" {
+				if isDark {
+					t.GlamourStyle = "dark"
+				} else {
+					t.GlamourStyle = "light"
+				}
+			}
 			applyColorOverrides(&t, cfg.ColorsFor(isDark))
 			t.buildStyles()
 			return t
