@@ -32,6 +32,8 @@ type Model struct {
 	statusFilter []data.Status // non-empty when user has a status filter active
 	topOffset    int            // screen lines above this view's content (app header + filter bar)
 
+	worktreeNames []string // sorted worktree names for consistent color assignment
+
 	// Drag-and-drop state
 	mouseDown   bool // left button is held (pending drag)
 	dragging    bool // true only once the mouse moves while held
@@ -39,6 +41,12 @@ type Model struct {
 	dragFromCol int
 	dragOverCol int // column cursor is hovering over (-1 = none)
 	dragX, dragY int // current cursor position (screen coords)
+}
+
+// SetWorktreeNames sets the sorted worktree names for color assignment.
+func (m Model) SetWorktreeNames(names []string) Model {
+	m.worktreeNames = names
+	return m
 }
 
 func (m Model) SetTheme(t common.Theme) Model {
@@ -461,7 +469,8 @@ func (m Model) renderCard(issue data.Issue, width int, active bool) string {
 	} else if active {
 		style = m.theme.StyleActiveCard.Width(width - 2)
 	} else if issue.Worktree != "" {
-		style = m.theme.StyleWorktreeCard.Width(width - 2)
+		c := m.theme.WorktreeColorFor(issue.Worktree, m.worktreeNames)
+		style = m.theme.StyleCard.Width(width - 2).BorderForeground(c)
 	}
 
 	// Inner text width = card width - 2 (border) - 2 (border in Width) - 2 (padding)
@@ -476,9 +485,11 @@ func (m Model) renderCard(issue data.Issue, width int, active bool) string {
 	if issue.Priority <= data.PriorityHigh {
 		line1 += " " + prioIcon
 	}
-	if issue.Worktree != "" {
-		wtLabel := m.theme.StyleWorktreeLabel.Render(common.WorktreeIcon())
-		line1 += " " + wtLabel
+	if len(issue.Sources) > 1 {
+		line1 += " " + m.theme.RenderSourceIndicators(issue.Sources, m.worktreeNames)
+	} else if issue.Worktree != "" {
+		c := m.theme.WorktreeColorFor(issue.Worktree, m.worktreeNames)
+		line1 += " " + lipgloss.NewStyle().Foreground(c).Render(common.WorktreeIcon())
 	}
 
 	// Lines 2-3: Title wraps up to 2 lines, word-wrapping line 1
@@ -699,7 +710,9 @@ func (m Model) renderGhostCard(issue data.Issue, width int) string {
 	if issue.Priority <= data.PriorityHigh {
 		line1 += " " + prioIcon
 	}
-	if issue.Worktree != "" {
+	if len(issue.Sources) > 1 {
+		line1 += " " + m.theme.StyleFaint.Render(fmt.Sprintf("(%d)", len(issue.Sources)))
+	} else if issue.Worktree != "" {
 		line1 += " " + m.theme.StyleFaint.Render(common.WorktreeIcon())
 	}
 

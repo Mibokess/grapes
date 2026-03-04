@@ -57,6 +57,12 @@ type FilterToggleTopLevelMsg struct{}
 type FilterCancelMsg struct{}
 type ClearAllFiltersMsg struct{}
 
+// Multi-source worktree messages.
+type SwitchSourceMsg struct {
+	IssueID   int
+	SourceIdx int
+}
+
 // Settings screen messages.
 type OpenSettingsMsg struct{}
 type ConfigSavedMsg struct{ Config config.Config }

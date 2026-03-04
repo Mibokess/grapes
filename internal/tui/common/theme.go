@@ -2,6 +2,7 @@ package common
 
 import (
 	"image/color"
+	"strings"
 
 	"github.com/Mibokess/grapes/internal/config"
 	"github.com/Mibokess/grapes/internal/data"
@@ -62,6 +63,33 @@ func PriorityIcon(p data.Priority) string {
 
 // WorktreeIcon returns the icon for worktree issues.
 func WorktreeIcon() string { return "⑂" }
+
+// MainIcon returns the icon for main source.
+func MainIcon() string { return "◆" }
+
+// worktreeColorsDark is a fixed palette for worktree source indicators (dark theme).
+var worktreeColorsDark = []color.Color{
+	lipgloss.Color("#f0883e"), // orange
+	lipgloss.Color("#58a6ff"), // blue
+	lipgloss.Color("#3fb950"), // green
+	lipgloss.Color("#d2a8ff"), // lavender
+	lipgloss.Color("#f692ce"), // pink
+	lipgloss.Color("#79c0ff"), // light blue
+	lipgloss.Color("#ffa657"), // amber
+	lipgloss.Color("#7ee787"), // light green
+}
+
+// worktreeColorsLight is a fixed palette for worktree source indicators (light theme).
+var worktreeColorsLight = []color.Color{
+	lipgloss.Color("#bc4c00"), // orange
+	lipgloss.Color("#0550ae"), // blue
+	lipgloss.Color("#116329"), // green
+	lipgloss.Color("#6639ba"), // lavender
+	lipgloss.Color("#bf3989"), // pink
+	lipgloss.Color("#0969da"), // light blue
+	lipgloss.Color("#953800"), // amber
+	lipgloss.Color("#1a7f37"), // light green
+}
 
 // T is the global theme instance used for rendering. It defaults to dark.
 var T = NewTheme(true)
@@ -135,6 +163,9 @@ type Theme struct {
 	StyleWorktreeCard  lipgloss.Style
 	StyleWorktreeLabel lipgloss.Style
 	StyleWorktreeBadge lipgloss.Style
+
+	// Worktree color palette for multi-source indicators.
+	WorktreeColors []color.Color
 
 	// Glamour markdown style name ("dark" or "light").
 	GlamourStyle string
@@ -252,6 +283,8 @@ func (t *Theme) setDarkColors() {
 		{lipgloss.Color("#ffa657"), lipgloss.Color("#2d1c0a")}, // amber
 	}
 
+	t.WorktreeColors = worktreeColorsDark
+
 	t.GlamourStyle = "dark"
 }
 
@@ -293,6 +326,8 @@ func (t *Theme) setLightColors() {
 		{lipgloss.Color("#6639ba"), lipgloss.Color("#eddeff")}, // lavender
 		{lipgloss.Color("#953800"), lipgloss.Color("#fff1e5")}, // amber
 	}
+
+	t.WorktreeColors = worktreeColorsLight
 
 	t.GlamourStyle = "light"
 }
@@ -492,4 +527,30 @@ func (t Theme) RenderLabel(label string) string {
 func (t Theme) RenderLabelPill(label string) string {
 	c := t.LabelColors[labelColorIndex(label, len(t.LabelColors))]
 	return t.StyleLabelPill.Foreground(c.Fg).Background(c.Bg).Render(label)
+}
+
+// WorktreeColorFor returns the color for a worktree name given the sorted list
+// of all worktree names. The color is determined by the name's index.
+func (t Theme) WorktreeColorFor(name string, allWorktrees []string) color.Color {
+	for i, n := range allWorktrees {
+		if n == name {
+			return t.WorktreeColors[i%len(t.WorktreeColors)]
+		}
+	}
+	return t.ColorWorktree // fallback
+}
+
+// RenderSourceIndicators returns a compact string showing where an issue exists.
+// Example: "◆ ⑂⑂" with main diamond and colored fork icons.
+func (t Theme) RenderSourceIndicators(sources []data.IssueSource, wtNames []string) string {
+	var parts []string
+	for _, s := range sources {
+		if s.Name == "" {
+			parts = append(parts, lipgloss.NewStyle().Foreground(t.ColorMuted).Render(MainIcon()))
+		} else {
+			c := t.WorktreeColorFor(s.Name, wtNames)
+			parts = append(parts, lipgloss.NewStyle().Foreground(c).Render(WorktreeIcon()))
+		}
+	}
+	return strings.Join(parts, "")
 }
