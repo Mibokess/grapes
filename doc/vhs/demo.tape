@@ -1,4 +1,4 @@
-# Grapes TUI Demo — flows through board, list, and detail views
+# Grapes TUI Demo
 # Usage: vhs doc/vhs/demo.tape
 
 Output doc/demo.gif
@@ -11,39 +11,27 @@ Set Padding 20
 Set Theme "Catppuccin Mocha"
 Set TypingSpeed 50ms
 
-# Start the app
-Type "cd $(pwd) && go run ."
-Enter
-Sleep 4s
-
-# Board view — navigate around
-Sleep 1.5s
-Type "l"
-Sleep 600ms
-Type "l"
-Sleep 600ms
-Type "j"
-Sleep 600ms
-
-# Switch to list view
-Type "L"
-Sleep 1.5s
-
-# Navigate the list
-Type "j"
-Sleep 400ms
-Type "j"
-Sleep 400ms
-Type "j"
-Sleep 400ms
-
-# Open issue detail
+# Launch grapes
+Type "grapes"
 Enter
 Sleep 2s
 
-# Scroll down to see comments
-Type "j"
-Sleep 300ms
+# Board view — pause to take it in
+Sleep 2s
+
+# Navigate across columns
+Type "l"
+Sleep 400ms
+Type "l"
+Sleep 400ms
+Type "l"
+Sleep 1s
+
+# Open issue detail to show metadata and relationships
+Enter
+Sleep 2.5s
+
+# Scroll down in detail view
 Type "j"
 Sleep 300ms
 Type "j"
@@ -51,13 +39,45 @@ Sleep 300ms
 Type "j"
 Sleep 1.5s
 
-# Go back
+# Back to board
 Escape
 Sleep 1s
 
-# Back to board
-Type "B"
+# Switch to list view
+Type "L"
+Sleep 2s
+
+# Search for "theme"
+Type "/"
+Sleep 400ms
+Type "theme"
+Sleep 2s
+Escape
+Sleep 1s
+
+# Open filter menu
+Type "f"
 Sleep 1.5s
+
+# Navigate into status filter
+Enter
+Sleep 1s
+
+# Select a status
+Type "j"
+Sleep 300ms
+Type " "
+Sleep 500ms
+Enter
+Sleep 1s
+
+# Close filter menu to see filtered results
+Escape
+Sleep 2s
+
+# Back to board with filters
+Type "B"
+Sleep 2s
 
 # Quit
 Type "q"

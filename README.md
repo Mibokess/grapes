@@ -2,14 +2,7 @@
 
 An issue tracker built for AI agents. Issues are plain files that agents edit with standard tools — no APIs, no databases. A terminal UI gives humans a live view of what's happening.
 
-<p align="center">
-  <img src="doc/board.png" alt="Board view" width="100%">
-</p>
-
-<p align="center">
-  <img src="doc/list.png" alt="List view" width="49%">
-  <img src="doc/detail.png" alt="Detail view" width="49%">
-</p>
+![Grapes TUI demo](doc/demo.gif)
 
 ## How It Works
 
