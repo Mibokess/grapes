@@ -16,7 +16,7 @@ import (
 // "updated" field. This mirrors what an agent does when editing issue metadata.
 //
 //	sed -i "s/^field = .*/field = 'newValue'/" .grapes/<id>/meta.toml
-//	sed -i "s/^updated = .*/updated = '2026-03-02T15:04'/" .grapes/<id>/meta.toml
+//	sed -i "s/^updated = .*/updated = 2026-03-02T15:04:00Z/" .grapes/<id>/meta.toml
 func UpdateField(issuesDir string, issueID int, field, newValue string) error {
 	path := filepath.Join(issuesDir, strconv.Itoa(issueID), "meta.toml")
 
@@ -27,8 +27,8 @@ func UpdateField(issuesDir string, issueID int, field, newValue string) error {
 	}
 
 	// Update the "updated" datetime
-	now := time.Now().Format("2006-01-02T15:04")
-	datePattern := fmt.Sprintf(`s/^updated = .*/updated = '%s'/`, now)
+	now := time.Now().UTC().Truncate(time.Minute).Format(time.RFC3339)
+	datePattern := fmt.Sprintf(`s/^updated = .*/updated = %s/`, now)
 	if err := exec.Command("sed", "-i", datePattern, path).Run(); err != nil {
 		return fmt.Errorf("sed updated: %w", err)
 	}
@@ -50,7 +50,7 @@ func UpdateLabels(issuesDir string, issueID int, labels []string) error {
 	}
 
 	m.Labels = labels
-	m.Updated = time.Now().Format("2006-01-02T15:04")
+	m.Updated = time.Now().UTC().Truncate(time.Minute)
 
 	out, err := toml.Marshal(&m)
 	if err != nil {
@@ -210,7 +210,7 @@ func SaveIssueFromText(issuesDir string, issueID int, text string) error {
 
 	// Write meta.toml
 	issueDir := filepath.Join(issuesDir, strconv.Itoa(issueID))
-	now := time.Now().Format("2006-01-02T15:04")
+	now := time.Now().UTC().Truncate(time.Minute)
 
 	// Read existing meta to preserve created date
 	existingMeta, err := os.ReadFile(filepath.Join(issueDir, "meta.toml"))

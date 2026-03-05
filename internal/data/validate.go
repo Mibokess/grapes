@@ -104,12 +104,6 @@ func validateMeta(issueID int, m meta) []ValidationError {
 		})
 	}
 
-	if m.Created != "" && parseDate(m.Created).IsZero() {
-		errs = append(errs, ValidationError{IssueID: issueID, Field: "created", Message: fmt.Sprintf("%q is not a valid date", m.Created)})
-	}
-	if m.Updated != "" && parseDate(m.Updated).IsZero() {
-		errs = append(errs, ValidationError{IssueID: issueID, Field: "updated", Message: fmt.Sprintf("%q is not a valid date", m.Updated)})
-	}
 
 	return errs
 }

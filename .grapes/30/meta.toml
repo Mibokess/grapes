@@ -2,5 +2,5 @@ title = 'Add TUI auto-refresh integration tests'
 status = 'in_progress'
 priority = 'medium'
 labels = ['testing', 'tui']
-created = '2026-03-04T12:00'
-updated = '2026-03-04T12:00'
+created = 2026-03-04T12:00:00Z
+updated = 2026-03-04T12:00:00Z

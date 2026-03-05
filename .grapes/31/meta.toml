@@ -2,5 +2,5 @@ title = "Add next-id subcommand to prevent concurrent ID collisions in worktrees
 status = 'in_progress'
 priority = 'high'
 labels = ['bug', 'cli']
-created = '2026-03-04T18:00'
-updated = '2026-03-04T18:30'
+created = 2026-03-04T18:00:00Z
+updated = 2026-03-04T18:30:00Z

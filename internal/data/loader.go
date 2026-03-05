@@ -28,8 +28,8 @@ type meta struct {
 	Parent    *int      `toml:"parent,omitempty"`
 	BlockedBy []int     `toml:"blocked_by,omitempty"`
 	Comments  []Comment `toml:"comments,omitempty"`
-	Created   string    `toml:"created"`
-	Updated   string    `toml:"updated"`
+	Created   time.Time `toml:"created"`
+	Updated   time.Time `toml:"updated"`
 }
 
 // maxSearchDepth is how many directory levels deep to search for .grapes/.
@@ -136,9 +136,6 @@ func loadIssueMeta(dir string, id int) (Issue, error) {
 		return Issue{}, fmt.Errorf("parsing %s: %w", path, err)
 	}
 
-	created := parseDate(m.Created)
-	updated := parseDate(m.Updated)
-
 	return Issue{
 		ID:        id,
 		Title:     m.Title,
@@ -147,20 +144,11 @@ func loadIssueMeta(dir string, id int) (Issue, error) {
 		Labels:    m.Labels,
 		Parent:    m.Parent,
 		BlockedBy: m.BlockedBy,
-		Created:   created,
-		Updated:   updated,
+		Created:   m.Created,
+		Updated:   m.Updated,
 	}, nil
 }
 
-func parseDate(s string) time.Time {
-	if t, err := time.Parse("2006-01-02T15:04", s); err == nil {
-		return t
-	}
-	if t, err := time.Parse("2006-01-02", s); err == nil {
-		return t
-	}
-	return time.Time{}
-}
 
 func readFileOr(path, fallback string) string {
 	data, err := os.ReadFile(path)
