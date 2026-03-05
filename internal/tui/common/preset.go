@@ -8,23 +8,27 @@ import (
 	themes "go.withmatt.com/themes"
 )
 
-// CuratedPresets is the list of popular theme names shown in the settings UI.
+// CuratedPresets is the list of theme names shown in the settings UI.
+// "Auto", "Light", and "Dark" map to the built-in color scheme with the
+// corresponding mode; all other entries are external preset names.
 var CuratedPresets = []string{
-	"default",
+	"Auto",
+	"Light",
+	"Dark",
 	"Catppuccin Mocha",
 	"Catppuccin Latte",
 	"Dracula",
 	"Gruvbox Dark",
 	"Gruvbox Light",
-	"Kanagawa",
+	"Kanagawa Wave",
 	"Nord",
-	"One Dark",
-	"One Light",
-	"Rosé Pine",
-	"Rosé Pine Dawn",
-	"Solarized Dark",
-	"Solarized Light",
-	"Tokyo Night",
+	"One Half Dark",
+	"One Half Light",
+	"Rose Pine",
+	"Rose Pine Dawn",
+	"iTerm2 Solarized Dark",
+	"iTerm2 Solarized Light",
+	"TokyoNight",
 }
 
 // PresetIsDark returns true if the preset's background is dark.

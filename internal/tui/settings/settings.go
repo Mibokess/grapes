@@ -62,6 +62,12 @@ type Model struct {
 	width     int
 	height    int
 	topOffset int // screen lines above this view's content (app header + filter bar)
+
+	picking     bool
+	pickCfgKey  string
+	pickOptions []string
+	pickCursor  int
+	pickCurrent int
 }
 
 // New creates a new settings screen model.
@@ -81,8 +87,7 @@ func New(cfg config.Config, issuesDir string, w, h int, theme common.Theme) Mode
 		{
 			name: "Theme",
 			fields: []field{
-				{label: "Preset", cfgKey: "theme_preset", kind: fieldEnum, options: common.CuratedPresets},
-				{label: "Mode", cfgKey: "theme_mode", kind: fieldEnum, options: []string{"auto", "light", "dark"}},
+				{label: "Theme", cfgKey: "theme_preset", kind: fieldEnum, options: common.CuratedPresets},
 				{label: "Accent", cfgKey: "accent", kind: fieldColor},
 				{label: "Accent BG", cfgKey: "accent_bg", kind: fieldColor},
 				{label: "Border", cfgKey: "border", kind: fieldColor},
@@ -178,9 +183,232 @@ func (m Model) SetDark(isDark bool) Model {
 	return m
 }
 
+// PickerActive returns whether an enum picker overlay is open.
+func (m Model) PickerActive() bool { return m.picking }
+
+// PickerView renders the enum picker overlay box.
+func (m Model) PickerView() string {
+	if !m.picking {
+		return ""
+	}
+
+	cursorStyle := lipgloss.NewStyle().Foreground(m.theme.ColorAccent).Bold(true)
+	checkStyle := lipgloss.NewStyle().Foreground(m.theme.ColorDone)
+	rowActiveStyle := lipgloss.NewStyle().Background(m.theme.ColorAccentBg)
+	titleStyle := lipgloss.NewStyle().Bold(true).Foreground(m.theme.ColorAccent)
+
+	maxVis := m.pickMaxVisible()
+	scrollOff := m.pickScrollOffset()
+
+	rowWidth := 24
+	for _, opt := range m.pickOptions {
+		if w := lipgloss.Width(opt) + 4; w > rowWidth {
+			rowWidth = w
+		}
+	}
+
+	var rows []string
+	for i := scrollOff; i < scrollOff+maxVis && i < len(m.pickOptions); i++ {
+		opt := m.pickOptions[i]
+		isCursor := i == m.pickCursor
+		isCurrent := i == m.pickCurrent
+
+		var prefix string
+		switch {
+		case isCursor:
+			prefix = cursorStyle.Render("›") + " "
+		case isCurrent:
+			prefix = checkStyle.Render("✓") + " "
+		default:
+			prefix = "  "
+		}
+
+		row := prefix + opt
+		visible := lipgloss.Width(row)
+		if visible < rowWidth {
+			row += strings.Repeat(" ", rowWidth-visible)
+		}
+
+		if isCursor {
+			row = rowActiveStyle.Render(row)
+		}
+
+		rows = append(rows, row)
+	}
+
+	content := strings.Join(rows, "\n")
+
+	f := m.currentField()
+	title := " " + titleStyle.Render(f.label) + " "
+
+	box := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(m.theme.ColorAccent).
+		Padding(1, 2).
+		Render(content)
+
+	// Insert title in top border
+	lines := strings.Split(box, "\n")
+	if len(lines) > 0 {
+		topBorder := lines[0]
+		if len(topBorder) > 4 {
+			runeTop := []rune(topBorder)
+			titleRunes := []rune(title)
+			insertAt := 2
+			end := insertAt + len(titleRunes)
+			if end < len(runeTop) {
+				result := make([]rune, 0, len(runeTop))
+				result = append(result, runeTop[:insertAt]...)
+				result = append(result, titleRunes...)
+				result = append(result, runeTop[end:]...)
+				lines[0] = string(result)
+			}
+		}
+		box = strings.Join(lines, "\n")
+	}
+
+	return box
+}
+
+func (m Model) pickMaxVisible() int {
+	mv := m.height - 6
+	if mv < 3 {
+		mv = 3
+	}
+	if mv > len(m.pickOptions) {
+		mv = len(m.pickOptions)
+	}
+	return mv
+}
+
+func (m Model) pickScrollOffset() int {
+	mv := m.pickMaxVisible()
+	if len(m.pickOptions) <= mv {
+		return 0
+	}
+	if m.pickCursor < mv {
+		return 0
+	}
+	return m.pickCursor - mv + 1
+}
+
+func (m *Model) openPicker(f field) {
+	cur := m.getFieldValue(f.cfgKey)
+	m.picking = true
+	m.pickCfgKey = f.cfgKey
+	m.pickOptions = f.options
+	m.pickCurrent = 0
+	for i, opt := range f.options {
+		if opt == cur {
+			m.pickCurrent = i
+			break
+		}
+	}
+	m.pickCursor = m.pickCurrent
+}
+
+func (m Model) pickerScreenPos() (x, y, boxW, boxH int) {
+	maxVis := m.pickMaxVisible()
+
+	rowWidth := 24
+	for _, opt := range m.pickOptions {
+		if w := lipgloss.Width(opt) + 4; w > rowWidth {
+			rowWidth = w
+		}
+	}
+
+	// border(1) + padding(1) + rows + padding(1) + border(1)
+	boxH = maxVis + 4
+	// border(1) + padding(2) + content + padding(2) + border(1)
+	boxW = rowWidth + 6
+
+	x = (m.width - boxW) / 2
+	y = m.topOffset + (m.height-boxH)/2
+	if x < 0 {
+		x = 0
+	}
+	if y < 0 {
+		y = 0
+	}
+	return
+}
+
+func (m Model) updatePicking(msg tea.KeyPressMsg) (Model, tea.Cmd) {
+	switch {
+	case key.Matches(msg, key.NewBinding(key.WithKeys("k", "up"))):
+		if m.pickCursor > 0 {
+			m.pickCursor--
+		}
+	case key.Matches(msg, key.NewBinding(key.WithKeys("j", "down"))):
+		if m.pickCursor < len(m.pickOptions)-1 {
+			m.pickCursor++
+		}
+	case key.Matches(msg, key.NewBinding(key.WithKeys("enter"))):
+		val := m.pickOptions[m.pickCursor]
+		m.picking = false
+		m.setFieldValue(m.pickCfgKey, val)
+		if m.pickCfgKey == "theme_preset" {
+			newTheme := common.NewThemeFromConfig(m.cfg.Theme, m.termIsDark)
+			m.theme = newTheme
+			return m, func() tea.Msg { return common.ThemeMsg{Theme: newTheme} }
+		}
+		return m, nil
+	case key.Matches(msg, key.NewBinding(key.WithKeys("esc"))):
+		m.picking = false
+		return m, nil
+	}
+	return m, nil
+}
+
+func (m Model) handlePickerClick(mouse tea.Mouse) (Model, tea.Cmd) {
+	sx, sy, boxW, boxH := m.pickerScreenPos()
+	relY := mouse.Y - sy - 2 // border + padding
+	inBox := mouse.Y >= sy && mouse.Y < sy+boxH &&
+		mouse.X >= sx && mouse.X < sx+boxW
+	scrollOff := m.pickScrollOffset()
+	maxVis := m.pickMaxVisible()
+
+	if inBox && relY >= 0 && relY < maxVis {
+		idx := scrollOff + relY
+		if idx < len(m.pickOptions) {
+			m.pickCursor = idx
+			val := m.pickOptions[idx]
+			m.picking = false
+			m.setFieldValue(m.pickCfgKey, val)
+			if m.pickCfgKey == "theme_preset" {
+				newTheme := common.NewThemeFromConfig(m.cfg.Theme, m.termIsDark)
+				m.theme = newTheme
+				return m, func() tea.Msg { return common.ThemeMsg{Theme: newTheme} }
+			}
+			return m, nil
+		}
+	}
+	if !inBox {
+		m.picking = false
+	}
+	return m, nil
+}
+
+func (m Model) handlePickerMotion(mouse tea.Mouse) (Model, tea.Cmd) {
+	_, sy, _, _ := m.pickerScreenPos()
+	relY := mouse.Y - sy - 2
+	scrollOff := m.pickScrollOffset()
+	maxVis := m.pickMaxVisible()
+	if relY >= 0 && relY < maxVis {
+		idx := scrollOff + relY
+		if idx < len(m.pickOptions) {
+			m.pickCursor = idx
+		}
+	}
+	return m, nil
+}
+
 func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyPressMsg:
+		if m.picking {
+			return m.updatePicking(msg)
+		}
 		if m.editing {
 			return m.updateEditing(msg)
 		}
@@ -188,10 +416,26 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 
 	case tea.MouseClickMsg:
 		if msg.Button == tea.MouseLeft {
+			if m.picking {
+				return m.handlePickerClick(msg.Mouse())
+			}
 			return m.handleMouseClick(msg.Mouse())
 		}
 
+	case tea.MouseMotionMsg:
+		if m.picking {
+			return m.handlePickerMotion(msg.Mouse())
+		}
+
 	case tea.MouseWheelMsg:
+		if m.picking {
+			if msg.Button == tea.MouseWheelUp && m.pickCursor > 0 {
+				m.pickCursor--
+			} else if msg.Button == tea.MouseWheelDown && m.pickCursor < len(m.pickOptions)-1 {
+				m.pickCursor++
+			}
+			return m, nil
+		}
 		if msg.Button == tea.MouseWheelUp {
 			if m.fieldIdx > 0 {
 				m.fieldIdx--
@@ -250,12 +494,16 @@ func (m Model) handleMouseClick(mouse tea.Mouse) (Model, tea.Cmd) {
 				// Already selected — activate (same as pressing Enter)
 				f := fields[idx]
 				if f.kind == fieldEnum {
+					if len(f.options) > 3 {
+						m.openPicker(f)
+						return m, nil
+					}
 					cur := m.getFieldValue(f.cfgKey)
 					for i, opt := range f.options {
 						if opt == cur {
 							next := f.options[(i+1)%len(f.options)]
 							m.setFieldValue(f.cfgKey, next)
-							if f.cfgKey == "theme_mode" || f.cfgKey == "theme_preset" {
+							if f.cfgKey == "theme_preset" {
 								newTheme := common.NewThemeFromConfig(m.cfg.Theme, m.termIsDark)
 								m.theme = newTheme
 								return m, func() tea.Msg { return common.ThemeMsg{Theme: newTheme} }
@@ -264,7 +512,7 @@ func (m Model) handleMouseClick(mouse tea.Mouse) (Model, tea.Cmd) {
 						}
 					}
 					m.setFieldValue(f.cfgKey, f.options[0])
-					if f.cfgKey == "theme_mode" || f.cfgKey == "theme_preset" {
+					if f.cfgKey == "theme_preset" {
 						newTheme := common.NewThemeFromConfig(m.cfg.Theme, m.termIsDark)
 						m.theme = newTheme
 						return m, func() tea.Msg { return common.ThemeMsg{Theme: newTheme} }
@@ -405,13 +653,17 @@ func (m Model) updateNavigating(msg tea.KeyPressMsg) (Model, tea.Cmd) {
 		}
 		f := m.currentField()
 		if f.kind == fieldEnum {
-			// Cycle through options
+			if len(f.options) > 3 {
+				m.openPicker(f)
+				return m, nil
+			}
+			// Cycle through options (for small lists)
 			cur := m.getFieldValue(f.cfgKey)
 			for i, opt := range f.options {
 				if opt == cur {
 					next := f.options[(i+1)%len(f.options)]
 					m.setFieldValue(f.cfgKey, next)
-					if f.cfgKey == "theme_mode" || f.cfgKey == "theme_preset" {
+					if f.cfgKey == "theme_preset" {
 						newTheme := common.NewThemeFromConfig(m.cfg.Theme, m.termIsDark)
 						m.theme = newTheme
 						return m, func() tea.Msg { return common.ThemeMsg{Theme: newTheme} }
@@ -420,7 +672,7 @@ func (m Model) updateNavigating(msg tea.KeyPressMsg) (Model, tea.Cmd) {
 				}
 			}
 			m.setFieldValue(f.cfgKey, f.options[0])
-			if f.cfgKey == "theme_mode" || f.cfgKey == "theme_preset" {
+			if f.cfgKey == "theme_preset" {
 				newTheme := common.NewThemeFromConfig(m.cfg.Theme, m.termIsDark)
 				m.theme = newTheme
 				return m, func() tea.Msg { return common.ThemeMsg{Theme: newTheme} }
@@ -581,20 +833,23 @@ func (m Model) getFieldValue(cfgKey string) string {
 	case "default_sort":
 		return m.cfg.View.DefaultSort
 	case "theme_preset":
-		if m.cfg.Theme.Preset == "" {
-			return "default"
+		p := m.cfg.Theme.Preset
+		if p == "" || p == "default" {
+			switch m.cfg.Theme.Mode {
+			case "light":
+				return "Light"
+			case "dark":
+				return "Dark"
+			default:
+				return "Auto"
+			}
 		}
-		return m.cfg.Theme.Preset
+		return p
 	case "auto_close_subs":
 		if m.cfg.View.AutoCloseSubs {
 			return "on"
 		}
 		return "off"
-	case "theme_mode":
-		if m.cfg.Theme.Mode == "" {
-			return "auto"
-		}
-		return m.cfg.Theme.Mode
 	case "accent", "accent_bg", "border", "text", "muted", "faint", "surface",
 		"color_backlog", "color_todo", "color_in_progress", "color_done", "color_cancelled",
 		"color_urgent", "color_high", "color_medium", "color_low":
@@ -673,15 +928,22 @@ func (m *Model) setFieldValue(cfgKey, val string) {
 	case "default_sort":
 		m.cfg.View.DefaultSort = val
 	case "theme_preset":
-		if val == "default" {
+		switch val {
+		case "Auto":
 			m.cfg.Theme.Preset = ""
-		} else {
+			m.cfg.Theme.Mode = "auto"
+		case "Light":
+			m.cfg.Theme.Preset = ""
+			m.cfg.Theme.Mode = "light"
+		case "Dark":
+			m.cfg.Theme.Preset = ""
+			m.cfg.Theme.Mode = "dark"
+		default:
 			m.cfg.Theme.Preset = val
+			m.cfg.Theme.Mode = "auto"
 		}
 	case "auto_close_subs":
 		m.cfg.View.AutoCloseSubs = val == "on"
-	case "theme_mode":
-		m.cfg.Theme.Mode = val
 	case "accent", "accent_bg", "border", "text", "muted", "faint", "surface",
 		"color_backlog", "color_todo", "color_in_progress", "color_done", "color_cancelled",
 		"color_urgent", "color_high", "color_medium", "color_low":

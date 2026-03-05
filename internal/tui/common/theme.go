@@ -206,7 +206,6 @@ func NewThemeFromConfig(cfg config.ThemeConfig, termIsDark bool) Theme {
 					t.GlamourStyle = "light"
 				}
 			}
-			applyColorOverrides(&t, cfg.ColorsFor(isDark))
 			t.buildStyles()
 			return t
 		}
