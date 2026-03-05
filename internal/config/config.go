@@ -127,6 +127,7 @@ type KeysConfig struct {
 	BoardFilter   string `toml:"board_filter"`
 	BoardStatus   string `toml:"board_status"`
 	BoardPriority string `toml:"board_priority"`
+	BoardLabel    string `toml:"board_label"`
 	BoardSort     string `toml:"board_sort"`
 	BoardReverse  string `toml:"board_reverse"`
 
@@ -139,6 +140,7 @@ type KeysConfig struct {
 	ListFilter    string `toml:"list_filter"`
 	ListStatus    string `toml:"list_status"`
 	ListPriority  string `toml:"list_priority"`
+	ListLabel     string `toml:"list_label"`
 	ListSort      string `toml:"list_sort"`
 	ListReverse   string `toml:"list_reverse"`
 
@@ -147,6 +149,7 @@ type KeysConfig struct {
 	DetailToList   string `toml:"detail_to_list"`
 	DetailStatus   string `toml:"detail_status"`
 	DetailPriority string `toml:"detail_priority"`
+	DetailLabel    string `toml:"detail_label"`
 	DetailComment  string `toml:"detail_comment"`
 	DetailEdit     string `toml:"detail_edit"`
 }
@@ -215,6 +218,7 @@ func Defaults() Config {
 			BoardFilter:   "f",
 			BoardStatus:   "s",
 			BoardPriority: "p",
+			BoardLabel:    "t",
 			BoardSort:     "o",
 			BoardReverse:  "O",
 			ListUp:        "k",
@@ -226,6 +230,7 @@ func Defaults() Config {
 			ListFilter:    "f",
 			ListStatus:    "s",
 			ListPriority:  "p",
+			ListLabel:     "t",
 			ListSort:      "o",
 			ListReverse:   "O",
 			DetailBack:     "esc",
@@ -233,6 +238,7 @@ func Defaults() Config {
 			DetailToList:   "l",
 			DetailStatus:   "s",
 			DetailPriority: "p",
+			DetailLabel:    "t",
 			DetailComment:  "c",
 			DetailEdit:     "e",
 		},

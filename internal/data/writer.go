@@ -36,6 +36,29 @@ func UpdateField(issuesDir string, issueID int, field, newValue string) error {
 	return nil
 }
 
+// UpdateLabels replaces the labels array in meta.toml and updates the "updated" field.
+func UpdateLabels(issuesDir string, issueID int, labels []string) error {
+	path := filepath.Join(issuesDir, strconv.Itoa(issueID), "meta.toml")
+
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return fmt.Errorf("read meta.toml: %w", err)
+	}
+	var m meta
+	if err := toml.Unmarshal(raw, &m); err != nil {
+		return fmt.Errorf("parse meta.toml: %w", err)
+	}
+
+	m.Labels = labels
+	m.Updated = time.Now().Format("2006-01-02T15:04")
+
+	out, err := toml.Marshal(&m)
+	if err != nil {
+		return fmt.Errorf("marshal meta.toml: %w", err)
+	}
+	return os.WriteFile(path, out, 0644)
+}
+
 // AppendComment appends a comment to an issue's comments.md using the standard
 // grapes format:
 //

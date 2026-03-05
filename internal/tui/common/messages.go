@@ -32,6 +32,12 @@ type PickerResultMsg struct {
 	Value   string
 }
 type PickerCancelMsg struct{}
+type ShowLabelPickerMsg struct{ IssueID int }
+type LabelPickerResultMsg struct {
+	IssueID int
+	Labels  []string
+}
+type LabelPickerCancelMsg struct{}
 type LaunchEditorMsg struct{ ID int }
 type EditorFinishedMsg struct{ Err error }
 type LaunchEditMsg struct{ ID int }
