@@ -840,12 +840,20 @@ func (m Model) View() tea.View {
 		}
 	case common.ScreenSettings:
 		content = m.settings.View()
-		helpParts = []string{
-			m.theme.FormatKeyHint("jk", "navigate"),
-			m.theme.FormatKeyHint("tab", "pane"),
-			m.theme.FormatKeyHint("enter", "edit"),
-			m.theme.FormatKeyHint("ctrl+s", "save"),
-			m.theme.FormatKeyHint("esc", "back"),
+		if m.settings.PickerActive() {
+			helpParts = []string{
+				m.theme.FormatKeyHint("jk", "navigate"),
+				m.theme.FormatKeyHint("enter", "select"),
+				m.theme.FormatKeyHint("esc", "cancel"),
+			}
+		} else {
+			helpParts = []string{
+				m.theme.FormatKeyHint("jk", "navigate"),
+				m.theme.FormatKeyHint("tab", "pane"),
+				m.theme.FormatKeyHint("enter", "edit"),
+				m.theme.FormatKeyHint("ctrl+s", "save"),
+				m.theme.FormatKeyHint("esc", "back"),
+			}
 		}
 	}
 
@@ -853,6 +861,11 @@ func (m Model) View() tea.View {
 	contentLines := strings.Count(content, "\n") + 1
 	if contentLines < contentHeight {
 		content += strings.Repeat("\n", contentHeight-contentLines)
+	}
+
+	// Settings enum picker overlay
+	if m.screen == common.ScreenSettings && m.settings.PickerActive() {
+		content = overlayCenter(content, m.settings.PickerView(), m.width, contentHeight)
 	}
 
 	// Picker overlay: composite the picker box on top of the real content
