@@ -1,153 +1,100 @@
 # Grapes
 
-A file-based issue tracker. Issues are plain files in a `.grapes/` folder that agents read and write with standard file tools. A terminal UI provides visualization.
+An issue tracker built for AI agents. Issues are plain files that agents edit with standard tools — no APIs, no databases. A terminal UI gives humans a live view of what's happening.
 
-![Grapes TUI demo](doc/demo.gif)
+<p align="center">
+  <img src="doc/board.png" alt="Board view" width="100%">
+</p>
 
-## Why
+<p align="center">
+  <img src="doc/list.png" alt="List view" width="49%">
+  <img src="doc/detail.png" alt="Detail view" width="49%">
+</p>
 
-- **Surgical edits** — Change `status = 'todo'` to `status = 'in_progress'` with a single line edit.
-- **Standard tools** — Agents use `grep`, `cat`, `sed`, and regular file operations to work with issues.
-- **Composable** — Pipe, filter, and transform issues with any Unix tool or scripting language.
+## How It Works
 
-## Issue Format
-
-Each issue is a numbered folder under `.grapes/`:
+Issues live in a `.grapes/` folder as numbered directories. Each issue is three files:
 
 ```
-.grapes/
-  1/
-    meta.toml       # structured metadata
-    content.md      # description (markdown)
-    comments.md     # append-only comment log
-  2/
-    ...
+.grapes/42/
+  meta.toml       # title, status, priority, labels
+  content.md      # description
+  comments.md     # append-only log
 ```
 
-### meta.toml
+An agent changes an issue's status by editing one line in a TOML file. No client libraries, no authentication, no learning curve. `grep`, `sed`, and `cat` are the entire API.
 
-```toml
-title = "Fix login redirect loop"
-status = 'todo'
-priority = 'high'
-labels = ['bug', 'auth']
-parent = 1
-blocked_by = [3, 5]
-created = '2026-02-27T14:00'
-updated = '2026-02-28T09:30'
-```
+The TUI watches the filesystem and updates in real time — so when an agent moves an issue to `in_progress`, you see the card slide across the board immediately.
 
-### Fields
-
-| Field | Values | Notes |
-|-------|--------|-------|
-| `status` | `backlog` `todo` `in_progress` `done` `cancelled` | Required |
-| `priority` | `urgent` `high` `medium` `low` | Required |
-| `labels` | Freeform tags | `[]` for none |
-| `parent` | Issue ID | Creates a sub-issue relationship |
-| `blocked_by` | List of issue IDs | Inverse `blocks` computed automatically |
-| `created` | `YYYY-MM-DD` or `YYYY-MM-DDTHH:MM` | Set once |
-| `updated` | `YYYY-MM-DD` or `YYYY-MM-DDTHH:MM` | Updated on every change |
-
-### comments.md
-
-Append-only log with timestamped entries:
-
-```markdown
-### 2026-02-28T10:00
-
-Investigated the root cause — session cookie not being cleared on redirect.
-
-### 2026-02-28T14:30
-
-Fix deployed. Monitoring for regressions.
-```
-
-## Relationships
-
-**Sub-issues** — Set `parent = 1` on a child issue to nest it under issue 1. Nesting depth is unlimited. The folder structure stays flat; hierarchy is a data relationship.
-
-**Blocking** — Set `blocked_by = [3, 5]` to indicate dependencies. The inverse (`blocks`) is computed at load time and shown in the TUI.
-
-## Querying
+## Install
 
 ```sh
-grep -rl "status = " .grapes/*/meta.toml           # find by status
-grep -rl "priority = 'urgent'" .grapes/*/meta.toml # find by priority
-grep -rl "parent = 1" .grapes/*/meta.toml          # children of issue 1
-grep -rl "login" .grapes/*/content.md              # full-text search
-ls .grapes/ | sort -n | tail -1                    # latest issue ID
+go install github.com/Mibokess/grapes@latest
 ```
 
-## Creating an Issue
+Or build from source:
 
 ```sh
-# Reserve the next ID (scans main + all worktrees, uses file locking)
+git clone https://github.com/Mibokess/grapes.git
+cd grapes && go build -o grapes .
+```
+
+## Quick Start
+
+```sh
+mkdir -p .grapes
+grapes                # launch the TUI
+```
+
+Create an issue:
+
+```sh
 next=$(grapes next-id)
 
 cat > .grapes/$next/meta.toml << 'EOF'
-title = "My new issue"
+title = "Fix login redirect loop"
 status = 'todo'
-priority = 'medium'
-labels = []
-created = '2026-03-01T10:00'
-updated = '2026-03-01T10:00'
+priority = 'high'
+labels = ['bug']
+created = '2026-03-05T10:00'
+updated = '2026-03-05T10:00'
 EOF
 
 touch .grapes/$next/content.md .grapes/$next/comments.md
 ```
 
-## Validation
+Validate issues:
 
 ```sh
-go run . validate          # validate all issues
-go run . validate 42 43    # validate specific issues
+grapes validate          # all issues
+grapes validate 42 43    # specific issues
 ```
 
-Checks required fields, valid enum values, date formats, comment header format, and cross-issue integrity (parent/blocked_by references exist, no self-blocking).
+## Features
 
-## TUI
+**Three views** — Kanban board, sortable list, and full detail view with rendered markdown. Switch with `B`, `L`, and `Enter`/`Esc`.
 
-```sh
-go run .
-```
+**Filtering and search** — Filter by status, priority, labels, or sub-issue scope (`f`). Full-text search in list view (`/`).
 
-Three views — **Board** (kanban by status), **List** (sortable table), and **Detail** (full issue with rendered markdown). Switch between them with `L`/`B` and `Enter`/`Esc`.
+**Inline editing** — Press `e` to open any issue in `$EDITOR`. Press `s`/`p` to cycle status or priority. Drag cards between columns.
 
-### Features
+**Sub-issues and dependencies** — Set `parent = 1` to nest under an issue. Set `blocked_by = [3, 5]` to declare dependencies. The TUI renders the full hierarchy with navigable links.
 
-- **Filtering** — Structured filter menu (`f`) for status, priority, labels, and sub-issue scope. Text search (`/`) in list view matches across all fields.
-- **Sorting** — Cycle sort mode with `o` (priority, updated, created, ID, title, status). Reverse with `O`.
-- **Inline editing** — Press `e` to open the issue in `$EDITOR`. Changes are validated before saving.
-- **Comments** — Press `c` in detail view to append a timestamped comment.
-- **Status/priority** — Press `s` or `p` to pick a new value from a menu.
-- **Drag and drop** — Drag cards between board columns to change status.
-- **Live reload** — File changes from agents or other tools appear in real time via fsnotify.
-- **Navigation** — Clickable links between parent, child, and blocked issues in detail view.
+**Live reload** — File changes from agents, editors, or other tools appear instantly via filesystem watching.
 
-### Keybindings
+**Themes** — Ships with 450+ color presets (Catppuccin, Dracula, Gruvbox, Nord, Tokyo Night, and more). Configure in `~/.grapes/config.toml` or press `C` in the TUI.
 
-| Key | Board | List | Detail |
-|-----|-------|------|--------|
-| `hjkl` / arrows | Navigate cards | Navigate rows | Scroll |
-| `Enter` | Open issue | Open issue | — |
-| `Esc` | — | Clear filter | Go back |
-| `L` / `B` | To list | To board | Switch view |
-| `/` | — | Text search | — |
-| `f` | Filter menu | Filter menu | — |
-| `s` / `p` | Status / priority filter | Status / priority filter | Cycle status / priority |
-| `o` / `O` | Sort / reverse | Sort / reverse | — |
-| `e` | Edit in `$EDITOR` | Edit in `$EDITOR` | Edit in `$EDITOR` |
-| `c` | — | — | Add comment |
-| `r` | Refresh | Refresh | — |
-| `?` | Help | Help | Help |
-| `q` | Quit | Quit | Quit |
+**Concurrent-safe IDs** — `grapes next-id` scans the main project and all worktrees, using file locking to prevent collisions.
 
 ## Agent Integration
 
-Grapes ships with [Claude Code](https://claude.ai/claude-code) skills in `plugin/skills/` for creating, reading, listing, searching, updating, commenting on, and closing issues. Symlink them into `.claude/skills/` to enable them.
+Grapes ships with [Claude Code](https://docs.anthropic.com/en/docs/claude-code) skills for creating, updating, searching, and commenting on issues. Copy the `plugin/` directory to use them in your project.
 
-Changes made in the TUI write directly to the `.grapes/` files on disk.
+The design principle: agents don't need a special client. Any tool that can read and write files can work with grapes issues.
+
+## Format Reference
+
+See [SPEC.md](SPEC.md) for the full field reference and format specification.
 
 ## Inspiration
 
