@@ -17,6 +17,7 @@ import (
 	"github.com/Mibokess/grapes/internal/tui/common"
 	"github.com/Mibokess/grapes/internal/tui/detail"
 	"github.com/Mibokess/grapes/internal/tui/filter"
+	"github.com/Mibokess/grapes/internal/tui/labelpicker"
 	"github.com/Mibokess/grapes/internal/tui/list"
 	"github.com/Mibokess/grapes/internal/tui/picker"
 	"github.com/Mibokess/grapes/internal/tui/settings"
@@ -57,10 +58,11 @@ type Model struct {
 	detail detail.Model
 	settings settings.Model
 
-	picker       *picker.Model       // non-nil when picker overlay is active
-	filterMenu   *filter.Menu        // non-nil when filter menu is open
-	filterPicker *filter.MultiPicker // non-nil when filter multi-picker is open
-	filters      filter.FilterSet    // structured filter state
+	picker       *picker.Model              // non-nil when picker overlay is active
+	labelPicker  *labelpicker.Model         // non-nil when label picker is active
+	filterMenu   *filter.Menu              // non-nil when filter menu is open
+	filterPicker *filter.MultiPicker       // non-nil when filter multi-picker is open
+	filters      filter.FilterSet          // structured filter state
 
 	worktreeNames []string // sorted worktree names, for consistent color indexing
 
@@ -296,6 +298,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.picker = &p
 			return m, cmd
 		}
+		// When label picker is active, route all input to it
+		if m.labelPicker != nil {
+			var cmd tea.Cmd
+			lp := *m.labelPicker
+			lp, cmd = lp.Update(msg)
+			m.labelPicker = &lp
+			return m, cmd
+		}
 		// Global quit — but not when filtering in list view
 		if m.screen == common.ScreenList && m.list.Filtering() {
 			break // fall through to screen-specific handler
@@ -319,6 +329,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			p := *m.picker
 			p, cmd = p.Update(msg)
 			m.picker = &p
+			return m, cmd
+		}
+		// When label picker is active, route all mouse events to it
+		if m.labelPicker != nil {
+			m.updateLabelPickerPosition()
+			var cmd tea.Cmd
+			lp := *m.labelPicker
+			lp, cmd = lp.Update(msg)
+			m.labelPicker = &lp
 			return m, cmd
 		}
 
@@ -534,6 +553,25 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case common.PickerCancelMsg:
 		m.picker = nil
+		return m, nil
+
+	case common.ShowLabelPickerMsg:
+		lp := m.buildLabelPicker(msg.IssueID)
+		m.labelPicker = &lp
+		return m, nil
+
+	case common.LabelPickerResultMsg:
+		m.labelPicker = nil
+		srcDir := m.issueSourceDir(msg.IssueID)
+		return m, func() tea.Msg {
+			if err := data.UpdateLabels(srcDir, msg.IssueID, msg.Labels); err != nil {
+				return common.WriteErrMsg{Err: err}
+			}
+			return nil // fsnotify will trigger refresh
+		}
+
+	case common.LabelPickerCancelMsg:
+		m.labelPicker = nil
 		return m, nil
 
 	case common.ShowFilterMenuMsg:
@@ -803,6 +841,7 @@ func (m Model) View() tea.View {
 			m.theme.FormatKeyHint("e", "edit"),
 			m.theme.FormatKeyHint("s", "status"),
 			m.theme.FormatKeyHint("p", "priority"),
+			m.theme.FormatKeyHint("t", "labels"),
 			m.theme.FormatKeyHint("drag", "move"),
 			m.theme.FormatKeyHint("f", "filter"),
 			m.theme.FormatKeyHint("o/O", sortLabel),
@@ -821,6 +860,7 @@ func (m Model) View() tea.View {
 			m.theme.FormatKeyHint("e", "edit"),
 			m.theme.FormatKeyHint("s", "status"),
 			m.theme.FormatKeyHint("p", "priority"),
+			m.theme.FormatKeyHint("t", "labels"),
 			m.theme.FormatKeyHint("o/O", sortLabel),
 			m.theme.FormatKeyHint("f", "filter"),
 			m.theme.FormatKeyHint("/", "search"),
@@ -834,6 +874,7 @@ func (m Model) View() tea.View {
 			m.theme.FormatKeyHint("e", "edit"),
 			m.theme.FormatKeyHint("s", "status"),
 			m.theme.FormatKeyHint("p", "priority"),
+			m.theme.FormatKeyHint("t", "labels"),
 			m.theme.FormatKeyHint("c", "comment"),
 			m.theme.FormatKeyHint("esc", "back"),
 			m.theme.FormatKeyHint("q", "quit"),
@@ -874,6 +915,17 @@ func (m Model) View() tea.View {
 		helpParts = []string{
 			m.theme.FormatKeyHint("jk", "navigate"),
 			m.theme.FormatKeyHint("enter", "select"),
+			m.theme.FormatKeyHint("esc", "cancel"),
+		}
+	}
+
+	// Label picker overlay
+	if m.labelPicker != nil {
+		content = overlayCenter(content, m.labelPicker.View(), m.width, contentHeight)
+		helpParts = []string{
+			m.theme.FormatKeyHint("jk", "navigate"),
+			m.theme.FormatKeyHint("space", "toggle"),
+			m.theme.FormatKeyHint("enter", "apply"),
 			m.theme.FormatKeyHint("esc", "cancel"),
 		}
 	}
@@ -994,6 +1046,39 @@ func (m *Model) updatePickerPosition() {
 	offsetY := common.AppHeaderHeight + filter.BarHeight(m.filters)
 	m.picker.ScreenX = (m.width - fgW) / 2
 	m.picker.ScreenY = offsetY + (contentH-fgH)/2
+}
+
+// buildLabelPicker creates a label picker for the given issue.
+func (m Model) buildLabelPicker(issueID int) labelpicker.Model {
+	var issueLabels []string
+	for _, iss := range m.issues {
+		if iss.ID == issueID {
+			issueLabels = iss.Labels
+			break
+		}
+	}
+	return labelpicker.New(issueID, m.collectAllLabels(), issueLabels, m.theme)
+}
+
+// updateLabelPickerPosition computes the centered screen position of the label picker
+// overlay and stores it on the model for mouse hit-testing.
+func (m *Model) updateLabelPickerPosition() {
+	if m.labelPicker == nil {
+		return
+	}
+	pickerView := m.labelPicker.View()
+	pickerLines := strings.Split(pickerView, "\n")
+	fgH := len(pickerLines)
+	fgW := 0
+	for _, l := range pickerLines {
+		if w := lipgloss.Width(l); w > fgW {
+			fgW = w
+		}
+	}
+	contentH := m.contentHeight()
+	offsetY := common.AppHeaderHeight + filter.BarHeight(m.filters)
+	m.labelPicker.ScreenX = (m.width - fgW) / 2
+	m.labelPicker.ScreenY = offsetY + (contentH-fgH)/2
 }
 
 // topOffset returns the number of screen lines above the view content

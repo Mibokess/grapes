@@ -159,6 +159,13 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 					return common.ShowPickerMsg{IssueID: issue.ID, Field: "priority"}
 				}
 			}
+		case key.Matches(msg, common.BoardKeyMap.Labels):
+			if len(m.columns) > 0 && len(m.columns[m.curCol].issues) > 0 {
+				issue := m.columns[m.curCol].issues[m.curRow]
+				return m, func() tea.Msg {
+					return common.ShowLabelPickerMsg{IssueID: issue.ID}
+				}
+			}
 		case key.Matches(msg, common.BoardKeyMap.CycleSort):
 			return m, func() tea.Msg { return common.CycleSortMsg{} }
 		case key.Matches(msg, common.BoardKeyMap.ReverseSort):

@@ -201,6 +201,16 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 					}
 				}
 			}
+		case key.Matches(msg, common.ListKeyMap.Labels):
+			if row := m.table.SelectedRow(); row != nil {
+				id := 0
+				fmt.Sscanf(row[0], "%d", &id)
+				if id > 0 {
+					return m, func() tea.Msg {
+						return common.ShowLabelPickerMsg{IssueID: id}
+					}
+				}
+			}
 		case key.Matches(msg, common.ListKeyMap.CycleSort):
 			return m, func() tea.Msg { return common.CycleSortMsg{} }
 		case key.Matches(msg, common.ListKeyMap.ReverseSort):
@@ -271,6 +281,10 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 							case 3: // Priority column
 								return m, func() tea.Msg {
 									return common.ShowPickerMsg{IssueID: id, Field: "priority"}
+								}
+							case 6: // Labels column
+								return m, func() tea.Msg {
+									return common.ShowLabelPickerMsg{IssueID: id}
 								}
 							default:
 								return m, func() tea.Msg { return common.OpenDetailMsg{ID: id} }

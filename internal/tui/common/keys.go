@@ -40,6 +40,7 @@ type BoardKeys struct {
 	Refresh       key.Binding
 	CycleStatus   key.Binding
 	CyclePriority key.Binding
+	Labels        key.Binding
 	CycleSort     key.Binding
 	ReverseSort   key.Binding
 }
@@ -89,6 +90,10 @@ var BoardKeyMap = BoardKeys{
 		key.WithKeys("p"),
 		key.WithHelp("p", "priority"),
 	),
+	Labels: key.NewBinding(
+		key.WithKeys("t"),
+		key.WithHelp("t", "labels"),
+	),
 	CycleSort: key.NewBinding(
 		key.WithKeys("o"),
 		key.WithHelp("o", "order"),
@@ -112,6 +117,7 @@ type ListKeys struct {
 	Refresh          key.Binding
 	CycleStatus      key.Binding
 	CyclePriority    key.Binding
+	Labels           key.Binding
 	CycleSort        key.Binding
 	ReverseSort      key.Binding
 	ScrollLeft       key.Binding
@@ -163,6 +169,10 @@ var ListKeyMap = ListKeys{
 		key.WithKeys("p"),
 		key.WithHelp("p", "priority"),
 	),
+	Labels: key.NewBinding(
+		key.WithKeys("t"),
+		key.WithHelp("t", "labels"),
+	),
 	CycleSort: key.NewBinding(
 		key.WithKeys("o"),
 		key.WithHelp("o", "order"),
@@ -188,6 +198,7 @@ type DetailKeys struct {
 	ToList        key.Binding
 	CycleStatus   key.Binding
 	CyclePriority key.Binding
+	Labels        key.Binding
 	AddComment    key.Binding
 	EditIssue     key.Binding
 }
@@ -212,6 +223,10 @@ var DetailKeyMap = DetailKeys{
 	CyclePriority: key.NewBinding(
 		key.WithKeys("p"),
 		key.WithHelp("p", "priority"),
+	),
+	Labels: key.NewBinding(
+		key.WithKeys("t"),
+		key.WithHelp("t", "labels"),
 	),
 	AddComment: key.NewBinding(
 		key.WithKeys("c"),
@@ -285,6 +300,7 @@ func ApplyKeys(k config.KeysConfig) {
 	BoardKeyMap.Filter = key.NewBinding(key.WithKeys(k.BoardFilter), key.WithHelp(k.BoardFilter, "filter"))
 	BoardKeyMap.CycleStatus = key.NewBinding(key.WithKeys(k.BoardStatus), key.WithHelp(k.BoardStatus, "status"))
 	BoardKeyMap.CyclePriority = key.NewBinding(key.WithKeys(k.BoardPriority), key.WithHelp(k.BoardPriority, "priority"))
+	BoardKeyMap.Labels = key.NewBinding(key.WithKeys(k.BoardLabel), key.WithHelp(k.BoardLabel, "labels"))
 	BoardKeyMap.CycleSort = key.NewBinding(key.WithKeys(k.BoardSort), key.WithHelp(k.BoardSort, "order"))
 	BoardKeyMap.ReverseSort = key.NewBinding(key.WithKeys(k.BoardReverse), key.WithHelp(k.BoardReverse, "reverse"))
 
@@ -297,6 +313,7 @@ func ApplyKeys(k config.KeysConfig) {
 	ListKeyMap.StructuredFilter = key.NewBinding(key.WithKeys(k.ListFilter), key.WithHelp(k.ListFilter, "filter"))
 	ListKeyMap.CycleStatus = key.NewBinding(key.WithKeys(k.ListStatus), key.WithHelp(k.ListStatus, "status"))
 	ListKeyMap.CyclePriority = key.NewBinding(key.WithKeys(k.ListPriority), key.WithHelp(k.ListPriority, "priority"))
+	ListKeyMap.Labels = key.NewBinding(key.WithKeys(k.ListLabel), key.WithHelp(k.ListLabel, "labels"))
 	ListKeyMap.CycleSort = key.NewBinding(key.WithKeys(k.ListSort), key.WithHelp(k.ListSort, "order"))
 	ListKeyMap.ReverseSort = key.NewBinding(key.WithKeys(k.ListReverse), key.WithHelp(k.ListReverse, "reverse"))
 
@@ -305,6 +322,7 @@ func ApplyKeys(k config.KeysConfig) {
 	DetailKeyMap.ToList = key.NewBinding(key.WithKeys(k.DetailToList), key.WithHelp(k.DetailToList, "list view"))
 	DetailKeyMap.CycleStatus = key.NewBinding(key.WithKeys(k.DetailStatus), key.WithHelp(k.DetailStatus, "status"))
 	DetailKeyMap.CyclePriority = key.NewBinding(key.WithKeys(k.DetailPriority), key.WithHelp(k.DetailPriority, "priority"))
+	DetailKeyMap.Labels = key.NewBinding(key.WithKeys(k.DetailLabel), key.WithHelp(k.DetailLabel, "labels"))
 	DetailKeyMap.AddComment = key.NewBinding(key.WithKeys(k.DetailComment), key.WithHelp(k.DetailComment, "comment"))
 	DetailKeyMap.EditIssue = key.NewBinding(key.WithKeys(k.DetailEdit), key.WithHelp(k.DetailEdit, "edit"))
 }

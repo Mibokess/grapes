@@ -120,6 +120,7 @@ func New(cfg config.Config, issuesDir string, w, h int, theme common.Theme) Mode
 				{label: "Board: Filter", cfgKey: "board_filter", kind: fieldKey},
 				{label: "Board: Status", cfgKey: "board_status", kind: fieldKey},
 				{label: "Board: Priority", cfgKey: "board_priority", kind: fieldKey},
+				{label: "Board: Label", cfgKey: "board_label", kind: fieldKey},
 				{label: "Board: Sort", cfgKey: "board_sort", kind: fieldKey},
 				{label: "Board: Reverse", cfgKey: "board_reverse", kind: fieldKey},
 				{label: "List: Up", cfgKey: "list_up", kind: fieldKey},
@@ -131,6 +132,7 @@ func New(cfg config.Config, issuesDir string, w, h int, theme common.Theme) Mode
 				{label: "List: Filter", cfgKey: "list_filter", kind: fieldKey},
 				{label: "List: Status", cfgKey: "list_status", kind: fieldKey},
 				{label: "List: Priority", cfgKey: "list_priority", kind: fieldKey},
+				{label: "List: Label", cfgKey: "list_label", kind: fieldKey},
 				{label: "List: Sort", cfgKey: "list_sort", kind: fieldKey},
 				{label: "List: Reverse", cfgKey: "list_reverse", kind: fieldKey},
 				{label: "Detail: Back", cfgKey: "detail_back", kind: fieldKey},
@@ -138,6 +140,7 @@ func New(cfg config.Config, issuesDir string, w, h int, theme common.Theme) Mode
 				{label: "Detail: To list", cfgKey: "detail_to_list", kind: fieldKey},
 				{label: "Detail: Status", cfgKey: "detail_status", kind: fieldKey},
 				{label: "Detail: Priority", cfgKey: "detail_priority", kind: fieldKey},
+				{label: "Detail: Label", cfgKey: "detail_label", kind: fieldKey},
 				{label: "Detail: Comment", cfgKey: "detail_comment", kind: fieldKey},
 				{label: "Detail: Edit", cfgKey: "detail_edit", kind: fieldKey},
 			},
@@ -876,6 +879,8 @@ func (m Model) getFieldValue(cfgKey string) string {
 		return m.cfg.Keys.BoardStatus
 	case "board_priority":
 		return m.cfg.Keys.BoardPriority
+	case "board_label":
+		return m.cfg.Keys.BoardLabel
 	case "board_sort":
 		return m.cfg.Keys.BoardSort
 	case "board_reverse":
@@ -898,6 +903,8 @@ func (m Model) getFieldValue(cfgKey string) string {
 		return m.cfg.Keys.ListStatus
 	case "list_priority":
 		return m.cfg.Keys.ListPriority
+	case "list_label":
+		return m.cfg.Keys.ListLabel
 	case "list_sort":
 		return m.cfg.Keys.ListSort
 	case "list_reverse":
@@ -912,6 +919,8 @@ func (m Model) getFieldValue(cfgKey string) string {
 		return m.cfg.Keys.DetailStatus
 	case "detail_priority":
 		return m.cfg.Keys.DetailPriority
+	case "detail_label":
+		return m.cfg.Keys.DetailLabel
 	case "detail_comment":
 		return m.cfg.Keys.DetailComment
 	case "detail_edit":
@@ -973,6 +982,8 @@ func (m *Model) setFieldValue(cfgKey, val string) {
 		m.cfg.Keys.BoardStatus = val
 	case "board_priority":
 		m.cfg.Keys.BoardPriority = val
+	case "board_label":
+		m.cfg.Keys.BoardLabel = val
 	case "board_sort":
 		m.cfg.Keys.BoardSort = val
 	case "board_reverse":
@@ -995,6 +1006,8 @@ func (m *Model) setFieldValue(cfgKey, val string) {
 		m.cfg.Keys.ListStatus = val
 	case "list_priority":
 		m.cfg.Keys.ListPriority = val
+	case "list_label":
+		m.cfg.Keys.ListLabel = val
 	case "list_sort":
 		m.cfg.Keys.ListSort = val
 	case "list_reverse":
@@ -1009,6 +1022,8 @@ func (m *Model) setFieldValue(cfgKey, val string) {
 		m.cfg.Keys.DetailStatus = val
 	case "detail_priority":
 		m.cfg.Keys.DetailPriority = val
+	case "detail_label":
+		m.cfg.Keys.DetailLabel = val
 	case "detail_comment":
 		m.cfg.Keys.DetailComment = val
 	case "detail_edit":
