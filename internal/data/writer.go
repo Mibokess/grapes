@@ -12,31 +12,21 @@ import (
 	toml "github.com/pelletier/go-toml/v2"
 )
 
-// UpdateField runs sed to replace a field value in meta.toml and updates the
-// "updated" field. This mirrors what an agent does when editing issue metadata.
+// UpdateField runs sed to replace a field value in meta.toml.
 //
 //	sed -i "s/^field = .*/field = 'newValue'/" .grapes/<id>/meta.toml
-//	sed -i "s/^updated = .*/updated = 2026-03-02T15:04:00Z/" .grapes/<id>/meta.toml
 func UpdateField(issuesDir string, issueID int, field, newValue string) error {
 	path := filepath.Join(issuesDir, strconv.Itoa(issueID), "meta.toml")
 
-	// Update the target field
 	fieldPattern := fmt.Sprintf(`s/^%s = .*/%s = '%s'/`, field, field, newValue)
 	if err := exec.Command("sed", "-i", fieldPattern, path).Run(); err != nil {
 		return fmt.Errorf("sed %s: %w", field, err)
 	}
 
-	// Update the "updated" datetime
-	now := time.Now().UTC().Truncate(time.Minute).Format(time.RFC3339)
-	datePattern := fmt.Sprintf(`s/^updated = .*/updated = %s/`, now)
-	if err := exec.Command("sed", "-i", datePattern, path).Run(); err != nil {
-		return fmt.Errorf("sed updated: %w", err)
-	}
-
-	return nil
+	return StampTimestamps(issuesDir, issueID)
 }
 
-// UpdateLabels replaces the labels array in meta.toml and updates the "updated" field.
+// UpdateLabels replaces the labels array in meta.toml.
 func UpdateLabels(issuesDir string, issueID int, labels []string) error {
 	path := filepath.Join(issuesDir, strconv.Itoa(issueID), "meta.toml")
 
@@ -51,6 +41,37 @@ func UpdateLabels(issuesDir string, issueID int, labels []string) error {
 
 	m.Labels = labels
 	m.Updated = time.Now().UTC().Truncate(time.Minute)
+
+	out, err := toml.Marshal(&m)
+	if err != nil {
+		return fmt.Errorf("marshal meta.toml: %w", err)
+	}
+	return os.WriteFile(path, out, 0644)
+}
+
+// StampTimestamps reads meta.toml and sets `updated` to now. If `created` is
+// zero/missing, it sets `created` to now as well. This is the canonical way to
+// maintain timestamps — agents call `grapes issue <id>` which invokes this.
+func StampTimestamps(issuesDir string, issueID int) error {
+	path := filepath.Join(issuesDir, strconv.Itoa(issueID), "meta.toml")
+	now := time.Now().UTC().Truncate(time.Minute)
+
+	raw, err := os.ReadFile(path)
+	if err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("read meta.toml: %w", err)
+	}
+
+	var m meta
+	if len(raw) > 0 {
+		if err := toml.Unmarshal(raw, &m); err != nil {
+			return fmt.Errorf("parse meta.toml: %w", err)
+		}
+	}
+
+	if m.Created.IsZero() {
+		m.Created = now
+	}
+	m.Updated = now
 
 	out, err := toml.Marshal(&m)
 	if err != nil {
