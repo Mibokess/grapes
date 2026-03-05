@@ -107,6 +107,10 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 			return m, func() tea.Msg {
 				return common.ShowPickerMsg{IssueID: m.issue.ID, Field: "priority"}
 			}
+		case key.Matches(msg, common.DetailKeyMap.Labels):
+			return m, func() tea.Msg {
+				return common.ShowLabelPickerMsg{IssueID: m.issue.ID}
+			}
 		case key.Matches(msg, common.DetailKeyMap.EditIssue):
 			return m, func() tea.Msg {
 				return common.LaunchEditMsg{ID: m.issue.ID}
@@ -134,6 +138,11 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 							issueID := m.issue.ID
 							return m, func() tea.Msg {
 								return common.SwitchSourceMsg{IssueID: issueID, SourceIdx: idx}
+							}
+						}
+						if field == "labels" {
+							return m, func() tea.Msg {
+								return common.ShowLabelPickerMsg{IssueID: m.issue.ID}
 							}
 						}
 						return m, func() tea.Msg {
@@ -248,8 +257,10 @@ func renderIssue(issue data.Issue, allIssues []data.Issue, width int, theme comm
 	metaRow := statusPill + "  " + prioStr
 	metaLines = append(metaLines, metaRow)
 
-	// Row 2: labels
+	// Row 2: labels (clickable)
+	labelsLineIdx := -1
 	if len(issue.Labels) > 0 {
+		labelsLineIdx = len(metaLines)
 		var labelStrs []string
 		for _, l := range issue.Labels {
 			labelStrs = append(labelStrs, theme.RenderLabelPill(l))
@@ -353,6 +364,17 @@ func renderIssue(issue data.Issue, allIssues []data.Issue, width int, theme comm
 		xEnd:   metaContentXOffset + statusPillWidth + 2 + prioStrWidth,
 		field:  "priority",
 	})
+
+	// Register click zone for labels row
+	if labelsLineIdx >= 0 {
+		labelsLine := metaBoxStartLine + 1 + labelsLineIdx
+		zones = append(zones, clickZone{
+			line:   labelsLine,
+			xStart: metaContentXOffset,
+			xEnd:   metaContentXOffset + metaBoxW, // entire row is clickable
+			field:  "labels",
+		})
+	}
 
 	b.WriteString("\n")
 
