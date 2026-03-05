@@ -11,7 +11,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 )
 
-var version = "0.1.4"
+var version = "0.1.5"
 
 func main() {
 	cwd, err := os.Getwd()
@@ -42,8 +42,8 @@ func main() {
 		switch os.Args[1] {
 		case "validate":
 			os.Exit(runValidate(issuesDir, os.Args[2:]))
-		case "next-id":
-			os.Exit(runNextID(issuesDir))
+		case "issue":
+			os.Exit(runIssue(issuesDir, os.Args[2:]))
 		}
 	}
 
@@ -64,13 +64,40 @@ func main() {
 	}
 }
 
-func runNextID(issuesDir string) int {
-	id, err := data.NextID(issuesDir)
+func runIssue(issuesDir string, args []string) int {
+	if len(args) == 0 {
+		// No ID: allocate next ID, stamp timestamps, print ID
+		id, err := data.NextID(issuesDir)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			return 1
+		}
+		if err := data.StampTimestamps(issuesDir, id); err != nil {
+			fmt.Fprintf(os.Stderr, "Error stamping timestamps: %v\n", err)
+			return 1
+		}
+		fmt.Println(id)
+		return 0
+	}
+
+	// With ID: stamp timestamps on existing issue
+	id, err := strconv.Atoi(args[0])
 	if err != nil {
+		fmt.Fprintf(os.Stderr, "Invalid issue ID: %s\n", args[0])
+		return 1
+	}
+
+	// Create directory if it doesn't exist
+	issueDir := issuesDir + "/" + args[0]
+	if err := os.MkdirAll(issueDir, 0o755); err != nil {
+		fmt.Fprintf(os.Stderr, "Error creating directory: %v\n", err)
+		return 1
+	}
+
+	if err := data.StampTimestamps(issuesDir, id); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		return 1
 	}
-	fmt.Println(id)
 	return 0
 }
 

@@ -19,7 +19,12 @@ Issues are plain files in `.grapes/`. No database, no CLI. You manipulate them d
 
 IDs are numeric folder names. The folder listing is the index.
 
-To reserve the next ID: `next=$(grapes next-id)`. This scans all `.grapes/` directories (main + worktrees) with file locking to prevent concurrent ID collisions. The issue directory is created automatically.
+## `grapes issue` Command
+
+- `id=$(grapes issue)` — allocate next ID, create directory, set timestamps, print ID
+- `grapes issue <id>` — create directory if needed, set `created` if missing, bump `updated`
+
+Use `grapes issue` to create new issues and `grapes issue <id>` after modifying any issue files. **Never write timestamps manually** — the command handles `created` and `updated` automatically.
 
 ## meta.toml Schema
 
@@ -41,11 +46,7 @@ updated = 2026-02-27T14:30:00Z
 - **labels**: TOML list of freeform tags
 - **parent**: numeric ID of parent issue (omit for top-level issues)
 - **blocked_by**: TOML list of issue IDs this issue depends on (omit if none). The inverse (`blocks`) is computed at load time — only `blocked_by` is stored on disk.
-- **created** / **updated**: native TOML datetime in UTC (`YYYY-MM-DDTHH:MM:SSZ`). Do not quote.
-
-### Rules
-
-- Always update `updated` to the current datetime when modifying meta.toml.
+- **created** / **updated**: managed by `grapes issue`. Do not write manually.
 
 ## comments.md Format
 

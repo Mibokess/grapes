@@ -145,6 +145,16 @@ If the reviewer requests changes: revise on the same branch, push new commits, n
 
 Always use / read the `/pr` skill to create merge requests.
 
+## Version Bumps
+
+Bump the version in **all four locations** when changing skills or the TUI:
+
+- `main.go` — `var version`
+- `plugin/.claude-plugin/plugin.json` — `"version"`
+- `.claude-plugin/marketplace.json` — `"version"` (appears twice)
+
+Skills won't update for users without a version bump.
+
 ## Issue Quality Criteria
 
 Every issue must be **self-contained and implementation-ready**. Any agent must be able to implement it correctly on the first try without asking questions.

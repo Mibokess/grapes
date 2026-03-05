@@ -1,0 +1,6 @@
+title = 'Add grapes issue subcommand, replace next-id and manual timestamps'
+status = 'todo'
+priority = 'medium'
+labels = ['simplification', 'data']
+created = 2026-03-05T00:00:00Z
+updated = 2026-03-05T12:26:00Z
