@@ -23,8 +23,8 @@ func createTestIssue(t *testing.T, grapesDir string, id int, title, status, prio
 		"status = '" + status + "'\n" +
 		"priority = '" + priority + "'\n" +
 		"labels = []\n" +
-		"created = '2025-01-01T10:00'\n" +
-		"updated = '2025-01-01T10:00'\n"
+		"created = 2025-01-01T10:00:00Z\n" +
+		"updated = 2025-01-01T10:00:00Z\n"
 	if extra != "" {
 		meta += extra + "\n"
 	}
@@ -285,8 +285,8 @@ func TestApp_Refresh_ExternalFileChange(t *testing.T) {
 		"status = 'in_progress'\n" +
 		"priority = 'urgent'\n" +
 		"labels = []\n" +
-		"created = '2025-01-01T10:00'\n" +
-		"updated = '2025-01-02T10:00'\n"
+		"created = 2025-01-01T10:00:00Z\n" +
+		"updated = 2025-01-02T10:00:00Z\n"
 	if err := os.WriteFile(metaPath, []byte(newMeta), 0644); err != nil {
 		t.Fatal(err)
 	}

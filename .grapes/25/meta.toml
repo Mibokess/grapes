@@ -2,5 +2,5 @@ title = "Settings screen not navigatable by mouse"
 status = 'in_progress'
 priority = 'high'
 labels = ['bug', 'tui', 'settings']
-created = '2026-03-04T12:00'
-updated = '2026-03-04T12:00'
+created = 2026-03-04T12:00:00Z
+updated = 2026-03-04T12:00:00Z

@@ -2,5 +2,5 @@ title = "Add user preferences database table"
 status = 'in_progress'
 priority = 'medium'
 labels = ['backend', 'database']
-created = '2026-03-02T14:00'
-updated = '2026-03-02T23:44'
+created = 2026-03-02T14:00:00Z
+updated = 2026-03-02T23:44:00Z

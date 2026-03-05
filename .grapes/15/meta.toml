@@ -3,5 +3,5 @@ status = 'todo'
 priority = 'medium'
 labels = ['feature', 'tui', 'filter']
 parent = 11
-created = '2026-03-02T12:00'
-updated = '2026-03-02T12:00'
+created = 2026-03-02T12:00:00Z
+updated = 2026-03-02T12:00:00Z

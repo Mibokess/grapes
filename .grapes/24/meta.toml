@@ -2,5 +2,5 @@ title = "Add adaptive light/dark theme support"
 status = "in_progress"
 priority = "medium"
 labels = ["tui", "feature"]
-created = "2026-03-04"
-updated = "2026-03-04"
+created = 2026-03-04T00:00:00Z
+updated = 2026-03-04T00:00:00Z

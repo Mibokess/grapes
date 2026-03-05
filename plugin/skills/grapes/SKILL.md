@@ -30,8 +30,8 @@ priority = 'high'
 labels = ['bug', 'auth']
 parent = 40
 blocked_by = [3, 5]
-created = '2026-02-27T09:15'
-updated = '2026-02-27T14:30'
+created = 2026-02-27T09:15:00Z
+updated = 2026-02-27T14:30:00Z
 ```
 
 ### Field Values
@@ -41,7 +41,7 @@ updated = '2026-02-27T14:30'
 - **labels**: TOML list of freeform tags
 - **parent**: numeric ID of parent issue (omit for top-level issues)
 - **blocked_by**: TOML list of issue IDs this issue depends on (omit if none). The inverse (`blocks`) is computed at load time — only `blocked_by` is stored on disk.
-- **created** / **updated**: `YYYY-MM-DDTHH:MM` (24-hour time)
+- **created** / **updated**: native TOML datetime in UTC (`YYYY-MM-DDTHH:MM:SSZ`). Do not quote.
 
 ### Rules
 
