@@ -29,6 +29,7 @@ const (
 	fieldEnum fieldKind = iota
 	fieldColor
 	fieldKey
+	fieldAction
 )
 
 type field struct {
@@ -444,7 +445,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 				m.fieldIdx--
 			}
 		} else if msg.Button == tea.MouseWheelDown {
-			fields := m.categories[m.catIdx].fields
+			fields := m.effectiveFields()
 			if m.fieldIdx < len(fields)-1 {
 				m.fieldIdx++
 			}
@@ -479,7 +480,7 @@ func (m Model) handleMouseClick(mouse tea.Mouse) (Model, tea.Cmd) {
 		}
 	} else {
 		// Clicked in fields pane
-		fields := m.categories[m.catIdx].fields
+		fields := m.effectiveFields()
 
 		// Account for scroll offset (same logic as View)
 		visibleH := m.height - 2
@@ -496,7 +497,10 @@ func (m Model) handleMouseClick(mouse tea.Mouse) (Model, tea.Cmd) {
 			if m.focus == paneFields && m.fieldIdx == idx {
 				// Already selected — activate (same as pressing Enter)
 				f := fields[idx]
-				if f.kind == fieldEnum {
+				switch f.kind {
+				case fieldAction:
+					return m.activateAction(f)
+				case fieldEnum:
 					if len(f.options) > 3 {
 						m.openPicker(f)
 						return m, nil
@@ -520,7 +524,7 @@ func (m Model) handleMouseClick(mouse tea.Mouse) (Model, tea.Cmd) {
 						m.theme = newTheme
 						return m, func() tea.Msg { return common.ThemeMsg{Theme: newTheme} }
 					}
-				} else {
+				default:
 					m.editing = true
 					m.input.SetValue(m.getFieldValue(f.cfgKey))
 					m.input.Focus()
@@ -641,7 +645,7 @@ func (m Model) updateNavigating(msg tea.KeyPressMsg) (Model, tea.Cmd) {
 				m.fieldIdx = 0
 			}
 		} else {
-			fields := m.categories[m.catIdx].fields
+			fields := m.effectiveFields()
 			if m.fieldIdx < len(fields)-1 {
 				m.fieldIdx++
 			}
@@ -655,7 +659,10 @@ func (m Model) updateNavigating(msg tea.KeyPressMsg) (Model, tea.Cmd) {
 			return m, nil
 		}
 		f := m.currentField()
-		if f.kind == fieldEnum {
+		switch f.kind {
+		case fieldAction:
+			return m.activateAction(f)
+		case fieldEnum:
 			if len(f.options) > 3 {
 				m.openPicker(f)
 				return m, nil
@@ -681,20 +688,21 @@ func (m Model) updateNavigating(msg tea.KeyPressMsg) (Model, tea.Cmd) {
 				return m, func() tea.Msg { return common.ThemeMsg{Theme: newTheme} }
 			}
 			return m, nil
+		default:
+			// Start inline editing
+			m.editing = true
+			m.input.SetValue(m.getFieldValue(f.cfgKey))
+			m.input.Focus()
+			m.input.CursorEnd()
+			return m, nil
 		}
-		// Start inline editing
-		m.editing = true
-		m.input.SetValue(m.getFieldValue(f.cfgKey))
-		m.input.Focus()
-		m.input.CursorEnd()
-		return m, nil
 	}
 
 	return m, nil
 }
 
 func (m Model) currentField() field {
-	return m.categories[m.catIdx].fields[m.fieldIdx]
+	return m.effectiveFields()[m.fieldIdx]
 }
 
 func (m Model) View() string {
@@ -716,7 +724,7 @@ func (m Model) View() string {
 		leftLines = append(leftLines, line)
 	}
 
-	fields := m.categories[m.catIdx].fields
+	fields := m.effectiveFields()
 	labelW := 0
 	for _, f := range fields {
 		if len(f.label) > labelW {
@@ -737,11 +745,14 @@ func (m Model) View() string {
 		}
 	}
 
+	overrideBoldStyle := lipgloss.NewStyle().Bold(true)
+
 	var rightLines []string
 	for i := scrollOffset; i < len(fields) && i < scrollOffset+visibleH; i++ {
 		f := fields[i]
 		val := m.getFieldValue(f.cfgKey)
 		label := fmt.Sprintf(" %-*s", labelW+2, f.label)
+		isOverridden := f.kind == fieldColor && m.isColorOverridden(f.cfgKey)
 
 		var valStr string
 		if m.editing && m.focus == paneFields && i == m.fieldIdx {
@@ -750,22 +761,36 @@ func (m Model) View() string {
 			switch f.kind {
 			case fieldColor:
 				swatch := lipgloss.NewStyle().Foreground(lipgloss.Color(val)).Render("██")
-				valStr = swatch + " " + val
+				hexStr := val
+				if isOverridden {
+					hexStr = overrideBoldStyle.Render(val)
+				}
+				valStr = swatch + " " + hexStr
 			case fieldEnum:
 				valStr = val
 			case fieldKey:
 				valStr = val
+			case fieldAction:
+				valStr = ""
 			}
 		}
 
 		if i == m.fieldIdx && m.focus == paneFields {
-			label = m.theme.StyleTitle.Render(label)
-			if !m.editing {
-				valStr = m.theme.StyleSectionHeader.Render(valStr)
+			if f.kind == fieldAction {
+				label = m.theme.StyleSectionHeader.Render(label)
+			} else {
+				label = m.theme.StyleTitle.Render(label)
+				if !m.editing {
+					valStr = m.theme.StyleSectionHeader.Render(valStr)
+				}
 			}
 		} else {
-			label = m.theme.StyleSubtitle.Render(label)
-			valStr = m.theme.StyleFaint.Render(valStr)
+			if f.kind == fieldAction {
+				label = m.theme.StyleFaint.Render(label)
+			} else {
+				label = m.theme.StyleSubtitle.Render(label)
+				valStr = m.theme.StyleFaint.Render(valStr)
+			}
 		}
 
 		rightLines = append(rightLines, label+"  "+valStr)
@@ -826,6 +851,66 @@ func (m Model) effectiveIsDark() bool {
 		}
 	}
 	return m.cfg.Theme.EffectiveIsDark(m.termIsDark)
+}
+
+// defaultColorForKey returns the default color value for a theme color key
+// based on the current effective mode.
+func (m Model) defaultColorForKey(cfgKey string) string {
+	defaults := config.Defaults()
+	isDark := m.effectiveIsDark()
+	return getColorFromSet(defaults.Theme.ColorsFor(isDark), cfgKey)
+}
+
+// isColorOverridden returns true if a color field differs from the theme default.
+func (m Model) isColorOverridden(cfgKey string) bool {
+	current := getColorFromSet(m.cfg.Theme.ColorsFor(m.effectiveIsDark()), cfgKey)
+	return current != m.defaultColorForKey(cfgKey)
+}
+
+// hasAnyColorOverride returns true if any theme color differs from defaults.
+func (m Model) hasAnyColorOverride() bool {
+	for _, f := range m.categories[1].fields { // Theme category
+		if f.kind == fieldColor && m.isColorOverridden(f.cfgKey) {
+			return true
+		}
+	}
+	return false
+}
+
+// effectiveFields returns the fields for the current category, dynamically
+// appending a "Reset colors" action when theme color overrides exist.
+func (m Model) effectiveFields() []field {
+	fields := m.categories[m.catIdx].fields
+	if m.catIdx == 1 && m.hasAnyColorOverride() { // Theme category
+		result := make([]field, len(fields), len(fields)+1)
+		copy(result, fields)
+		result = append(result, field{
+			label:  "Reset colors",
+			cfgKey: "reset_colors",
+			kind:   fieldAction,
+		})
+		return result
+	}
+	return fields
+}
+
+// activateAction handles activation of action-type fields.
+func (m Model) activateAction(f field) (Model, tea.Cmd) {
+	switch f.cfgKey {
+	case "reset_colors":
+		defaults := config.Defaults()
+		isDark := m.effectiveIsDark()
+		m.cfg.Theme.SetColorsFor(isDark, defaults.Theme.ColorsFor(isDark))
+		newTheme := common.NewThemeFromConfig(m.cfg.Theme, m.termIsDark)
+		m.theme = newTheme
+		// Clamp fieldIdx since reset row may disappear
+		fields := m.effectiveFields()
+		if m.fieldIdx >= len(fields) {
+			m.fieldIdx = len(fields) - 1
+		}
+		return m, func() tea.Msg { return common.ThemeMsg{Theme: newTheme} }
+	}
+	return m, nil
 }
 
 // getFieldValue reads the current value for a config key.
