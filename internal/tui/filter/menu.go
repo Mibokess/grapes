@@ -27,24 +27,6 @@ type Menu struct {
 
 // NewMenu creates a filter menu from the current filter state.
 func NewMenu(fs FilterSet, labelCount int, theme common.Theme) Menu {
-	cats := []MenuCategory{
-		{Field: "status", Label: "Status", ActiveCount: len(fs.Statuses)},
-		{Field: "priority", Label: "Priority", ActiveCount: len(fs.Priorities)},
-		{Field: "labels", Label: "Label", ActiveCount: len(fs.Labels)},
-		{Field: "source", Label: "Source", ActiveCount: len(fs.Sources)},
-	}
-
-	// Top-level only toggle
-	var topLevelLabel string
-	if fs.TopLevelOnly {
-		topLevelLabel = "on"
-	}
-	cats = append(cats, MenuCategory{
-		Field:       "top_level_only",
-		Label:       "Top-level only",
-		ToggleLabel: topLevelLabel,
-	})
-
 	// Has sub-issues shows current toggle state inline
 	var toggleLabel string
 	if fs.HasChildren != nil {
@@ -54,17 +36,27 @@ func NewMenu(fs FilterSet, labelCount int, theme common.Theme) Menu {
 			toggleLabel = "no"
 		}
 	}
-	cats = append(cats, MenuCategory{
-		Field:       "has_children",
-		Label:       "Has sub-issues",
-		ToggleLabel: toggleLabel,
-	})
 
-	// Clear all — only shown when any filter is active
+	// Top-level only toggle
+	var topLevelLabel string
+	if fs.TopLevelOnly {
+		topLevelLabel = "on"
+	}
+
+	cats := []MenuCategory{
+		{Field: "top_level_only", Label: "Top-level only", ToggleLabel: topLevelLabel},
+		{Field: "has_children", Label: "Has sub-issues", ToggleLabel: toggleLabel},
+		{Field: "status", Label: "Status", ActiveCount: len(fs.Statuses)},
+		{Field: "priority", Label: "Priority", ActiveCount: len(fs.Priorities)},
+		{Field: "labels", Label: "Label", ActiveCount: len(fs.Labels)},
+		{Field: "source", Label: "Source", ActiveCount: len(fs.Sources)},
+	}
+
+	// Clear — only shown when any filter is active
 	if fs.ActiveCount() > 0 {
 		cats = append(cats, MenuCategory{
 			Field: "clear_all",
-			Label: "Clear all filters",
+			Label: "Clear",
 		})
 	}
 
