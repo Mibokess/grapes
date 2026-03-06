@@ -277,6 +277,45 @@ func TestBoard_ForwardButton_OpensDetail(t *testing.T) {
 	}
 }
 
+// --- More indicator click ---
+
+func TestBoard_ClickMoreIndicator_ScrollsDown(t *testing.T) {
+	// Use short height so only 1 card fits per column, triggering "+N more".
+	// height=12, topOffset=0 → maxVisibleCards = (12-3)/7 = 1.
+	issues := testutil.SampleIssues()
+	m := board.New(issues).SetSize(100, 12)
+
+	// Navigate to in_progress column (index 2) which has 2 issues.
+	m, _ = m.Update(keyMsg("l")) // to todo
+	m, _ = m.Update(keyMsg("l")) // to in_progress
+
+	// Get the initially selected issue.
+	_, cmd1 := m.Update(tea.KeyPressMsg(tea.Key{Code: 13}))
+	id1 := extractMsg(cmd1).(common.OpenDetailMsg).ID
+
+	// Reset and click on the "+1 more" indicator.
+	// Column 2 starts at x ≈ 67 (100/3 * 2). "+1 more" is at y = headerH(2) + cardH(7) = 9.
+	m = board.New(issues).SetSize(100, 12)
+	m, _ = m.Update(keyMsg("l"))
+	m, _ = m.Update(keyMsg("l"))
+	m, _ = m.Update(tea.MouseClickMsg{X: 70, Y: 9, Button: tea.MouseLeft})
+	_, cmd2 := m.Update(tea.MouseReleaseMsg{X: 70, Y: 9, Button: tea.MouseLeft})
+
+	// Should NOT open detail view — the release should be a no-op since
+	// clicking the indicator scrolls rather than starting a mouseDown.
+	msg := extractMsg(cmd2)
+	if _, ok := msg.(common.OpenDetailMsg); ok {
+		t.Error("clicking '+N more' indicator should scroll, not open detail")
+	}
+
+	// The cursor should now be on a different issue (scrolled down).
+	_, cmd3 := m.Update(tea.KeyPressMsg(tea.Key{Code: 13}))
+	id3 := extractMsg(cmd3).(common.OpenDetailMsg).ID
+	if id1 == id3 {
+		t.Error("after clicking '+N more', cursor should have moved to a different issue")
+	}
+}
+
 // --- Empty board ---
 
 func TestBoard_Empty_KeysNoOp(t *testing.T) {
