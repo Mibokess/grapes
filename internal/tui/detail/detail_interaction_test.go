@@ -42,6 +42,14 @@ func TestDetail_KeyEsc_GoesBack(t *testing.T) {
 	}
 }
 
+func TestDetail_KeyBackspace_GoesBack(t *testing.T) {
+	m := newDetailModel()
+	_, cmd := m.Update(tea.KeyPressMsg(tea.Key{Code: tea.KeyBackspace}))
+	if _, ok := extractMsg(cmd).(common.GoBackMsg); !ok {
+		t.Error("backspace should send GoBackMsg")
+	}
+}
+
 func TestDetail_KeyShiftB_SwitchesToBoard(t *testing.T) {
 	m := newDetailModel()
 	_, cmd := m.Update(keyMsg("B"))
