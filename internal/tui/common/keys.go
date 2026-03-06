@@ -36,6 +36,8 @@ type BoardKeys struct {
 	Open          key.Binding
 	EditIssue     key.Binding
 	ToList        key.Binding
+	Search        key.Binding
+	Clear         key.Binding
 	Filter        key.Binding
 	Refresh       key.Binding
 	CycleStatus   key.Binding
@@ -73,6 +75,14 @@ var BoardKeyMap = BoardKeys{
 	ToList: key.NewBinding(
 		key.WithKeys("L"),
 		key.WithHelp("L", "list view"),
+	),
+	Search: key.NewBinding(
+		key.WithKeys("/"),
+		key.WithHelp("/", "search"),
+	),
+	Clear: key.NewBinding(
+		key.WithKeys("esc"),
+		key.WithHelp("esc", "clear search"),
 	),
 	Filter: key.NewBinding(
 		key.WithKeys("f"),
@@ -297,6 +307,7 @@ func ApplyKeys(k config.KeysConfig) {
 	BoardKeyMap.Open = key.NewBinding(key.WithKeys(k.BoardOpen), key.WithHelp(k.BoardOpen, "open"))
 	BoardKeyMap.EditIssue = key.NewBinding(key.WithKeys(k.BoardEdit), key.WithHelp(k.BoardEdit, "edit"))
 	BoardKeyMap.ToList = key.NewBinding(key.WithKeys(k.BoardToList), key.WithHelp(k.BoardToList, "list view"))
+	BoardKeyMap.Search = key.NewBinding(key.WithKeys(k.BoardSearch), key.WithHelp(k.BoardSearch, "search"))
 	BoardKeyMap.Filter = key.NewBinding(key.WithKeys(k.BoardFilter), key.WithHelp(k.BoardFilter, "filter"))
 	BoardKeyMap.CycleStatus = key.NewBinding(key.WithKeys(k.BoardStatus), key.WithHelp(k.BoardStatus, "status"))
 	BoardKeyMap.CyclePriority = key.NewBinding(key.WithKeys(k.BoardPriority), key.WithHelp(k.BoardPriority, "priority"))

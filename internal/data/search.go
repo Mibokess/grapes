@@ -1,6 +1,7 @@
 package data
 
 import (
+	"fmt"
 	"strings"
 )
 
@@ -101,6 +102,7 @@ func snippetAround(text string, idx, matchLen, maxLen int) string {
 // fields of an issue. Called once per issue per query evaluation.
 func issueSearchText(iss Issue) string {
 	var b strings.Builder
+	fmt.Fprintf(&b, "%d #%d ", iss.ID, iss.ID)
 	b.WriteString(strings.ToLower(iss.Title))
 	b.WriteByte(' ')
 	b.WriteString(strings.ToLower(string(iss.Status)))

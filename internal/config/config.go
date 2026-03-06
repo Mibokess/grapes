@@ -124,6 +124,7 @@ type KeysConfig struct {
 	BoardOpen     string `toml:"board_open"`
 	BoardEdit     string `toml:"board_edit"`
 	BoardToList   string `toml:"board_to_list"`
+	BoardSearch   string `toml:"board_search"`
 	BoardFilter   string `toml:"board_filter"`
 	BoardStatus   string `toml:"board_status"`
 	BoardPriority string `toml:"board_priority"`
@@ -215,6 +216,7 @@ func Defaults() Config {
 			BoardOpen:     "enter",
 			BoardEdit:     "e",
 			BoardToList:   "L",
+			BoardSearch:   "/",
 			BoardFilter:   "f",
 			BoardStatus:   "s",
 			BoardPriority: "p",

@@ -7,6 +7,7 @@ import (
 	"github.com/Mibokess/grapes/internal/data"
 	"github.com/Mibokess/grapes/internal/tui/common"
 	"charm.land/bubbles/v2/key"
+	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
@@ -18,7 +19,10 @@ type column struct {
 }
 
 type Model struct {
+	allIssues []data.Issue
 	columns   []column
+	filter    textinput.Model
+	filtering bool
 	curCol    int
 	curRow    int
 	scrollCol int // first visible column index (horizontal scroll)
@@ -66,10 +70,16 @@ func (m Model) SetStatusFilter(statuses []data.Status) Model {
 }
 
 func New(issues []data.Issue) Model {
-	m := Model{visCols: 3, theme: common.NewTheme(true)}
+	ti := textinput.New()
+	ti.Placeholder = "Search all fields..."
+	ti.CharLimit = 100
+
+	m := Model{allIssues: issues, filter: ti, visCols: 3, theme: common.NewTheme(true)}
 	m.columns = groupByStatus(issues, nil)
 	return m
 }
+
+func (m Model) Filtering() bool { return m.filtering }
 
 func (m Model) Init() tea.Cmd { return nil }
 
@@ -88,7 +98,8 @@ func (m Model) SetSize(w, h int) Model {
 }
 
 func (m Model) SetIssues(issues []data.Issue) Model {
-	m.columns = groupByStatus(issues, m.statusFilter)
+	m.allIssues = issues
+	m.columns = groupByStatus(m.filteredIssues(), m.statusFilter)
 	if m.curCol >= len(m.columns) {
 		m.curCol = max(0, len(m.columns)-1)
 	}
@@ -107,7 +118,39 @@ func (m Model) SetSortMode(mode data.SortMode) Model {
 func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyPressMsg:
+		if m.filtering {
+			switch {
+			case key.Matches(msg, common.BoardKeyMap.Clear):
+				m.filtering = false
+				m.filter.SetValue("")
+				m.filter.Blur()
+				m.columns = groupByStatus(m.allIssues, m.statusFilter)
+				m.curCol = 0
+				m.curRow = 0
+				m.scrollRow = 0
+				m.ensureColVisible()
+				return m, nil
+			case msg.Code == tea.KeyEnter:
+				m.filtering = false
+				m.filter.Blur()
+				return m, nil
+			default:
+				var cmd tea.Cmd
+				m.filter, cmd = m.filter.Update(msg)
+				m.columns = groupByStatus(m.filteredIssues(), m.statusFilter)
+				m.curCol = 0
+				m.curRow = 0
+				m.scrollRow = 0
+				m.ensureColVisible()
+				return m, cmd
+			}
+		}
+
 		switch {
+		case key.Matches(msg, common.BoardKeyMap.Search):
+			m.filtering = true
+			m.filter.Focus()
+			return m, textinput.Blink
 		case key.Matches(msg, common.BoardKeyMap.Left):
 			if m.curCol > 0 {
 				m.curCol--
@@ -322,6 +365,9 @@ func (m Model) maxVisibleCards() int {
 	const overhead = 3
 
 	available := m.height - overhead
+	if m.filtering || m.filter.Value() != "" {
+		available-- // filter line takes 1 row
+	}
 	if available < cardHeight {
 		return 1
 	}
@@ -345,6 +391,13 @@ func (m *Model) ensureRowVisible() {
 func (m Model) View() string {
 	if m.width == 0 || len(m.columns) == 0 {
 		return "No issues found."
+	}
+
+	var filterLine string
+	if m.filtering {
+		filterLine = "  / " + m.filter.View()
+	} else if m.filter.Value() != "" {
+		filterLine = m.theme.StyleSubtitle.Render(fmt.Sprintf("  Filter: %s", m.filter.Value()))
 	}
 
 	visible := m.visCols
@@ -391,6 +444,9 @@ func (m Model) View() string {
 		}
 	}
 
+	if filterLine != "" {
+		return lipgloss.JoinVertical(lipgloss.Left, filterLine, board)
+	}
 	return board
 }
 
@@ -737,6 +793,20 @@ func (m Model) moreIndicatorAt(x, y int) (colIdx, dir int) {
 	}
 
 	return 0, 0
+}
+
+func (m Model) filteredIssues() []data.Issue {
+	query := m.filter.Value()
+	if strings.TrimSpace(query) == "" {
+		return m.allIssues
+	}
+	var out []data.Issue
+	for _, iss := range m.allIssues {
+		if data.MatchesQuery(iss, query) {
+			out = append(out, iss)
+		}
+	}
+	return out
 }
 
 func groupByStatus(issues []data.Issue, statusFilter []data.Status) []column {

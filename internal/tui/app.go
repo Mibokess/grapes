@@ -306,8 +306,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.labelPicker = &lp
 			return m, cmd
 		}
-		// Global quit — but not when filtering in list view
-		if m.screen == common.ScreenList && m.list.Filtering() {
+		// Global quit — but not when filtering in list or board view
+		if (m.screen == common.ScreenList && m.list.Filtering()) ||
+			(m.screen == common.ScreenBoard && m.board.Filtering()) {
 			break // fall through to screen-specific handler
 		}
 		if key.Matches(msg, common.GlobalKeyMap.Quit) {
@@ -844,6 +845,7 @@ func (m Model) View() tea.View {
 			m.theme.FormatKeyHint("t", "labels"),
 			m.theme.FormatKeyHint("drag", "move"),
 			m.theme.FormatKeyHint("f", "filter"),
+			m.theme.FormatKeyHint("/", "search"),
 			m.theme.FormatKeyHint("o/O", sortLabel),
 			m.theme.FormatKeyHint("L", "list"),
 			m.theme.FormatKeyHint("q", "quit"),
