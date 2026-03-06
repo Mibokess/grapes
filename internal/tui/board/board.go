@@ -215,6 +215,28 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 				m.dragIssueID = issue.ID
 				m.dragFromCol = colIdx
 				m.dragOverCol = colIdx
+			} else if colIdx, dir := m.moreIndicatorAt(mouse.X, mouse.Y); dir != 0 {
+				// Click on a "more" indicator — scroll in that direction
+				m.curCol = colIdx
+				m.ensureColVisible()
+				maxCards := m.maxVisibleCards()
+				if dir > 0 {
+					// "+N more" at bottom — scroll down
+					m.scrollRow += maxCards
+					col := m.columns[colIdx]
+					if m.scrollRow+maxCards > len(col.issues) {
+						m.scrollRow = max(0, len(col.issues)-maxCards)
+					}
+					m.curRow = m.scrollRow
+				} else {
+					// "↑ N more" at top — scroll up
+					m.scrollRow -= maxCards
+					if m.scrollRow < 0 {
+						m.scrollRow = 0
+					}
+					m.curRow = m.scrollRow
+				}
+				m.ensureRowVisible()
 			} else if colIdx, ok := m.columnAt(mouse.X); ok && colIdx != m.curCol {
 				// Click in column area without hitting a card — select the column
 				m.curCol = colIdx
@@ -649,10 +671,72 @@ func (m Model) cardAt(x, y int) (colIdx, rowIdx int, ok bool) {
 
 	const cardH = 7
 	ri := yOffset/cardH + scrollOff
-	if ri < 0 || ri >= len(col.issues) {
+	// Clamp to visible window — reject clicks on "more" indicators.
+	maxCards := m.maxVisibleCards()
+	endIdx := scrollOff + maxCards
+	if endIdx > len(col.issues) {
+		endIdx = len(col.issues)
+	}
+	if ri < scrollOff || ri >= endIdx {
 		return 0, 0, false
 	}
 	return ci, ri, true
+}
+
+// moreIndicatorAt checks if screen (x, y) lands on a "+N more" (bottom)
+// or "↑ N more" (top) indicator. Returns the column index and direction:
+// +1 for bottom (scroll down), -1 for top (scroll up), 0 for neither.
+func (m Model) moreIndicatorAt(x, y int) (colIdx, dir int) {
+	if len(m.columns) == 0 || m.width == 0 {
+		return 0, 0
+	}
+	visible, colWidth := m.visibleColWidth()
+	renderWidth := colWidth + 1
+
+	ci := x/renderWidth + m.scrollCol
+	if ci < m.scrollCol || ci >= m.scrollCol+visible || ci >= len(m.columns) {
+		return 0, 0
+	}
+	col := m.columns[ci]
+	if len(col.issues) == 0 {
+		return 0, 0
+	}
+
+	scrollOff := 0
+	if ci == m.curCol {
+		scrollOff = m.scrollRow
+	}
+
+	const headerH = 2
+	totalSkip := m.topOffset + headerH
+	if y < totalSkip {
+		return 0, 0
+	}
+
+	yOffset := y - totalSkip
+
+	// "↑ N more" at the top when scrolled.
+	if scrollOff > 0 && yOffset == 0 {
+		return ci, -1
+	}
+
+	// "+N more" at the bottom: check if click is past the last visible card.
+	maxCards := m.maxVisibleCards()
+	endIdx := scrollOff + maxCards
+	if endIdx < len(col.issues) {
+		// Adjust yOffset for the top indicator line.
+		adj := yOffset
+		if scrollOff > 0 {
+			adj--
+		}
+		const cardH = 7
+		visibleCards := endIdx - scrollOff
+		if adj >= visibleCards*cardH {
+			return ci, 1
+		}
+	}
+
+	return 0, 0
 }
 
 func groupByStatus(issues []data.Issue, statusFilter []data.Status) []column {
