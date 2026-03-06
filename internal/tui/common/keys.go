@@ -215,8 +215,8 @@ type DetailKeys struct {
 
 var DetailKeyMap = DetailKeys{
 	Back: key.NewBinding(
-		key.WithKeys("esc"),
-		key.WithHelp("esc", "back"),
+		key.WithKeys("esc", "backspace"),
+		key.WithHelp("esc/⌫", "back"),
 	),
 	ToBoard: key.NewBinding(
 		key.WithKeys("B"),
@@ -328,7 +328,7 @@ func ApplyKeys(k config.KeysConfig) {
 	ListKeyMap.CycleSort = key.NewBinding(key.WithKeys(k.ListSort), key.WithHelp(k.ListSort, "order"))
 	ListKeyMap.ReverseSort = key.NewBinding(key.WithKeys(k.ListReverse), key.WithHelp(k.ListReverse, "reverse"))
 
-	DetailKeyMap.Back = key.NewBinding(key.WithKeys(k.DetailBack), key.WithHelp(k.DetailBack, "back"))
+	DetailKeyMap.Back = key.NewBinding(key.WithKeys(k.DetailBack, "backspace"), key.WithHelp(k.DetailBack+"/⌫", "back"))
 	DetailKeyMap.ToBoard = key.NewBinding(key.WithKeys(k.DetailToBoard), key.WithHelp(k.DetailToBoard, "board view"))
 	DetailKeyMap.ToList = key.NewBinding(key.WithKeys(k.DetailToList), key.WithHelp(k.DetailToList, "list view"))
 	DetailKeyMap.CycleStatus = key.NewBinding(key.WithKeys(k.DetailStatus), key.WithHelp(k.DetailStatus, "status"))

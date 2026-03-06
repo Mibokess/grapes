@@ -878,7 +878,7 @@ func (m Model) View() tea.View {
 			m.theme.FormatKeyHint("p", "priority"),
 			m.theme.FormatKeyHint("t", "labels"),
 			m.theme.FormatKeyHint("c", "comment"),
-			m.theme.FormatKeyHint("esc", "back"),
+			m.theme.FormatKeyHint("esc/⌫", "back"),
 			m.theme.FormatKeyHint("q", "quit"),
 		}
 	case common.ScreenSettings:
