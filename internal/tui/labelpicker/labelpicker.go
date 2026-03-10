@@ -127,17 +127,20 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 			mouse.X >= m.ScreenX
 		if inBox && relY >= 0 && relY < len(m.labels) {
 			m.cursor = relY
-			if m.cursor == len(m.labels) {
-				m.input.Focus()
-			} else {
-				m.input.Blur()
-			}
+			m.input.Blur()
 			// Toggle the clicked label
 			v := m.labels[m.cursor]
 			if m.selected[v] {
 				delete(m.selected, v)
 			} else {
 				m.selected[v] = true
+			}
+		} else if inBox {
+			// Click inside box but not on a label.
+			// Hint area (last 2 lines before padding/border) → apply.
+			hintY := len(m.labels) + 3 // blank + input + blank + hint
+			if relY >= hintY {
+				return m, m.applyCmd()
 			}
 		}
 		if !inBox {
@@ -276,7 +279,7 @@ var (
 		key.WithKeys("j", "down"),
 	)
 	keyToggle = key.NewBinding(
-		key.WithKeys(" ", "x"),
+		key.WithKeys("space", "x"),
 	)
 	keyConfirm = key.NewBinding(
 		key.WithKeys("enter"),

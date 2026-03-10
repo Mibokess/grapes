@@ -323,6 +323,23 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 	case tea.MouseClickMsg, tea.MouseMotionMsg:
+		// When filter overlays are active, route all mouse events to them
+		if m.filterPicker != nil {
+			m.updateFilterPickerPosition()
+			var cmd tea.Cmd
+			fp := *m.filterPicker
+			fp, cmd = fp.Update(msg)
+			m.filterPicker = &fp
+			return m, cmd
+		}
+		if m.filterMenu != nil {
+			m.updateFilterMenuPosition()
+			var cmd tea.Cmd
+			fm := *m.filterMenu
+			fm, cmd = fm.Update(msg)
+			m.filterMenu = &fm
+			return m, cmd
+		}
 		// When picker is active, route all mouse events to it
 		if m.picker != nil {
 			m.updatePickerPosition()
@@ -1081,6 +1098,48 @@ func (m *Model) updateLabelPickerPosition() {
 	offsetY := common.AppHeaderHeight + filter.BarHeight(m.filters)
 	m.labelPicker.ScreenX = (m.width - fgW) / 2
 	m.labelPicker.ScreenY = offsetY + (contentH-fgH)/2
+}
+
+// updateFilterMenuPosition computes the centered screen position of the filter
+// menu overlay and stores it on the model for mouse hit-testing.
+func (m *Model) updateFilterMenuPosition() {
+	if m.filterMenu == nil {
+		return
+	}
+	view := m.filterMenu.View()
+	lines := strings.Split(view, "\n")
+	fgH := len(lines)
+	fgW := 0
+	for _, l := range lines {
+		if w := lipgloss.Width(l); w > fgW {
+			fgW = w
+		}
+	}
+	contentH := m.contentHeight()
+	offsetY := common.AppHeaderHeight + filter.BarHeight(m.filters)
+	m.filterMenu.ScreenX = (m.width - fgW) / 2
+	m.filterMenu.ScreenY = offsetY + (contentH-fgH)/2
+}
+
+// updateFilterPickerPosition computes the centered screen position of the filter
+// multi-picker overlay and stores it on the model for mouse hit-testing.
+func (m *Model) updateFilterPickerPosition() {
+	if m.filterPicker == nil {
+		return
+	}
+	view := m.filterPicker.View()
+	lines := strings.Split(view, "\n")
+	fgH := len(lines)
+	fgW := 0
+	for _, l := range lines {
+		if w := lipgloss.Width(l); w > fgW {
+			fgW = w
+		}
+	}
+	contentH := m.contentHeight()
+	offsetY := common.AppHeaderHeight + filter.BarHeight(m.filters)
+	m.filterPicker.ScreenX = (m.width - fgW) / 2
+	m.filterPicker.ScreenY = offsetY + (contentH-fgH)/2
 }
 
 // topOffset returns the number of screen lines above the view content

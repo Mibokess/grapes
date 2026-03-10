@@ -25,6 +25,9 @@ type MultiPicker struct {
 	selected map[string]bool
 	cursor   int
 	theme    common.Theme
+
+	// Screen position of the picker box, set by the app for mouse hit-testing.
+	ScreenX, ScreenY int
 }
 
 func pickerStyleTitle(t common.Theme) lipgloss.Style {
@@ -60,6 +63,26 @@ func NewMultiPicker(title, field string, options []PickerOption, preSelected []s
 
 func (m MultiPicker) Init() tea.Cmd { return nil }
 
+// boxHeight returns the total height of the rendered picker box.
+func (m MultiPicker) boxHeight() int {
+	// border(1) + padding(1) + options + blank + hint + padding(1) + border(1)
+	return len(m.options) + 6
+}
+
+// applyCmd returns a command that sends the current selection.
+func (m MultiPicker) applyCmd() tea.Cmd {
+	var vals []string
+	for _, opt := range m.options {
+		if m.selected[opt.Value] {
+			vals = append(vals, opt.Value)
+		}
+	}
+	field := m.field
+	return func() tea.Msg {
+		return common.FilterPickerResultMsg{Field: field, Selected: vals}
+	}
+}
+
 func (m MultiPicker) Update(msg tea.Msg) (MultiPicker, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyPressMsg:
@@ -82,18 +105,46 @@ func (m MultiPicker) Update(msg tea.Msg) (MultiPicker, tea.Cmd) {
 				}
 			}
 		case key.Matches(msg, pickerKeyConfirm):
-			var vals []string
-			for _, opt := range m.options {
-				if m.selected[opt.Value] {
-					vals = append(vals, opt.Value)
-				}
-			}
-			field := m.field
-			return m, func() tea.Msg {
-				return common.FilterPickerResultMsg{Field: field, Selected: vals}
-			}
+			return m, m.applyCmd()
 		case key.Matches(msg, pickerKeyCancel):
 			return m, func() tea.Msg { return common.FilterCancelMsg{} }
+		}
+
+	case tea.MouseClickMsg:
+		if msg.Button != tea.MouseLeft {
+			break
+		}
+		mouse := msg.Mouse()
+		// Options start 2 lines below picker top (border + padding)
+		relY := mouse.Y - m.ScreenY - 2
+		h := m.boxHeight()
+		inBox := mouse.Y >= m.ScreenY && mouse.Y < m.ScreenY+h &&
+			mouse.X >= m.ScreenX
+		if inBox && relY >= 0 && relY < len(m.options) {
+			// Click on an option → toggle it
+			m.cursor = relY
+			v := m.options[m.cursor].Value
+			if m.selected[v] {
+				delete(m.selected, v)
+			} else {
+				m.selected[v] = true
+			}
+		} else if inBox {
+			// Click inside box but not on an option (hint area) → apply
+			hintY := len(m.options) + 1 // blank line + hint line
+			if relY >= hintY {
+				return m, m.applyCmd()
+			}
+		} else {
+			// Click outside → cancel
+			return m, func() tea.Msg { return common.FilterCancelMsg{} }
+		}
+
+	case tea.MouseMotionMsg:
+		mouse := msg.Mouse()
+		relY := mouse.Y - m.ScreenY - 2
+		if relY >= 0 && relY < len(m.options) {
+			m.cursor = relY
 		}
 	}
 	return m, nil
