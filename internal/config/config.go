@@ -155,16 +155,28 @@ type KeysConfig struct {
 	DetailEdit     string `toml:"detail_edit"`
 }
 
+// SourcesConfig controls where grapes looks for additional issue directories.
+type SourcesConfig struct {
+	// Dirs lists glob patterns that resolve to issue directories.
+	// Patterns can be absolute or relative to the project root.
+	// Example: ".claude/worktrees/*/.grapes", "../other-project/.potatoes"
+	Dirs []string `toml:"dirs"`
+}
+
 // Config is the full application configuration.
 type Config struct {
-	View  ViewConfig  `toml:"view"`
-	Theme ThemeConfig `toml:"theme"`
-	Keys  KeysConfig  `toml:"keys"`
+	View    ViewConfig    `toml:"view"`
+	Sources SourcesConfig `toml:"sources"`
+	Theme   ThemeConfig   `toml:"theme"`
+	Keys    KeysConfig    `toml:"keys"`
 }
 
 // Defaults returns the default configuration matching the hardcoded values.
 func Defaults() Config {
 	return Config{
+		Sources: SourcesConfig{
+			Dirs: []string{".claude/worktrees/*/.grapes"},
+		},
 		View: ViewConfig{
 			DefaultScreen: "board",
 			DefaultSort:   "priority",
