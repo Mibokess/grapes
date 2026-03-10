@@ -70,7 +70,7 @@ func TestNextIDWithWorktree(t *testing.T) {
 	os.Mkdir(filepath.Join(wtGrapes, "8"), 0o755)
 
 	// NextID from main should see the worktree's ID 8
-	id, err := NextID(grapes)
+	id, err := NextID(grapes, ".claude/worktrees")
 	if err != nil {
 		t.Fatalf("NextID: %v", err)
 	}
@@ -91,25 +91,31 @@ func TestFindWorktreeIssuesDirsExtraDirs(t *testing.T) {
 	extraWT := filepath.Join(extraDir, "custom-wt", ".grapes")
 	os.MkdirAll(extraWT, 0o755)
 
-	// Without extra dirs, only default is found
+	// Without any dirs, nothing is found
 	result := FindWorktreeIssuesDirs(root)
-	if len(result) != 1 {
-		t.Errorf("without extra dirs: got %d worktrees, want 1", len(result))
-	}
-	if _, ok := result["default-wt"]; !ok {
-		t.Error("without extra dirs: missing default-wt")
+	if len(result) != 0 {
+		t.Errorf("without dirs: got %d worktrees, want 0", len(result))
 	}
 
-	// With extra dirs, both are found
-	result = FindWorktreeIssuesDirs(root, extraDir)
-	if len(result) != 2 {
-		t.Errorf("with extra dirs: got %d worktrees, want 2", len(result))
+	// With default dir, only default is found
+	result = FindWorktreeIssuesDirs(root, ".claude/worktrees")
+	if len(result) != 1 {
+		t.Errorf("with default dir: got %d worktrees, want 1", len(result))
 	}
 	if _, ok := result["default-wt"]; !ok {
-		t.Error("with extra dirs: missing default-wt")
+		t.Error("with default dir: missing default-wt")
+	}
+
+	// With both dirs, both are found
+	result = FindWorktreeIssuesDirs(root, ".claude/worktrees", extraDir)
+	if len(result) != 2 {
+		t.Errorf("with both dirs: got %d worktrees, want 2", len(result))
+	}
+	if _, ok := result["default-wt"]; !ok {
+		t.Error("with both dirs: missing default-wt")
 	}
 	if _, ok := result["custom-wt"]; !ok {
-		t.Error("with extra dirs: missing custom-wt")
+		t.Error("with both dirs: missing custom-wt")
 	}
 }
 

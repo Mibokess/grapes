@@ -174,6 +174,9 @@ type Config struct {
 // Defaults returns the default configuration matching the hardcoded values.
 func Defaults() Config {
 	return Config{
+		Sources: SourcesConfig{
+			WorktreeDirs: []string{".claude/worktrees"},
+		},
 		View: ViewConfig{
 			DefaultScreen: "board",
 			DefaultSort:   "priority",

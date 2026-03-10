@@ -243,25 +243,16 @@ func NextID(issuesDir string, extraDirs ...string) (int, error) {
 	return next, nil
 }
 
-// FindWorktreeIssuesDirs scans .claude/worktrees/*/.grapes/ relative to
-// projectRoot and returns a map of worktree name → .grapes/ directory path.
-// Additional directories can be passed via extraDirs; each is scanned for
-// */.grapes/ subdirectories. Relative paths are resolved against projectRoot.
-func FindWorktreeIssuesDirs(projectRoot string, extraDirs ...string) map[string]string {
+// FindWorktreeIssuesDirs scans the given directories for */.grapes/ subdirectories
+// and returns a map of worktree name → .grapes/ directory path.
+// Relative paths are resolved against projectRoot.
+func FindWorktreeIssuesDirs(projectRoot string, dirs ...string) map[string]string {
 	result := make(map[string]string)
 
-	// Always scan the default .claude/worktrees location
-	dirs := []string{filepath.Join(projectRoot, ".claude", "worktrees")}
-
-	// Add extra dirs, resolving relative paths against projectRoot
-	for _, d := range extraDirs {
-		if !filepath.IsAbs(d) {
-			d = filepath.Join(projectRoot, d)
-		}
-		dirs = append(dirs, d)
-	}
-
 	for _, worktreesDir := range dirs {
+		if !filepath.IsAbs(worktreesDir) {
+			worktreesDir = filepath.Join(projectRoot, worktreesDir)
+		}
 		entries, err := os.ReadDir(worktreesDir)
 		if err != nil {
 			continue
