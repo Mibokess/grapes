@@ -1,0 +1,6 @@
+title = "Board view j/k should wrap across columns"
+status = 'in_progress'
+priority = 'medium'
+labels = ['bug', 'tui']
+created = 2026-03-10T11:57:00Z
+updated = 2026-03-10T11:57:00Z

@@ -184,6 +184,79 @@ func TestBoard_KeyR_Refreshes(t *testing.T) {
 	}
 }
 
+func TestBoard_KeyNavigation_DownWrapsToNextColumn(t *testing.T) {
+	// Backlog column has 1 issue (issue 3). Pressing j should wrap to todo column.
+	m := newBoardModel()
+	// Get the initial issue (backlog, row 0)
+	_, cmd1 := m.Update(tea.KeyPressMsg(tea.Key{Code: 13}))
+	id1 := extractMsg(cmd1).(common.OpenDetailMsg).ID
+
+	// Press j — should wrap from backlog (1 issue) to todo column
+	m2 := newBoardModel()
+	m2, _ = m2.Update(keyMsg("j"))
+	_, cmd2 := m2.Update(tea.KeyPressMsg(tea.Key{Code: 13}))
+	id2 := extractMsg(cmd2).(common.OpenDetailMsg).ID
+
+	if id1 == id2 {
+		t.Error("pressing j at last issue in column should wrap to next column")
+	}
+}
+
+func TestBoard_KeyNavigation_UpWrapsFromSecondColumn(t *testing.T) {
+	// Move to todo column (1 issue), then press k — should wrap back to backlog.
+	m := newBoardModel()
+	m, _ = m.Update(keyMsg("l")) // move to todo
+	_, cmd1 := m.Update(tea.KeyPressMsg(tea.Key{Code: 13}))
+	id1 := extractMsg(cmd1).(common.OpenDetailMsg).ID
+
+	m2 := newBoardModel()
+	m2, _ = m2.Update(keyMsg("l")) // move to todo
+	m2, _ = m2.Update(keyMsg("k")) // should wrap to backlog
+	_, cmd2 := m2.Update(tea.KeyPressMsg(tea.Key{Code: 13}))
+	id2 := extractMsg(cmd2).(common.OpenDetailMsg).ID
+
+	if id1 == id2 {
+		t.Error("pressing k at first issue in column should wrap to previous column")
+	}
+}
+
+func TestBoard_KeyNavigation_DownAtLastColumnNoOp(t *testing.T) {
+	// Navigate to last column (cancelled), press j — should stay put.
+	m := newBoardModel()
+	for i := 0; i < 4; i++ {
+		m, _ = m.Update(keyMsg("l"))
+	}
+	_, cmd1 := m.Update(tea.KeyPressMsg(tea.Key{Code: 13}))
+	id1 := extractMsg(cmd1).(common.OpenDetailMsg).ID
+
+	m2 := newBoardModel()
+	for i := 0; i < 4; i++ {
+		m2, _ = m2.Update(keyMsg("l"))
+	}
+	m2, _ = m2.Update(keyMsg("j"))
+	_, cmd2 := m2.Update(tea.KeyPressMsg(tea.Key{Code: 13}))
+	id2 := extractMsg(cmd2).(common.OpenDetailMsg).ID
+
+	if id1 != id2 {
+		t.Error("pressing j at last issue of last column should not change selection")
+	}
+}
+
+func TestBoard_KeyNavigation_UpAtFirstColumnNoOp(t *testing.T) {
+	m := newBoardModel()
+	_, cmd1 := m.Update(tea.KeyPressMsg(tea.Key{Code: 13}))
+	id1 := extractMsg(cmd1).(common.OpenDetailMsg).ID
+
+	m2 := newBoardModel()
+	m2, _ = m2.Update(keyMsg("k"))
+	_, cmd2 := m2.Update(tea.KeyPressMsg(tea.Key{Code: 13}))
+	id2 := extractMsg(cmd2).(common.OpenDetailMsg).ID
+
+	if id1 != id2 {
+		t.Error("pressing k at first issue of first column should not change selection")
+	}
+}
+
 // --- Mouse interactions ---
 
 func TestBoard_MouseWheel_NavigatesColumns(t *testing.T) {
