@@ -552,10 +552,10 @@ func (m Model) updateEditing(msg tea.KeyPressMsg) (Model, tea.Cmd) {
 		val := m.input.Value()
 
 		// Adding a worktree directory
-		if f.cfgKey == "add_worktree_dir" {
+		if f.cfgKey == "add_source_pattern" {
 			val = strings.TrimSpace(val)
 			if val != "" {
-				m.cfg.Sources.WorktreeDirs = append(m.cfg.Sources.WorktreeDirs, val)
+				m.cfg.Sources.Dirs = append(m.cfg.Sources.Dirs, val)
 			}
 			m.editing = false
 			m.input.CharLimit = 32
@@ -791,7 +791,7 @@ func (m Model) View() string {
 			case fieldAction:
 				if f.cfgKey == "default_source_dir" {
 					valStr = "default"
-				} else if strings.HasPrefix(f.cfgKey, "worktree_dir_") {
+				} else if strings.HasPrefix(f.cfgKey, "source_dir_") {
 					valStr = "×"
 				} else {
 					valStr = ""
@@ -927,16 +927,16 @@ func (m Model) effectiveFields() []field {
 				kind:   fieldAction,
 			},
 		}
-		for i, dir := range m.cfg.Sources.WorktreeDirs {
+		for i, dir := range m.cfg.Sources.Dirs {
 			result = append(result, field{
 				label:  dir,
-				cfgKey: fmt.Sprintf("worktree_dir_%d", i),
+				cfgKey: fmt.Sprintf("source_dir_%d", i),
 				kind:   fieldAction,
 			})
 		}
 		result = append(result, field{
-			label:  "+ Add directory",
-			cfgKey: "add_worktree_dir",
+			label:  "+ Add pattern",
+			cfgKey: "add_source_pattern",
 			kind:   fieldAction,
 		})
 		return result
@@ -961,20 +961,20 @@ func (m Model) activateAction(f field) (Model, tea.Cmd) {
 		}
 		return m, func() tea.Msg { return common.ThemeMsg{Theme: newTheme} }
 
-	case f.cfgKey == "add_worktree_dir":
+	case f.cfgKey == "add_source_pattern":
 		m.editing = true
 		m.input.CharLimit = 256
 		m.input.SetValue("")
 		m.input.Focus()
 		return m, nil
 
-	case strings.HasPrefix(f.cfgKey, "worktree_dir_"):
-		idxStr := strings.TrimPrefix(f.cfgKey, "worktree_dir_")
+	case strings.HasPrefix(f.cfgKey, "source_dir_"):
+		idxStr := strings.TrimPrefix(f.cfgKey, "source_dir_")
 		idx, err := strconv.Atoi(idxStr)
-		if err == nil && idx >= 0 && idx < len(m.cfg.Sources.WorktreeDirs) {
-			m.cfg.Sources.WorktreeDirs = append(
-				m.cfg.Sources.WorktreeDirs[:idx],
-				m.cfg.Sources.WorktreeDirs[idx+1:]...,
+		if err == nil && idx >= 0 && idx < len(m.cfg.Sources.Dirs) {
+			m.cfg.Sources.Dirs = append(
+				m.cfg.Sources.Dirs[:idx],
+				m.cfg.Sources.Dirs[idx+1:]...,
 			)
 		}
 		fields := m.effectiveFields()

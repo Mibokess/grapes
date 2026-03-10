@@ -49,7 +49,7 @@ func main() {
 
 	projectRoot := data.ProjectRoot(issuesDir)
 	cfg := config.Load(issuesDir)
-	issues, err := data.LoadAllSources(issuesDir, projectRoot, cfg.Sources.WorktreeDirs...)
+	issues, err := data.LoadAllSources(issuesDir, projectRoot, cfg.Sources.Dirs...)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error loading issues: %v\n", err)
 		os.Exit(1)
@@ -67,7 +67,7 @@ func runIssue(issuesDir string, args []string) int {
 	cfg := config.Load(issuesDir)
 	if len(args) == 0 {
 		// No ID: allocate next ID, stamp timestamps, print ID
-		id, err := data.NextID(issuesDir, cfg.Sources.WorktreeDirs...)
+		id, err := data.NextID(issuesDir, cfg.Sources.Dirs...)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			return 1

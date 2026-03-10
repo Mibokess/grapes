@@ -243,29 +243,27 @@ func NextID(issuesDir string, extraDirs ...string) (int, error) {
 	return next, nil
 }
 
-// FindWorktreeIssuesDirs scans the given directories for */.grapes/ subdirectories
-// and returns a map of worktree name → .grapes/ directory path.
-// Relative paths are resolved against projectRoot.
-func FindWorktreeIssuesDirs(projectRoot string, dirs ...string) map[string]string {
+// FindWorktreeIssuesDirs resolves glob patterns to issue directories and returns
+// a map of display name → directory path. Relative patterns are resolved against
+// projectRoot. The display name is the parent directory of each matched path.
+func FindWorktreeIssuesDirs(projectRoot string, patterns ...string) map[string]string {
 	result := make(map[string]string)
-
-	for _, worktreesDir := range dirs {
-		if !filepath.IsAbs(worktreesDir) {
-			worktreesDir = filepath.Join(projectRoot, worktreesDir)
+	for _, pattern := range patterns {
+		if !filepath.IsAbs(pattern) {
+			pattern = filepath.Join(projectRoot, pattern)
 		}
-		entries, err := os.ReadDir(worktreesDir)
+		matches, err := filepath.Glob(pattern)
 		if err != nil {
 			continue
 		}
-		for _, e := range entries {
-			if !e.IsDir() {
+		for _, match := range matches {
+			info, err := os.Stat(match)
+			if err != nil || !info.IsDir() {
 				continue
 			}
-			grapesDir := filepath.Join(worktreesDir, e.Name(), ".grapes")
-			if info, err := os.Stat(grapesDir); err == nil && info.IsDir() {
-				if _, exists := result[e.Name()]; !exists {
-					result[e.Name()] = grapesDir
-				}
+			name := filepath.Base(filepath.Dir(match))
+			if _, exists := result[name]; !exists {
+				result[name] = match
 			}
 		}
 	}

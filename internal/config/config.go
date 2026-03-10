@@ -155,12 +155,12 @@ type KeysConfig struct {
 	DetailEdit     string `toml:"detail_edit"`
 }
 
-// SourcesConfig controls where grapes looks for worktree issue directories.
+// SourcesConfig controls where grapes looks for additional issue directories.
 type SourcesConfig struct {
-	// WorktreeDirs lists additional directories to scan for */.grapes/ subdirectories.
-	// Paths can be absolute or relative to the project root.
-	// .claude/worktrees is always scanned regardless of this setting.
-	WorktreeDirs []string `toml:"worktree_dirs"`
+	// Dirs lists glob patterns that resolve to issue directories.
+	// Patterns can be absolute or relative to the project root.
+	// Example: ".claude/worktrees/*/.grapes", "../other-project/.potatoes"
+	Dirs []string `toml:"dirs"`
 }
 
 // Config is the full application configuration.
@@ -175,7 +175,7 @@ type Config struct {
 func Defaults() Config {
 	return Config{
 		Sources: SourcesConfig{
-			WorktreeDirs: []string{".claude/worktrees"},
+			Dirs: []string{".claude/worktrees/*/.grapes"},
 		},
 		View: ViewConfig{
 			DefaultScreen: "board",
