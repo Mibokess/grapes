@@ -70,11 +70,108 @@ func TestNextIDWithWorktree(t *testing.T) {
 	os.Mkdir(filepath.Join(wtGrapes, "8"), 0o755)
 
 	// NextID from main should see the worktree's ID 8
-	id, err := NextID(grapes)
+	id, err := NextID(grapes, ".claude/worktrees/*/.grapes")
 	if err != nil {
 		t.Fatalf("NextID: %v", err)
 	}
 	if id != 9 {
 		t.Errorf("got %d, want 9 (should see worktree ID 8)", id)
+	}
+}
+
+func TestFindWorktreeIssuesDirsGlobPatterns(t *testing.T) {
+	root := t.TempDir()
+
+	// Create default worktree location
+	defaultWT := filepath.Join(root, ".claude", "worktrees", "default-wt", ".grapes")
+	os.MkdirAll(defaultWT, 0o755)
+
+	// Create extra worktree location with absolute path
+	extraDir := t.TempDir()
+	extraWT := filepath.Join(extraDir, "custom-wt", ".grapes")
+	os.MkdirAll(extraWT, 0o755)
+
+	// Without any patterns, nothing is found
+	result := FindWorktreeIssuesDirs(root)
+	if len(result) != 0 {
+		t.Errorf("without patterns: got %d, want 0", len(result))
+	}
+
+	// Relative glob pattern
+	result = FindWorktreeIssuesDirs(root, ".claude/worktrees/*/.grapes")
+	if len(result) != 1 {
+		t.Errorf("relative glob: got %d, want 1", len(result))
+	}
+	if _, ok := result["default-wt"]; !ok {
+		t.Error("relative glob: missing default-wt")
+	}
+
+	// Absolute glob pattern
+	absPattern := filepath.Join(extraDir, "*", ".grapes")
+	result = FindWorktreeIssuesDirs(root, absPattern)
+	if len(result) != 1 {
+		t.Errorf("absolute glob: got %d, want 1", len(result))
+	}
+	if _, ok := result["custom-wt"]; !ok {
+		t.Error("absolute glob: missing custom-wt")
+	}
+
+	// Multiple patterns
+	result = FindWorktreeIssuesDirs(root, ".claude/worktrees/*/.grapes", absPattern)
+	if len(result) != 2 {
+		t.Errorf("multiple patterns: got %d, want 2", len(result))
+	}
+}
+
+func TestFindWorktreeIssuesDirsCustomName(t *testing.T) {
+	root := t.TempDir()
+
+	// Create a non-.grapes issue dir
+	os.MkdirAll(filepath.Join(root, "worktrees", "proj1", ".potatoes"), 0o755)
+
+	result := FindWorktreeIssuesDirs(root, "worktrees/*/.potatoes")
+	if len(result) != 1 {
+		t.Errorf("custom name: got %d, want 1", len(result))
+	}
+	if _, ok := result["proj1"]; !ok {
+		t.Error("custom name: missing proj1")
+	}
+}
+
+func TestFindWorktreeIssuesDirsExactPath(t *testing.T) {
+	root := t.TempDir()
+
+	// Create an exact path (no glob)
+	os.MkdirAll(filepath.Join(root, "other", ".grapes"), 0o755)
+
+	result := FindWorktreeIssuesDirs(root, "other/.grapes")
+	if len(result) != 1 {
+		t.Errorf("exact path: got %d, want 1", len(result))
+	}
+	if _, ok := result["other"]; !ok {
+		t.Error("exact path: missing 'other'")
+	}
+}
+
+func TestNextIDWithGlobPattern(t *testing.T) {
+	root := t.TempDir()
+	grapes := filepath.Join(root, ".grapes")
+	os.Mkdir(grapes, 0o755)
+	os.Mkdir(filepath.Join(grapes, "1"), 0o755)
+
+	// Create extra worktree location with a higher ID
+	extraDir := t.TempDir()
+	extraWT := filepath.Join(extraDir, "ext-wt", ".grapes")
+	os.MkdirAll(extraWT, 0o755)
+	os.Mkdir(filepath.Join(extraWT, "10"), 0o755)
+
+	// NextID should see the extra dir's ID 10 via glob
+	absPattern := filepath.Join(extraDir, "*", ".grapes")
+	id, err := NextID(grapes, absPattern)
+	if err != nil {
+		t.Fatalf("NextID: %v", err)
+	}
+	if id != 11 {
+		t.Errorf("got %d, want 11 (should see extra dir ID 10)", id)
 	}
 }
