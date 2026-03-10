@@ -2,6 +2,7 @@ package tui
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -362,19 +363,42 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if click, ok := msg.(tea.MouseClickMsg); ok {
 			mouse := click.Mouse()
 			if click.Button == tea.MouseLeft && mouse.Y == 0 {
-				// Detect clicks on header tabs (Board / List / Settings)
+				// Compute tab widths for click detection
 				boardTabW := lipgloss.Width(m.theme.StyleTabInactive.Render("Board"))
 				listTabW := lipgloss.Width(m.theme.StyleTabInactive.Render("List"))
 				settingsTabW := lipgloss.Width(m.theme.StyleTabInactive.Render("Config"))
-				totalTabsW := boardTabW + 1 + listTabW + 1 + settingsTabW // +1 for spaces
+
+				// Filter indicator width (if shown)
+				hasFilter := m.screen == common.ScreenBoard || m.screen == common.ScreenList || m.screen == common.ScreenDetail
+				filterW := 0
+				if hasFilter {
+					filterLabel := "Filter"
+					if n := m.filters.ActiveCount(); n > 0 {
+						filterLabel = fmt.Sprintf("Filter(%d)", n)
+					}
+					filterW = lipgloss.Width(m.theme.StyleTabInactive.Render(filterLabel)) + 1 // +1 for trailing space
+				}
+
+				totalTabsW := filterW + boardTabW + 1 + listTabW + 1 + settingsTabW
 				tabsStart := m.width - totalTabsW
 				x := mouse.X
-				if x >= tabsStart && x < tabsStart+boardTabW {
+
+				// Click on Filter indicator
+				if hasFilter && x >= tabsStart && x < tabsStart+filterW {
+					if m.screen != common.ScreenSettings {
+						menu := filter.NewMenu(m.filters, len(m.collectAllLabels()), m.theme)
+						m.filterMenu = &menu
+						return m, nil
+					}
+				}
+
+				boardStart := tabsStart + filterW
+				if x >= boardStart && x < boardStart+boardTabW {
 					m.navStack = nil
 					m.screen = common.ScreenBoard
 					return m, nil
 				}
-				listStart := tabsStart + boardTabW + 1
+				listStart := boardStart + boardTabW + 1
 				if x >= listStart && x < listStart+listTabW {
 					m.navStack = nil
 					m.screen = common.ScreenList
@@ -385,6 +409,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.settings = settings.New(m.cfg, m.issuesDir, m.width, m.contentHeight(), m.theme).SetTopOffset(m.topOffset())
 					m.navStack = append(m.navStack, navEntry{screen: m.screen})
 					m.screen = common.ScreenSettings
+					return m, nil
+				}
+			}
+			// Click on filter bar → open filter menu
+			filterBarH := filter.BarHeight(m.filters)
+			if click.Button == tea.MouseLeft && filterBarH > 0 && mouse.Y == common.AppHeaderHeight {
+				if m.screen == common.ScreenBoard || m.screen == common.ScreenList {
+					menu := filter.NewMenu(m.filters, len(m.collectAllLabels()), m.theme)
+					m.filterMenu = &menu
 					return m, nil
 				}
 			}
@@ -814,7 +847,17 @@ func (m Model) renderHeader() string {
 	listTab := renderTab("List", common.ScreenList)
 	settingsTab := renderTab("Config", common.ScreenSettings)
 
-	tabs := lipgloss.JoinHorizontal(lipgloss.Top, boardTab, " ", listTab, " ", settingsTab)
+	// Filter indicator — shown on board/list views
+	var filterIndicator string
+	if m.screen == common.ScreenBoard || m.screen == common.ScreenList || m.screen == common.ScreenDetail {
+		filterLabel := "Filter"
+		if n := m.filters.ActiveCount(); n > 0 {
+			filterLabel = fmt.Sprintf("Filter(%d)", n)
+		}
+		filterIndicator = m.theme.StyleTabInactive.Render(filterLabel) + " "
+	}
+
+	tabs := lipgloss.JoinHorizontal(lipgloss.Top, filterIndicator, boardTab, " ", listTab, " ", settingsTab)
 	spacerW := m.width - lipgloss.Width(title) - lipgloss.Width(tabs)
 	if spacerW < 0 {
 		spacerW = 0
