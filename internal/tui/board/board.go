@@ -152,20 +152,26 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 			m.filter.Focus()
 			return m, textinput.Blink
 		case key.Matches(msg, common.BoardKeyMap.Left):
-			if m.curCol > 0 {
-				m.curCol--
-				m.clampRow()
-				m.scrollRow = 0
-				m.ensureRowVisible()
-				m.ensureColVisible()
+			for ci := m.curCol - 1; ci >= 0; ci-- {
+				if len(m.columns[ci].issues) > 0 {
+					m.curCol = ci
+					m.clampRow()
+					m.scrollRow = 0
+					m.ensureRowVisible()
+					m.ensureColVisible()
+					break
+				}
 			}
 		case key.Matches(msg, common.BoardKeyMap.Right):
-			if m.curCol < len(m.columns)-1 {
-				m.curCol++
-				m.clampRow()
-				m.scrollRow = 0
-				m.ensureRowVisible()
-				m.ensureColVisible()
+			for ci := m.curCol + 1; ci < len(m.columns); ci++ {
+				if len(m.columns[ci].issues) > 0 {
+					m.curCol = ci
+					m.clampRow()
+					m.scrollRow = 0
+					m.ensureRowVisible()
+					m.ensureColVisible()
+					break
+				}
 			}
 		case key.Matches(msg, common.BoardKeyMap.Up):
 			if m.curRow > 0 {
@@ -247,22 +253,28 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 
 	case tea.MouseWheelMsg:
 		if msg.Button == tea.MouseWheelUp {
-			// Scroll left through columns
-			if m.curCol > 0 {
-				m.curCol--
-				m.clampRow()
-				m.scrollRow = 0
-				m.ensureRowVisible()
-				m.ensureColVisible()
+			// Scroll left through columns, skipping empty ones
+			for ci := m.curCol - 1; ci >= 0; ci-- {
+				if len(m.columns[ci].issues) > 0 {
+					m.curCol = ci
+					m.clampRow()
+					m.scrollRow = 0
+					m.ensureRowVisible()
+					m.ensureColVisible()
+					break
+				}
 			}
 		} else if msg.Button == tea.MouseWheelDown {
-			// Scroll right through columns
-			if m.curCol < len(m.columns)-1 {
-				m.curCol++
-				m.clampRow()
-				m.scrollRow = 0
-				m.ensureRowVisible()
-				m.ensureColVisible()
+			// Scroll right through columns, skipping empty ones
+			for ci := m.curCol + 1; ci < len(m.columns); ci++ {
+				if len(m.columns[ci].issues) > 0 {
+					m.curCol = ci
+					m.clampRow()
+					m.scrollRow = 0
+					m.ensureRowVisible()
+					m.ensureColVisible()
+					break
+				}
 			}
 		}
 

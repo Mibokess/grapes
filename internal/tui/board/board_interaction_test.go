@@ -3,6 +3,7 @@ package board_test
 import (
 	"testing"
 
+	"github.com/Mibokess/grapes/internal/data"
 	"github.com/Mibokess/grapes/internal/tui/board"
 	"github.com/Mibokess/grapes/internal/tui/common"
 	"github.com/Mibokess/grapes/internal/tui/testutil"
@@ -181,6 +182,40 @@ func TestBoard_KeyR_Refreshes(t *testing.T) {
 	_, cmd := m.Update(keyMsg("r"))
 	if _, ok := extractMsg(cmd).(common.RefreshMsg); !ok {
 		t.Error("r should send RefreshMsg")
+	}
+}
+
+// boardWithGap creates a board where backlog and in_progress have issues
+// but todo is empty, simulating a filtered view with a gap.
+func boardWithGap() board.Model {
+	issues := []data.Issue{
+		{ID: 1, Title: "Backlog issue", Status: data.StatusBacklog, Priority: data.PriorityMedium},
+		{ID: 2, Title: "In progress issue", Status: data.StatusInProgress, Priority: data.PriorityHigh},
+	}
+	return board.New(issues).SetTopOffset(1).SetSize(100, 30)
+}
+
+func TestBoard_KeyNavigation_RightSkipsEmptyColumn(t *testing.T) {
+	m := boardWithGap()
+	// Start at backlog (issue 1), press l — should skip empty todo, land on in_progress (issue 2)
+	m, _ = m.Update(keyMsg("l"))
+	_, cmd := m.Update(tea.KeyPressMsg(tea.Key{Code: 13}))
+	id := extractMsg(cmd).(common.OpenDetailMsg).ID
+	if id != 2 {
+		t.Errorf("pressing l should skip empty todo and land on in_progress issue (id=2), got id=%d", id)
+	}
+}
+
+func TestBoard_KeyNavigation_LeftSkipsEmptyColumn(t *testing.T) {
+	m := boardWithGap()
+	// Move to in_progress first
+	m, _ = m.Update(keyMsg("l"))
+	// Now press h — should skip empty todo, land back on backlog (issue 1)
+	m, _ = m.Update(keyMsg("h"))
+	_, cmd := m.Update(tea.KeyPressMsg(tea.Key{Code: 13}))
+	id := extractMsg(cmd).(common.OpenDetailMsg).ID
+	if id != 1 {
+		t.Errorf("pressing h should skip empty todo and land on backlog issue (id=1), got id=%d", id)
 	}
 }
 
