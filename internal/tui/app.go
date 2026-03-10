@@ -900,7 +900,7 @@ func (m Model) View() tea.View {
 		}
 	}
 
-	// Pad content to fill the content area
+	// Pad content to fill the content area (before overlays need it)
 	contentLines := strings.Count(content, "\n") + 1
 	if contentLines < contentHeight {
 		content += strings.Repeat("\n", contentHeight-contentLines)
@@ -950,14 +950,25 @@ func (m Model) View() tea.View {
 		}
 	}
 
+	// Build help bar, wrapping to multiple rows if needed
 	var helpText string
 	if m.statusMsg != "" {
 		errStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#f85149"))
 		helpText = "  " + errStyle.Render(m.statusMsg)
 	} else {
-		helpText = "  " + strings.Join(helpParts, dot)
+		helpText = wrapHelpParts(helpParts, dot, m.width-2) // -2 for status bar padding
 	}
 	bar := m.theme.StyleStatusBar.Width(m.width).Render(helpText)
+
+	// Trim content if the bar wraps to multiple lines, so total height stays correct
+	if extraLines := strings.Count(helpText, "\n"); extraLines > 0 {
+		lines := strings.Split(content, "\n")
+		trim := len(lines) - extraLines
+		if trim < 1 {
+			trim = 1
+		}
+		content = strings.Join(lines[:trim], "\n")
+	}
 
 	// Render filter bar between header and content when filters are active
 	filterBar := filter.RenderBar(m.filters, m.width, m.theme)
@@ -1098,6 +1109,41 @@ func (m Model) contentHeight() int {
 		h = 0
 	}
 	return h
+}
+
+// wrapHelpParts arranges help hints into rows that fit within maxWidth,
+// wrapping to additional lines as needed.
+func wrapHelpParts(parts []string, dot string, maxWidth int) string {
+	if len(parts) == 0 {
+		return ""
+	}
+	const indent = "  "
+	dotW := ansi.StringWidth(dot)
+	indentW := ansi.StringWidth(indent)
+
+	var rows []string
+	row := indent
+	rowW := indentW
+
+	for i, part := range parts {
+		partW := ansi.StringWidth(part)
+		if i == 0 {
+			row += part
+			rowW += partW
+			continue
+		}
+		needed := dotW + partW
+		if rowW+needed > maxWidth {
+			rows = append(rows, row)
+			row = indent + part
+			rowW = indentW + partW
+		} else {
+			row += dot + part
+			rowW += needed
+		}
+	}
+	rows = append(rows, row)
+	return strings.Join(rows, "\n")
 }
 
 // filteredIssues returns issues matching the current structured filters.
