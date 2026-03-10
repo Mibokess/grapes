@@ -155,11 +155,20 @@ type KeysConfig struct {
 	DetailEdit     string `toml:"detail_edit"`
 }
 
+// SourcesConfig controls where grapes looks for worktree issue directories.
+type SourcesConfig struct {
+	// WorktreeDirs lists additional directories to scan for */.grapes/ subdirectories.
+	// Paths can be absolute or relative to the project root.
+	// .claude/worktrees is always scanned regardless of this setting.
+	WorktreeDirs []string `toml:"worktree_dirs"`
+}
+
 // Config is the full application configuration.
 type Config struct {
-	View  ViewConfig  `toml:"view"`
-	Theme ThemeConfig `toml:"theme"`
-	Keys  KeysConfig  `toml:"keys"`
+	View    ViewConfig    `toml:"view"`
+	Sources SourcesConfig `toml:"sources"`
+	Theme   ThemeConfig   `toml:"theme"`
+	Keys    KeysConfig    `toml:"keys"`
 }
 
 // Defaults returns the default configuration matching the hardcoded values.

@@ -78,7 +78,7 @@ func NewModel(issues []data.Issue, issuesDir string, cfg config.Config, version 
 	w, _ := fsnotify.NewWatcher()
 	if w != nil {
 		addWatchDirs(w, issuesDir)
-		for _, dir := range data.FindWorktreeIssuesDirs(projectRoot) {
+		for _, dir := range data.FindWorktreeIssuesDirs(projectRoot, cfg.Sources.WorktreeDirs...) {
 			addWatchDirs(w, dir)
 		}
 	}
@@ -477,7 +477,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case common.RefreshMsg:
-		issues, err := data.LoadAllSources(m.issuesDir, m.projectRoot)
+		issues, err := data.LoadAllSources(m.issuesDir, m.projectRoot, m.cfg.Sources.WorktreeDirs...)
 		if err != nil {
 			return m, m.watchCmd()
 		}
@@ -514,7 +514,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Re-sync watched dirs (picks up new issue folders) and keep watching
 		if m.watcher != nil {
 			addWatchDirs(m.watcher, m.issuesDir)
-			for _, dir := range data.FindWorktreeIssuesDirs(m.projectRoot) {
+			for _, dir := range data.FindWorktreeIssuesDirs(m.projectRoot, m.cfg.Sources.WorktreeDirs...) {
 				addWatchDirs(m.watcher, dir)
 			}
 		}

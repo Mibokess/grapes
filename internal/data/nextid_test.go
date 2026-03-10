@@ -78,3 +78,76 @@ func TestNextIDWithWorktree(t *testing.T) {
 		t.Errorf("got %d, want 9 (should see worktree ID 8)", id)
 	}
 }
+
+func TestFindWorktreeIssuesDirsExtraDirs(t *testing.T) {
+	root := t.TempDir()
+
+	// Create default worktree location
+	defaultWT := filepath.Join(root, ".claude", "worktrees", "default-wt", ".grapes")
+	os.MkdirAll(defaultWT, 0o755)
+
+	// Create extra worktree location (absolute path)
+	extraDir := t.TempDir()
+	extraWT := filepath.Join(extraDir, "custom-wt", ".grapes")
+	os.MkdirAll(extraWT, 0o755)
+
+	// Without extra dirs, only default is found
+	result := FindWorktreeIssuesDirs(root)
+	if len(result) != 1 {
+		t.Errorf("without extra dirs: got %d worktrees, want 1", len(result))
+	}
+	if _, ok := result["default-wt"]; !ok {
+		t.Error("without extra dirs: missing default-wt")
+	}
+
+	// With extra dirs, both are found
+	result = FindWorktreeIssuesDirs(root, extraDir)
+	if len(result) != 2 {
+		t.Errorf("with extra dirs: got %d worktrees, want 2", len(result))
+	}
+	if _, ok := result["default-wt"]; !ok {
+		t.Error("with extra dirs: missing default-wt")
+	}
+	if _, ok := result["custom-wt"]; !ok {
+		t.Error("with extra dirs: missing custom-wt")
+	}
+}
+
+func TestFindWorktreeIssuesDirsRelativePath(t *testing.T) {
+	root := t.TempDir()
+
+	// Create a relative extra dir inside the project
+	relDir := filepath.Join(root, "my-worktrees", "wt1", ".grapes")
+	os.MkdirAll(relDir, 0o755)
+
+	// Pass relative path
+	result := FindWorktreeIssuesDirs(root, "my-worktrees")
+	if len(result) != 1 {
+		t.Errorf("relative path: got %d worktrees, want 1", len(result))
+	}
+	if _, ok := result["wt1"]; !ok {
+		t.Error("relative path: missing wt1")
+	}
+}
+
+func TestNextIDWithExtraDirs(t *testing.T) {
+	root := t.TempDir()
+	grapes := filepath.Join(root, ".grapes")
+	os.Mkdir(grapes, 0o755)
+	os.Mkdir(filepath.Join(grapes, "1"), 0o755)
+
+	// Create extra worktree location with a higher ID
+	extraDir := t.TempDir()
+	extraWT := filepath.Join(extraDir, "ext-wt", ".grapes")
+	os.MkdirAll(extraWT, 0o755)
+	os.Mkdir(filepath.Join(extraWT, "10"), 0o755)
+
+	// NextID should see the extra dir's ID 10
+	id, err := NextID(grapes, extraDir)
+	if err != nil {
+		t.Fatalf("NextID: %v", err)
+	}
+	if id != 11 {
+		t.Errorf("got %d, want 11 (should see extra dir ID 10)", id)
+	}
+}
