@@ -83,6 +83,7 @@ func New(cfg config.Config, issuesDir string, w, h int, theme common.Theme) Mode
 				{label: "Default screen", cfgKey: "default_screen", kind: fieldEnum, options: []string{"board", "list"}},
 				{label: "Default sort", cfgKey: "default_sort", kind: fieldEnum, options: []string{"priority", "updated", "created", "id", "title", "status"}},
 				{label: "Auto-close sub-issues", cfgKey: "auto_close_subs", kind: fieldEnum, options: []string{"off", "on"}},
+			{label: "Hide empty columns", cfgKey: "hide_empty_columns", kind: fieldEnum, options: []string{"off", "on"}},
 			},
 		},
 		{
@@ -938,6 +939,11 @@ func (m Model) getFieldValue(cfgKey string) string {
 			return "on"
 		}
 		return "off"
+	case "hide_empty_columns":
+		if m.cfg.View.HideEmpty() {
+			return "on"
+		}
+		return "off"
 	case "accent", "accent_bg", "border", "text", "muted", "faint", "surface",
 		"color_backlog", "color_todo", "color_in_progress", "color_done", "color_cancelled",
 		"color_urgent", "color_high", "color_medium", "color_low":
@@ -1038,6 +1044,9 @@ func (m *Model) setFieldValue(cfgKey, val string) {
 		}
 	case "auto_close_subs":
 		m.cfg.View.AutoCloseSubs = val == "on"
+	case "hide_empty_columns":
+		b := val == "on"
+		m.cfg.View.HideEmptyColumns = &b
 	case "accent", "accent_bg", "border", "text", "muted", "faint", "surface",
 		"color_backlog", "color_todo", "color_in_progress", "color_done", "color_cancelled",
 		"color_urgent", "color_high", "color_medium", "color_low":
