@@ -24,8 +24,8 @@ type Menu struct {
 	cursor     int
 	theme      common.Theme
 
-	// Screen position of the menu box, set by the app for mouse hit-testing.
-	ScreenX, ScreenY int
+	// Screen position and width, set by the app for mouse hit-testing.
+	ScreenX, ScreenY, ScreenW int
 }
 
 // NewMenu creates a filter menu from the current filter state.
@@ -117,7 +117,7 @@ func (m Menu) Update(msg tea.Msg) (Menu, tea.Cmd) {
 		relY := mouse.Y - m.ScreenY - 2
 		h := m.boxHeight()
 		inBox := mouse.Y >= m.ScreenY && mouse.Y < m.ScreenY+h &&
-			mouse.X >= m.ScreenX
+			mouse.X >= m.ScreenX && mouse.X < m.ScreenX+m.ScreenW
 		if inBox && relY >= 0 && relY < len(m.categories) {
 			m.cursor = relY
 			return m, m.selectCurrent()

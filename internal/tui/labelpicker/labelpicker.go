@@ -20,8 +20,8 @@ type Model struct {
 	input    textinput.Model
 	theme    common.Theme
 
-	// Screen position, set by app for mouse hit-testing.
-	ScreenX, ScreenY int
+	// Screen position and width, set by app for mouse hit-testing.
+	ScreenX, ScreenY, ScreenW int
 }
 
 // New creates a label picker for the given issue.
@@ -124,7 +124,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		relY := mouse.Y - m.ScreenY - 2
 		h := m.boxHeight()
 		inBox := mouse.Y >= m.ScreenY && mouse.Y < m.ScreenY+h &&
-			mouse.X >= m.ScreenX
+			mouse.X >= m.ScreenX && mouse.X < m.ScreenX+m.ScreenW
 		if !inBox {
 			return m, func() tea.Msg { return common.LabelPickerCancelMsg{} }
 		}

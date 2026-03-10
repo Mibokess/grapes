@@ -27,8 +27,8 @@ type Model struct {
 	field   string // "status" or "priority"
 	theme   common.Theme
 
-	// Screen position of the picker box, set by the app for mouse handling.
-	ScreenX, ScreenY int
+	// Screen position and width, set by the app for mouse handling.
+	ScreenX, ScreenY, ScreenW int
 }
 
 // New creates a picker model. current is the index of the currently active value.
@@ -89,7 +89,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		// Options start 2 lines below picker top (border + padding)
 		relY := mouse.Y - m.ScreenY - 2
 		inBox := mouse.Y >= m.ScreenY && mouse.Y < m.ScreenY+m.boxHeight() &&
-			mouse.X >= m.ScreenX
+			mouse.X >= m.ScreenX && mouse.X < m.ScreenX+m.ScreenW
 		if inBox && relY >= 0 && relY < len(m.options) {
 			m.cursor = relY
 			opt := m.options[m.cursor]

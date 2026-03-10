@@ -82,6 +82,7 @@ func TestLabelPicker_MouseClick_TogglesLabel(t *testing.T) {
 	m := newTestLabelPicker()
 	m.ScreenX = 10
 	m.ScreenY = 5
+	m.ScreenW = 40
 	// Click on first label (index 0 = "bug"): Y = ScreenY + 2 (border+padding) + 0
 	m, _ = m.Update(tea.MouseClickMsg{X: 15, Y: 7, Button: tea.MouseLeft})
 	if m.selected["bug"] {
@@ -98,6 +99,7 @@ func TestLabelPicker_MouseClick_SecondLabel(t *testing.T) {
 	m := newTestLabelPicker()
 	m.ScreenX = 10
 	m.ScreenY = 5
+	m.ScreenW = 40
 	// Click on second label (index 1 = "feature"): Y = ScreenY + 2 + 1
 	m, _ = m.Update(tea.MouseClickMsg{X: 15, Y: 8, Button: tea.MouseLeft})
 	if !m.selected["feature"] {
@@ -109,6 +111,7 @@ func TestLabelPicker_MouseClick_OutsideCancels(t *testing.T) {
 	m := newTestLabelPicker()
 	m.ScreenX = 10
 	m.ScreenY = 5
+	m.ScreenW = 40
 	_, cmd := m.Update(tea.MouseClickMsg{X: 0, Y: 0, Button: tea.MouseLeft})
 	if _, ok := extractMsg(cmd).(common.LabelPickerCancelMsg); !ok {
 		t.Error("clicking outside should send LabelPickerCancelMsg")
@@ -119,6 +122,7 @@ func TestLabelPicker_MouseClick_HintAreaApplies(t *testing.T) {
 	m := newTestLabelPicker()
 	m.ScreenX = 10
 	m.ScreenY = 5
+	m.ScreenW = 40
 	// Hint area: Y = ScreenY + 2 + len(labels) + 3 (blank + input + blank + hint)
 	hintY := m.ScreenY + 2 + len(m.labels) + 3
 	_, cmd := m.Update(tea.MouseClickMsg{X: 15, Y: hintY, Button: tea.MouseLeft})
@@ -135,6 +139,7 @@ func TestLabelPicker_MouseClick_InputField_FocusesInput(t *testing.T) {
 	m := newTestLabelPicker()
 	m.ScreenX = 10
 	m.ScreenY = 5
+	m.ScreenW = 40
 	// Input field: Y = ScreenY + 2 + len(labels) + 1 (blank + input row)
 	inputY := m.ScreenY + 2 + len(m.labels) + 1
 	m, _ = m.Update(tea.MouseClickMsg{X: 15, Y: inputY, Button: tea.MouseLeft})
@@ -147,6 +152,7 @@ func TestLabelPicker_MouseClick_ToggleDoesNotClose(t *testing.T) {
 	m := newTestLabelPicker()
 	m.ScreenX = 10
 	m.ScreenY = 5
+	m.ScreenW = 40
 	// Click on a label — should return nil cmd (no close/cancel/apply)
 	_, cmd := m.Update(tea.MouseClickMsg{X: 15, Y: 7, Button: tea.MouseLeft})
 	if cmd != nil {
@@ -155,10 +161,23 @@ func TestLabelPicker_MouseClick_ToggleDoesNotClose(t *testing.T) {
 	}
 }
 
+func TestLabelPicker_MouseClick_RightOfBoxCancels(t *testing.T) {
+	m := newTestLabelPicker()
+	m.ScreenX = 10
+	m.ScreenY = 5
+	m.ScreenW = 40
+	// Click at same Y as a label row but to the right of the box (X >= ScreenX + ScreenW)
+	_, cmd := m.Update(tea.MouseClickMsg{X: 55, Y: 7, Button: tea.MouseLeft})
+	if _, ok := extractMsg(cmd).(common.LabelPickerCancelMsg); !ok {
+		t.Error("clicking to the right of the box should cancel, not toggle")
+	}
+}
+
 func TestLabelPicker_MouseMotion_MovesCursor(t *testing.T) {
 	m := newTestLabelPicker()
 	m.ScreenX = 10
 	m.ScreenY = 5
+	m.ScreenW = 40
 	if m.cursor != 0 {
 		t.Fatal("cursor should start at 0")
 	}

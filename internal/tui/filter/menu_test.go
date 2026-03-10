@@ -83,6 +83,7 @@ func TestMenu_MouseClick_SelectsItem(t *testing.T) {
 	// Position the menu at a known location
 	m.ScreenX = 10
 	m.ScreenY = 5
+	m.ScreenW = 36
 	// Click on the third option (index 2 = status): Y = ScreenY + 2 (border+padding) + 2
 	_, cmd := m.Update(tea.MouseClickMsg{X: 15, Y: 9, Button: tea.MouseLeft})
 	msg, ok := extractMsg(cmd).(common.FilterMenuSelectMsg)
@@ -98,6 +99,7 @@ func TestMenu_MouseClick_ToggleItem(t *testing.T) {
 	m := newTestMenu()
 	m.ScreenX = 10
 	m.ScreenY = 5
+	m.ScreenW = 36
 	// Click on first option (index 0 = top_level_only): Y = ScreenY + 2
 	_, cmd := m.Update(tea.MouseClickMsg{X: 15, Y: 7, Button: tea.MouseLeft})
 	if _, ok := extractMsg(cmd).(common.FilterToggleTopLevelMsg); !ok {
@@ -109,6 +111,7 @@ func TestMenu_MouseClick_OutsideCancels(t *testing.T) {
 	m := newTestMenu()
 	m.ScreenX = 10
 	m.ScreenY = 5
+	m.ScreenW = 36
 	// Click well outside the box
 	_, cmd := m.Update(tea.MouseClickMsg{X: 0, Y: 0, Button: tea.MouseLeft})
 	if _, ok := extractMsg(cmd).(common.FilterCancelMsg); !ok {
@@ -120,6 +123,7 @@ func TestMenu_MouseMotion_MovesCursor(t *testing.T) {
 	m := newTestMenu()
 	m.ScreenX = 10
 	m.ScreenY = 5
+	m.ScreenW = 36
 	if m.cursor != 0 {
 		t.Fatal("cursor should start at 0")
 	}
@@ -134,6 +138,7 @@ func TestMenu_MouseClick_ClearAll(t *testing.T) {
 	m := newTestMenuWithFilters()
 	m.ScreenX = 10
 	m.ScreenY = 5
+	m.ScreenW = 36
 	// With TopLevelOnly active, "Clear" is shown as the last item (index 6)
 	lastIdx := len(m.categories) - 1
 	clickY := m.ScreenY + 2 + lastIdx

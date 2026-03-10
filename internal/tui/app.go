@@ -1116,6 +1116,7 @@ func (m *Model) updatePickerPosition() {
 	offsetY := common.AppHeaderHeight + filter.BarHeight(m.filters)
 	m.picker.ScreenX = (m.width - fgW) / 2
 	m.picker.ScreenY = offsetY + (contentH-fgH)/2
+	m.picker.ScreenW = fgW
 }
 
 // buildLabelPicker creates a label picker for the given issue.
@@ -1149,6 +1150,7 @@ func (m *Model) updateLabelPickerPosition() {
 	offsetY := common.AppHeaderHeight + filter.BarHeight(m.filters)
 	m.labelPicker.ScreenX = (m.width - fgW) / 2
 	m.labelPicker.ScreenY = offsetY + (contentH-fgH)/2
+	m.labelPicker.ScreenW = fgW
 }
 
 // updateFilterMenuPosition computes the centered screen position of the filter
@@ -1170,6 +1172,7 @@ func (m *Model) updateFilterMenuPosition() {
 	offsetY := common.AppHeaderHeight + filter.BarHeight(m.filters)
 	m.filterMenu.ScreenX = (m.width - fgW) / 2
 	m.filterMenu.ScreenY = offsetY + (contentH-fgH)/2
+	m.filterMenu.ScreenW = fgW
 }
 
 // updateFilterPickerPosition computes the centered screen position of the filter
@@ -1191,6 +1194,7 @@ func (m *Model) updateFilterPickerPosition() {
 	offsetY := common.AppHeaderHeight + filter.BarHeight(m.filters)
 	m.filterPicker.ScreenX = (m.width - fgW) / 2
 	m.filterPicker.ScreenY = offsetY + (contentH-fgH)/2
+	m.filterPicker.ScreenW = fgW
 }
 
 // topOffset returns the number of screen lines above the view content

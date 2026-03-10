@@ -26,8 +26,8 @@ type MultiPicker struct {
 	cursor   int
 	theme    common.Theme
 
-	// Screen position of the picker box, set by the app for mouse hit-testing.
-	ScreenX, ScreenY int
+	// Screen position and width, set by the app for mouse hit-testing.
+	ScreenX, ScreenY, ScreenW int
 }
 
 func pickerStyleTitle(t common.Theme) lipgloss.Style {
@@ -119,7 +119,7 @@ func (m MultiPicker) Update(msg tea.Msg) (MultiPicker, tea.Cmd) {
 		relY := mouse.Y - m.ScreenY - 2
 		h := m.boxHeight()
 		inBox := mouse.Y >= m.ScreenY && mouse.Y < m.ScreenY+h &&
-			mouse.X >= m.ScreenX
+			mouse.X >= m.ScreenX && mouse.X < m.ScreenX+m.ScreenW
 		if inBox && relY >= 0 && relY < len(m.options) {
 			// Click on an option → toggle it
 			m.cursor = relY

@@ -78,6 +78,7 @@ func TestMultiPicker_MouseClick_TogglesOption(t *testing.T) {
 	m := newTestMultiPicker()
 	m.ScreenX = 10
 	m.ScreenY = 5
+	m.ScreenW = 40
 	// Click on first option (index 0): Y = ScreenY + 2 (border+padding) + 0
 	m, _ = m.Update(tea.MouseClickMsg{X: 15, Y: 7, Button: tea.MouseLeft})
 	if !m.selected["todo"] {
@@ -94,6 +95,7 @@ func TestMultiPicker_MouseClick_SecondOption(t *testing.T) {
 	m := newTestMultiPicker()
 	m.ScreenX = 10
 	m.ScreenY = 5
+	m.ScreenW = 40
 	// Click on second option (index 1): Y = ScreenY + 2 + 1
 	m, _ = m.Update(tea.MouseClickMsg{X: 15, Y: 8, Button: tea.MouseLeft})
 	if !m.selected["in_progress"] {
@@ -105,6 +107,7 @@ func TestMultiPicker_MouseClick_OutsideCancels(t *testing.T) {
 	m := newTestMultiPicker()
 	m.ScreenX = 10
 	m.ScreenY = 5
+	m.ScreenW = 40
 	_, cmd := m.Update(tea.MouseClickMsg{X: 0, Y: 0, Button: tea.MouseLeft})
 	if _, ok := extractMsg(cmd).(common.FilterCancelMsg); !ok {
 		t.Error("clicking outside should send FilterCancelMsg")
@@ -115,6 +118,7 @@ func TestMultiPicker_MouseClick_HintAreaApplies(t *testing.T) {
 	m := newTestMultiPicker()
 	m.ScreenX = 10
 	m.ScreenY = 5
+	m.ScreenW = 40
 	// Toggle a value first
 	m, _ = m.Update(tea.KeyPressMsg(tea.Key{Code: ' '}))
 	// Click on hint area: Y = ScreenY + 2 + len(options) + 1 (blank) + 1 (hint)
@@ -133,6 +137,7 @@ func TestMultiPicker_MouseMotion_MovesCursor(t *testing.T) {
 	m := newTestMultiPicker()
 	m.ScreenX = 10
 	m.ScreenY = 5
+	m.ScreenW = 40
 	if m.cursor != 0 {
 		t.Fatal("cursor should start at 0")
 	}
