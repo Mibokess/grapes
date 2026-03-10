@@ -9,9 +9,18 @@ import (
 
 // ViewConfig controls startup defaults.
 type ViewConfig struct {
-	DefaultScreen string `toml:"default_screen"`
-	DefaultSort   string `toml:"default_sort"`
-	AutoCloseSubs bool   `toml:"auto_close_subs"`
+	DefaultScreen    string `toml:"default_screen"`
+	DefaultSort      string `toml:"default_sort"`
+	AutoCloseSubs    bool   `toml:"auto_close_subs"`
+	HideEmptyColumns *bool  `toml:"hide_empty_columns,omitempty"`
+}
+
+// HideEmpty returns whether empty board columns should be hidden (default true).
+func (v ViewConfig) HideEmpty() bool {
+	if v.HideEmptyColumns == nil {
+		return true
+	}
+	return *v.HideEmptyColumns
 }
 
 // ColorSetConfig holds color overrides for one theme mode.
@@ -131,6 +140,7 @@ type KeysConfig struct {
 	BoardLabel    string `toml:"board_label"`
 	BoardSort     string `toml:"board_sort"`
 	BoardReverse  string `toml:"board_reverse"`
+	BoardEmpty    string `toml:"board_empty"`
 
 	ListUp        string `toml:"list_up"`
 	ListDown      string `toml:"list_down"`
@@ -235,6 +245,7 @@ func Defaults() Config {
 			BoardLabel:    "t",
 			BoardSort:     "o",
 			BoardReverse:  "O",
+			BoardEmpty:    "E",
 			ListUp:        "k",
 			ListDown:      "j",
 			ListOpen:      "enter",

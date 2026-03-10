@@ -134,7 +134,7 @@ func NewModel(issues []data.Issue, issuesDir string, cfg config.Config, version 
 		cfg:           cfg,
 		theme:         theme,
 		worktreeNames: wtNames,
-		board:         board.New(filtered).SetTheme(theme).SetWorktreeNames(wtNames),
+		board:         board.New(filtered).SetHideEmpty(cfg.View.HideEmpty()).SetTheme(theme).SetWorktreeNames(wtNames),
 		list:          l.SetTheme(theme).SetWorktreeNames(wtNames),
 		watcher:       w,
 	}
@@ -424,10 +424,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case common.ConfigSavedMsg:
 		m.cfg = msg.Config
 		m.theme = common.NewThemeFromConfig(msg.Config.Theme, m.isDark)
-		m.board = m.board.SetTheme(m.theme)
+		m.board = m.board.SetHideEmpty(msg.Config.View.HideEmpty()).SetTheme(m.theme)
 		m.list = m.list.SetTheme(m.theme)
 		m.detail = m.detail.SetTheme(m.theme)
 		common.ApplyKeys(msg.Config.Keys)
+		filtered := m.filteredIssues()
+		m.board = m.board.SetIssues(filtered)
 		// Go back to previous screen
 		if len(m.navStack) > 0 {
 			top := m.navStack[len(m.navStack)-1]
@@ -453,6 +455,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		filtered := m.filteredIssues()
 		m.board = m.board.SetSortMode(m.sortMode).SetIssues(filtered)
 		m.list = m.list.SetSortState(m.sortMode, m.sortAsc).SetIssues(filtered)
+		return m, nil
+
+	case common.ToggleEmptyColumnsMsg:
+		m.board = m.board.SetHideEmpty(!m.board.HideEmpty())
+		filtered := m.filteredIssues()
+		m.board = m.board.SetIssues(filtered)
 		return m, nil
 
 	case common.ReverseSortMsg:

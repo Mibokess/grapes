@@ -45,6 +45,7 @@ type BoardKeys struct {
 	Labels        key.Binding
 	CycleSort     key.Binding
 	ReverseSort   key.Binding
+	ToggleEmpty   key.Binding
 }
 
 var BoardKeyMap = BoardKeys{
@@ -111,6 +112,10 @@ var BoardKeyMap = BoardKeys{
 	ReverseSort: key.NewBinding(
 		key.WithKeys("O"),
 		key.WithHelp("O", "reverse"),
+	),
+	ToggleEmpty: key.NewBinding(
+		key.WithKeys("E"),
+		key.WithHelp("E", "empty cols"),
 	),
 }
 
@@ -314,6 +319,7 @@ func ApplyKeys(k config.KeysConfig) {
 	BoardKeyMap.Labels = key.NewBinding(key.WithKeys(k.BoardLabel), key.WithHelp(k.BoardLabel, "labels"))
 	BoardKeyMap.CycleSort = key.NewBinding(key.WithKeys(k.BoardSort), key.WithHelp(k.BoardSort, "order"))
 	BoardKeyMap.ReverseSort = key.NewBinding(key.WithKeys(k.BoardReverse), key.WithHelp(k.BoardReverse, "reverse"))
+	BoardKeyMap.ToggleEmpty = key.NewBinding(key.WithKeys(k.BoardEmpty), key.WithHelp(k.BoardEmpty, "empty cols"))
 
 	ListKeyMap.Up = key.NewBinding(key.WithKeys(k.ListUp, "up"), key.WithHelp(k.ListUp+"/up", "up"))
 	ListKeyMap.Down = key.NewBinding(key.WithKeys(k.ListDown, "down"), key.WithHelp(k.ListDown+"/down", "down"))
