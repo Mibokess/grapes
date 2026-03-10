@@ -323,6 +323,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 
+	case tea.MouseReleaseMsg, tea.MouseWheelMsg:
+		// When any overlay is active, swallow release/wheel events so they
+		// don't leak to background views (e.g. board interpreting release as
+		// a card click, which would appear to "close" the overlay).
+		if m.filterPicker != nil || m.filterMenu != nil || m.picker != nil || m.labelPicker != nil {
+			return m, nil
+		}
+
 	case tea.MouseClickMsg, tea.MouseMotionMsg:
 		// When filter overlays are active, route all mouse events to them
 		if m.filterPicker != nil {

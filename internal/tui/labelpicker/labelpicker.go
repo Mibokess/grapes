@@ -125,26 +125,32 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		h := m.boxHeight()
 		inBox := mouse.Y >= m.ScreenY && mouse.Y < m.ScreenY+h &&
 			mouse.X >= m.ScreenX
-		if inBox && relY >= 0 && relY < len(m.labels) {
+		if !inBox {
+			return m, func() tea.Msg { return common.LabelPickerCancelMsg{} }
+		}
+		if relY >= 0 && relY < len(m.labels) {
+			// Click on a label → toggle it
 			m.cursor = relY
 			m.input.Blur()
-			// Toggle the clicked label
 			v := m.labels[m.cursor]
 			if m.selected[v] {
 				delete(m.selected, v)
 			} else {
 				m.selected[v] = true
 			}
-		} else if inBox {
+		} else {
 			// Click inside box but not on a label.
-			// Hint area (last 2 lines before padding/border) → apply.
-			hintY := len(m.labels) + 3 // blank + input + blank + hint
-			if relY >= hintY {
+			// Layout after labels: blank(1) + input(1) + blank(1) + hint(1)
+			inputY := len(m.labels) + 1 // blank + input row
+			hintY := len(m.labels) + 3  // blank + input + blank + hint
+			if relY == inputY {
+				// Click on input field → focus it
+				m.cursor = len(m.labels)
+				m.input.Focus()
+			} else if relY >= hintY {
+				// Click on hint area → apply
 				return m, m.applyCmd()
 			}
-		}
-		if !inBox {
-			return m, func() tea.Msg { return common.LabelPickerCancelMsg{} }
 		}
 
 	case tea.MouseMotionMsg:

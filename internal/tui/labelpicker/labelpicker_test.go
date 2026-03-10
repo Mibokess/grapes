@@ -131,6 +131,30 @@ func TestLabelPicker_MouseClick_HintAreaApplies(t *testing.T) {
 	}
 }
 
+func TestLabelPicker_MouseClick_InputField_FocusesInput(t *testing.T) {
+	m := newTestLabelPicker()
+	m.ScreenX = 10
+	m.ScreenY = 5
+	// Input field: Y = ScreenY + 2 + len(labels) + 1 (blank + input row)
+	inputY := m.ScreenY + 2 + len(m.labels) + 1
+	m, _ = m.Update(tea.MouseClickMsg{X: 15, Y: inputY, Button: tea.MouseLeft})
+	if m.cursor != len(m.labels) {
+		t.Errorf("clicking input should set cursor to %d (input position), got %d", len(m.labels), m.cursor)
+	}
+}
+
+func TestLabelPicker_MouseClick_ToggleDoesNotClose(t *testing.T) {
+	m := newTestLabelPicker()
+	m.ScreenX = 10
+	m.ScreenY = 5
+	// Click on a label — should return nil cmd (no close/cancel/apply)
+	_, cmd := m.Update(tea.MouseClickMsg{X: 15, Y: 7, Button: tea.MouseLeft})
+	if cmd != nil {
+		msg := extractMsg(cmd)
+		t.Errorf("clicking a label should not produce a command, got %T", msg)
+	}
+}
+
 func TestLabelPicker_MouseMotion_MovesCursor(t *testing.T) {
 	m := newTestLabelPicker()
 	m.ScreenX = 10
