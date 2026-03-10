@@ -3,6 +3,7 @@ package board_test
 import (
 	"testing"
 
+	"github.com/Mibokess/grapes/internal/data"
 	"github.com/Mibokess/grapes/internal/tui/board"
 	"github.com/Mibokess/grapes/internal/tui/common"
 	"github.com/Mibokess/grapes/internal/tui/testutil"
@@ -181,6 +182,113 @@ func TestBoard_KeyR_Refreshes(t *testing.T) {
 	_, cmd := m.Update(keyMsg("r"))
 	if _, ok := extractMsg(cmd).(common.RefreshMsg); !ok {
 		t.Error("r should send RefreshMsg")
+	}
+}
+
+// boardWithGap creates a board where backlog and in_progress have issues
+// but todo is empty, simulating a filtered view with a gap.
+func boardWithGap() board.Model {
+	issues := []data.Issue{
+		{ID: 1, Title: "Backlog issue", Status: data.StatusBacklog, Priority: data.PriorityMedium},
+		{ID: 2, Title: "In progress issue", Status: data.StatusInProgress, Priority: data.PriorityHigh},
+	}
+	return board.New(issues).SetTopOffset(1).SetSize(100, 30)
+}
+
+func TestBoard_KeyNavigation_RightSkipsEmptyColumn(t *testing.T) {
+	m := boardWithGap()
+	// Start at backlog (issue 1), press l — should skip empty todo, land on in_progress (issue 2)
+	m, _ = m.Update(keyMsg("l"))
+	_, cmd := m.Update(tea.KeyPressMsg(tea.Key{Code: 13}))
+	id := extractMsg(cmd).(common.OpenDetailMsg).ID
+	if id != 2 {
+		t.Errorf("pressing l should skip empty todo and land on in_progress issue (id=2), got id=%d", id)
+	}
+}
+
+func TestBoard_KeyNavigation_LeftSkipsEmptyColumn(t *testing.T) {
+	m := boardWithGap()
+	// Move to in_progress first
+	m, _ = m.Update(keyMsg("l"))
+	// Now press h — should skip empty todo, land back on backlog (issue 1)
+	m, _ = m.Update(keyMsg("h"))
+	_, cmd := m.Update(tea.KeyPressMsg(tea.Key{Code: 13}))
+	id := extractMsg(cmd).(common.OpenDetailMsg).ID
+	if id != 1 {
+		t.Errorf("pressing h should skip empty todo and land on backlog issue (id=1), got id=%d", id)
+	}
+}
+
+func TestBoard_KeyNavigation_DownWrapsToNextColumn(t *testing.T) {
+	// Backlog column has 1 issue (issue 3). Pressing j should wrap to todo column.
+	m := newBoardModel()
+	// Get the initial issue (backlog, row 0)
+	_, cmd1 := m.Update(tea.KeyPressMsg(tea.Key{Code: 13}))
+	id1 := extractMsg(cmd1).(common.OpenDetailMsg).ID
+
+	// Press j — should wrap from backlog (1 issue) to todo column
+	m2 := newBoardModel()
+	m2, _ = m2.Update(keyMsg("j"))
+	_, cmd2 := m2.Update(tea.KeyPressMsg(tea.Key{Code: 13}))
+	id2 := extractMsg(cmd2).(common.OpenDetailMsg).ID
+
+	if id1 == id2 {
+		t.Error("pressing j at last issue in column should wrap to next column")
+	}
+}
+
+func TestBoard_KeyNavigation_UpWrapsFromSecondColumn(t *testing.T) {
+	// Move to todo column (1 issue), then press k — should wrap back to backlog.
+	m := newBoardModel()
+	m, _ = m.Update(keyMsg("l")) // move to todo
+	_, cmd1 := m.Update(tea.KeyPressMsg(tea.Key{Code: 13}))
+	id1 := extractMsg(cmd1).(common.OpenDetailMsg).ID
+
+	m2 := newBoardModel()
+	m2, _ = m2.Update(keyMsg("l")) // move to todo
+	m2, _ = m2.Update(keyMsg("k")) // should wrap to backlog
+	_, cmd2 := m2.Update(tea.KeyPressMsg(tea.Key{Code: 13}))
+	id2 := extractMsg(cmd2).(common.OpenDetailMsg).ID
+
+	if id1 == id2 {
+		t.Error("pressing k at first issue in column should wrap to previous column")
+	}
+}
+
+func TestBoard_KeyNavigation_DownAtLastColumnNoOp(t *testing.T) {
+	// Navigate to last column (cancelled), press j — should stay put.
+	m := newBoardModel()
+	for i := 0; i < 4; i++ {
+		m, _ = m.Update(keyMsg("l"))
+	}
+	_, cmd1 := m.Update(tea.KeyPressMsg(tea.Key{Code: 13}))
+	id1 := extractMsg(cmd1).(common.OpenDetailMsg).ID
+
+	m2 := newBoardModel()
+	for i := 0; i < 4; i++ {
+		m2, _ = m2.Update(keyMsg("l"))
+	}
+	m2, _ = m2.Update(keyMsg("j"))
+	_, cmd2 := m2.Update(tea.KeyPressMsg(tea.Key{Code: 13}))
+	id2 := extractMsg(cmd2).(common.OpenDetailMsg).ID
+
+	if id1 != id2 {
+		t.Error("pressing j at last issue of last column should not change selection")
+	}
+}
+
+func TestBoard_KeyNavigation_UpAtFirstColumnNoOp(t *testing.T) {
+	m := newBoardModel()
+	_, cmd1 := m.Update(tea.KeyPressMsg(tea.Key{Code: 13}))
+	id1 := extractMsg(cmd1).(common.OpenDetailMsg).ID
+
+	m2 := newBoardModel()
+	m2, _ = m2.Update(keyMsg("k"))
+	_, cmd2 := m2.Update(tea.KeyPressMsg(tea.Key{Code: 13}))
+	id2 := extractMsg(cmd2).(common.OpenDetailMsg).ID
+
+	if id1 != id2 {
+		t.Error("pressing k at first issue of first column should not change selection")
 	}
 }
 

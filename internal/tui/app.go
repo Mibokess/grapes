@@ -78,7 +78,7 @@ func NewModel(issues []data.Issue, issuesDir string, cfg config.Config, version 
 	w, _ := fsnotify.NewWatcher()
 	if w != nil {
 		addWatchDirs(w, issuesDir)
-		for _, dir := range data.FindWorktreeIssuesDirs(projectRoot) {
+		for _, dir := range data.FindWorktreeIssuesDirs(projectRoot, cfg.Sources.Dirs...) {
 			addWatchDirs(w, dir)
 		}
 	}
@@ -134,7 +134,7 @@ func NewModel(issues []data.Issue, issuesDir string, cfg config.Config, version 
 		cfg:           cfg,
 		theme:         theme,
 		worktreeNames: wtNames,
-		board:         board.New(filtered).SetTheme(theme).SetWorktreeNames(wtNames),
+		board:         board.New(filtered).SetHideEmpty(cfg.View.HideEmpty()).SetTheme(theme).SetWorktreeNames(wtNames),
 		list:          l.SetTheme(theme).SetWorktreeNames(wtNames),
 		watcher:       w,
 	}
@@ -457,10 +457,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case common.ConfigSavedMsg:
 		m.cfg = msg.Config
 		m.theme = common.NewThemeFromConfig(msg.Config.Theme, m.isDark)
-		m.board = m.board.SetTheme(m.theme)
+		m.board = m.board.SetHideEmpty(msg.Config.View.HideEmpty()).SetTheme(m.theme)
 		m.list = m.list.SetTheme(m.theme)
 		m.detail = m.detail.SetTheme(m.theme)
 		common.ApplyKeys(msg.Config.Keys)
+		filtered := m.filteredIssues()
+		m.board = m.board.SetIssues(filtered)
 		// Go back to previous screen
 		if len(m.navStack) > 0 {
 			top := m.navStack[len(m.navStack)-1]
@@ -488,6 +490,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.list = m.list.SetSortState(m.sortMode, m.sortAsc).SetIssues(filtered)
 		return m, nil
 
+	case common.ToggleEmptyColumnsMsg:
+		m.board = m.board.SetHideEmpty(!m.board.HideEmpty())
+		filtered := m.filteredIssues()
+		m.board = m.board.SetIssues(filtered)
+		return m, nil
+
 	case common.ReverseSortMsg:
 		m.sortAsc = !m.sortAsc
 		data.SortIssues(m.issues, m.sortMode, m.sortAsc)
@@ -510,7 +518,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case common.RefreshMsg:
-		issues, err := data.LoadAllSources(m.issuesDir, m.projectRoot)
+		issues, err := data.LoadAllSources(m.issuesDir, m.projectRoot, m.cfg.Sources.Dirs...)
 		if err != nil {
 			return m, m.watchCmd()
 		}
@@ -547,7 +555,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Re-sync watched dirs (picks up new issue folders) and keep watching
 		if m.watcher != nil {
 			addWatchDirs(m.watcher, m.issuesDir)
-			for _, dir := range data.FindWorktreeIssuesDirs(m.projectRoot) {
+			for _, dir := range data.FindWorktreeIssuesDirs(m.projectRoot, m.cfg.Sources.Dirs...) {
 				addWatchDirs(m.watcher, dir)
 			}
 		}
@@ -933,7 +941,7 @@ func (m Model) View() tea.View {
 		}
 	}
 
-	// Pad content to fill the content area
+	// Pad content to fill the content area (before overlays need it)
 	contentLines := strings.Count(content, "\n") + 1
 	if contentLines < contentHeight {
 		content += strings.Repeat("\n", contentHeight-contentLines)
@@ -983,16 +991,28 @@ func (m Model) View() tea.View {
 		}
 	}
 
+	// Build help bar, wrapping to multiple rows if needed
 	var helpText string
 	if m.statusMsg != "" {
 		errStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#f85149"))
 		helpText = "  " + errStyle.Render(m.statusMsg)
 	} else {
-		helpText = "  " + strings.Join(helpParts, dot)
+		helpText = wrapHelpParts(helpParts, dot, m.width-2) // -2 for status bar padding
 	}
 	bar := m.theme.StyleStatusBar.Width(m.width).Render(helpText)
 
 	// Render filter bar between header and content (always visible, clickable)
+	// Trim content if the bar wraps to multiple lines, so total height stays correct
+	if extraLines := strings.Count(helpText, "\n"); extraLines > 0 {
+		lines := strings.Split(content, "\n")
+		trim := len(lines) - extraLines
+		if trim < 1 {
+			trim = 1
+		}
+		content = strings.Join(lines[:trim], "\n")
+	}
+
+	// Render filter bar between header and content when filters are active
 	filterBar := filter.RenderBar(m.filters, m.width, m.theme)
 	full := lipgloss.JoinVertical(lipgloss.Left, header, filterBar, content, bar)
 
@@ -1172,6 +1192,41 @@ func (m Model) contentHeight() int {
 		h = 0
 	}
 	return h
+}
+
+// wrapHelpParts arranges help hints into rows that fit within maxWidth,
+// wrapping to additional lines as needed.
+func wrapHelpParts(parts []string, dot string, maxWidth int) string {
+	if len(parts) == 0 {
+		return ""
+	}
+	const indent = "  "
+	dotW := ansi.StringWidth(dot)
+	indentW := ansi.StringWidth(indent)
+
+	var rows []string
+	row := indent
+	rowW := indentW
+
+	for i, part := range parts {
+		partW := ansi.StringWidth(part)
+		if i == 0 {
+			row += part
+			rowW += partW
+			continue
+		}
+		needed := dotW + partW
+		if rowW+needed > maxWidth {
+			rows = append(rows, row)
+			row = indent + part
+			rowW = indentW + partW
+		} else {
+			row += dot + part
+			rowW += needed
+		}
+	}
+	rows = append(rows, row)
+	return strings.Join(rows, "\n")
 }
 
 // filteredIssues returns issues matching the current structured filters.

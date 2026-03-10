@@ -11,7 +11,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 )
 
-var version = "0.1.5"
+var version = "0.1.6"
 
 func main() {
 	cwd, err := os.Getwd()
@@ -48,13 +48,12 @@ func main() {
 	}
 
 	projectRoot := data.ProjectRoot(issuesDir)
-	issues, err := data.LoadAllSources(issuesDir, projectRoot)
+	cfg := config.Load(issuesDir)
+	issues, err := data.LoadAllSources(issuesDir, projectRoot, cfg.Sources.Dirs...)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error loading issues: %v\n", err)
 		os.Exit(1)
 	}
-
-	cfg := config.Load(issuesDir)
 	model := tui.NewModel(issues, issuesDir, cfg, version)
 	p := tea.NewProgram(model)
 
@@ -65,9 +64,10 @@ func main() {
 }
 
 func runIssue(issuesDir string, args []string) int {
+	cfg := config.Load(issuesDir)
 	if len(args) == 0 {
 		// No ID: allocate next ID, stamp timestamps, print ID
-		id, err := data.NextID(issuesDir)
+		id, err := data.NextID(issuesDir, cfg.Sources.Dirs...)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			return 1

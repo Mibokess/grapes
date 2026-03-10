@@ -3,6 +3,7 @@ package settings
 import (
 	"fmt"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/Mibokess/grapes/internal/config"
@@ -83,6 +84,7 @@ func New(cfg config.Config, issuesDir string, w, h int, theme common.Theme) Mode
 				{label: "Default screen", cfgKey: "default_screen", kind: fieldEnum, options: []string{"board", "list"}},
 				{label: "Default sort", cfgKey: "default_sort", kind: fieldEnum, options: []string{"priority", "updated", "created", "id", "title", "status"}},
 				{label: "Auto-close sub-issues", cfgKey: "auto_close_subs", kind: fieldEnum, options: []string{"off", "on"}},
+			{label: "Hide empty columns", cfgKey: "hide_empty_columns", kind: fieldEnum, options: []string{"off", "on"}},
 			},
 		},
 		{
@@ -145,6 +147,10 @@ func New(cfg config.Config, issuesDir string, w, h int, theme common.Theme) Mode
 				{label: "Detail: Comment", cfgKey: "detail_comment", kind: fieldKey},
 				{label: "Detail: Edit", cfgKey: "detail_edit", kind: fieldKey},
 			},
+		},
+		{
+			name:   "Sources",
+			fields: []field{}, // populated dynamically by effectiveFields()
 		},
 	}
 
@@ -546,6 +552,18 @@ func (m Model) updateEditing(msg tea.KeyPressMsg) (Model, tea.Cmd) {
 	case key.Matches(msg, key.NewBinding(key.WithKeys("enter"))):
 		val := m.input.Value()
 
+		// Adding a worktree directory
+		if f.cfgKey == "add_source_pattern" {
+			val = strings.TrimSpace(val)
+			if val != "" {
+				m.cfg.Sources.Dirs = append(m.cfg.Sources.Dirs, val)
+			}
+			m.editing = false
+			m.input.CharLimit = 32
+			m.statusMsg = ""
+			return m, nil
+		}
+
 		// Validate color fields
 		if f.kind == fieldColor && !hexColorRe.MatchString(val) {
 			m.statusMsg = "Invalid hex color (use #RRGGBB)"
@@ -568,6 +586,7 @@ func (m Model) updateEditing(msg tea.KeyPressMsg) (Model, tea.Cmd) {
 
 	case key.Matches(msg, key.NewBinding(key.WithKeys("esc"))):
 		m.editing = false
+		m.input.CharLimit = 32
 		m.statusMsg = ""
 		return m, nil
 	}
@@ -771,7 +790,13 @@ func (m Model) View() string {
 			case fieldKey:
 				valStr = val
 			case fieldAction:
-				valStr = ""
+				if f.cfgKey == "default_source_dir" {
+					valStr = "default"
+				} else if strings.HasPrefix(f.cfgKey, "source_dir_") {
+					valStr = "×"
+				} else {
+					valStr = ""
+				}
 			}
 		}
 
@@ -878,10 +903,13 @@ func (m Model) hasAnyColorOverride() bool {
 }
 
 // effectiveFields returns the fields for the current category, dynamically
-// appending a "Reset colors" action when theme color overrides exist.
+// appending a "Reset colors" action when theme color overrides exist,
+// or building the Sources list from config.
 func (m Model) effectiveFields() []field {
+	catName := m.categories[m.catIdx].name
 	fields := m.categories[m.catIdx].fields
-	if m.catIdx == 1 && m.hasAnyColorOverride() { // Theme category
+
+	if catName == "Theme" && m.hasAnyColorOverride() {
 		result := make([]field, len(fields), len(fields)+1)
 		copy(result, fields)
 		result = append(result, field{
@@ -891,13 +919,37 @@ func (m Model) effectiveFields() []field {
 		})
 		return result
 	}
+
+	if catName == "Sources" {
+		result := []field{
+			{
+				label:  ".grapes",
+				cfgKey: "default_source_dir",
+				kind:   fieldAction,
+			},
+		}
+		for i, dir := range m.cfg.Sources.Dirs {
+			result = append(result, field{
+				label:  dir,
+				cfgKey: fmt.Sprintf("source_dir_%d", i),
+				kind:   fieldAction,
+			})
+		}
+		result = append(result, field{
+			label:  "+ Add pattern",
+			cfgKey: "add_source_pattern",
+			kind:   fieldAction,
+		})
+		return result
+	}
+
 	return fields
 }
 
 // activateAction handles activation of action-type fields.
 func (m Model) activateAction(f field) (Model, tea.Cmd) {
-	switch f.cfgKey {
-	case "reset_colors":
+	switch {
+	case f.cfgKey == "reset_colors":
 		defaults := config.Defaults()
 		isDark := m.effectiveIsDark()
 		m.cfg.Theme.SetColorsFor(isDark, defaults.Theme.ColorsFor(isDark))
@@ -909,6 +961,28 @@ func (m Model) activateAction(f field) (Model, tea.Cmd) {
 			m.fieldIdx = len(fields) - 1
 		}
 		return m, func() tea.Msg { return common.ThemeMsg{Theme: newTheme} }
+
+	case f.cfgKey == "add_source_pattern":
+		m.editing = true
+		m.input.CharLimit = 256
+		m.input.SetValue("")
+		m.input.Focus()
+		return m, nil
+
+	case strings.HasPrefix(f.cfgKey, "source_dir_"):
+		idxStr := strings.TrimPrefix(f.cfgKey, "source_dir_")
+		idx, err := strconv.Atoi(idxStr)
+		if err == nil && idx >= 0 && idx < len(m.cfg.Sources.Dirs) {
+			m.cfg.Sources.Dirs = append(
+				m.cfg.Sources.Dirs[:idx],
+				m.cfg.Sources.Dirs[idx+1:]...,
+			)
+		}
+		fields := m.effectiveFields()
+		if m.fieldIdx >= len(fields) {
+			m.fieldIdx = len(fields) - 1
+		}
+		return m, nil
 	}
 	return m, nil
 }
@@ -935,6 +1009,11 @@ func (m Model) getFieldValue(cfgKey string) string {
 		return p
 	case "auto_close_subs":
 		if m.cfg.View.AutoCloseSubs {
+			return "on"
+		}
+		return "off"
+	case "hide_empty_columns":
+		if m.cfg.View.HideEmpty() {
 			return "on"
 		}
 		return "off"
@@ -1038,6 +1117,9 @@ func (m *Model) setFieldValue(cfgKey, val string) {
 		}
 	case "auto_close_subs":
 		m.cfg.View.AutoCloseSubs = val == "on"
+	case "hide_empty_columns":
+		b := val == "on"
+		m.cfg.View.HideEmptyColumns = &b
 	case "accent", "accent_bg", "border", "text", "muted", "faint", "surface",
 		"color_backlog", "color_todo", "color_in_progress", "color_done", "color_cancelled",
 		"color_urgent", "color_high", "color_medium", "color_low":

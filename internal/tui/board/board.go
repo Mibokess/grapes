@@ -34,6 +34,7 @@ type Model struct {
 	theme     common.Theme
 
 	statusFilter []data.Status // non-empty when user has a status filter active
+	hideEmpty    bool           // hide columns with no issues
 	topOffset    int            // screen lines above this view's content (app header + filter bar)
 
 	worktreeNames []string // sorted worktree names for consistent color assignment
@@ -69,13 +70,24 @@ func (m Model) SetStatusFilter(statuses []data.Status) Model {
 	return m
 }
 
+// SetHideEmpty controls whether columns with no issues are hidden.
+func (m Model) SetHideEmpty(hide bool) Model {
+	m.hideEmpty = hide
+	return m
+}
+
+// HideEmpty returns whether empty columns are currently hidden.
+func (m Model) HideEmpty() bool {
+	return m.hideEmpty
+}
+
 func New(issues []data.Issue) Model {
 	ti := textinput.New()
 	ti.Placeholder = "Search all fields..."
 	ti.CharLimit = 100
 
 	m := Model{allIssues: issues, filter: ti, visCols: 3, theme: common.NewTheme(true)}
-	m.columns = groupByStatus(issues, nil)
+	m.columns = groupByStatus(issues, nil, false)
 	return m
 }
 
@@ -99,7 +111,7 @@ func (m Model) SetSize(w, h int) Model {
 
 func (m Model) SetIssues(issues []data.Issue) Model {
 	m.allIssues = issues
-	m.columns = groupByStatus(m.filteredIssues(), m.statusFilter)
+	m.columns = groupByStatus(m.filteredIssues(), m.statusFilter, m.hideEmpty)
 	if m.curCol >= len(m.columns) {
 		m.curCol = max(0, len(m.columns)-1)
 	}
@@ -124,7 +136,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 				m.filtering = false
 				m.filter.SetValue("")
 				m.filter.Blur()
-				m.columns = groupByStatus(m.allIssues, m.statusFilter)
+				m.columns = groupByStatus(m.allIssues, m.statusFilter, m.hideEmpty)
 				m.curCol = 0
 				m.curRow = 0
 				m.scrollRow = 0
@@ -137,7 +149,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 			default:
 				var cmd tea.Cmd
 				m.filter, cmd = m.filter.Update(msg)
-				m.columns = groupByStatus(m.filteredIssues(), m.statusFilter)
+				m.columns = groupByStatus(m.filteredIssues(), m.statusFilter, m.hideEmpty)
 				m.curCol = 0
 				m.curRow = 0
 				m.scrollRow = 0
@@ -152,31 +164,61 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 			m.filter.Focus()
 			return m, textinput.Blink
 		case key.Matches(msg, common.BoardKeyMap.Left):
-			if m.curCol > 0 {
-				m.curCol--
-				m.clampRow()
-				m.scrollRow = 0
-				m.ensureRowVisible()
-				m.ensureColVisible()
+			for ci := m.curCol - 1; ci >= 0; ci-- {
+				if len(m.columns[ci].issues) > 0 {
+					m.curCol = ci
+					m.clampRow()
+					m.scrollRow = 0
+					m.ensureRowVisible()
+					m.ensureColVisible()
+					break
+				}
 			}
 		case key.Matches(msg, common.BoardKeyMap.Right):
-			if m.curCol < len(m.columns)-1 {
-				m.curCol++
-				m.clampRow()
-				m.scrollRow = 0
-				m.ensureRowVisible()
-				m.ensureColVisible()
+			for ci := m.curCol + 1; ci < len(m.columns); ci++ {
+				if len(m.columns[ci].issues) > 0 {
+					m.curCol = ci
+					m.clampRow()
+					m.scrollRow = 0
+					m.ensureRowVisible()
+					m.ensureColVisible()
+					break
+				}
 			}
 		case key.Matches(msg, common.BoardKeyMap.Up):
 			if m.curRow > 0 {
 				m.curRow--
 				m.ensureRowVisible()
+			} else {
+				// Wrap to last issue in previous non-empty column
+				for ci := m.curCol - 1; ci >= 0; ci-- {
+					if len(m.columns[ci].issues) > 0 {
+						m.curCol = ci
+						m.curRow = len(m.columns[ci].issues) - 1
+						m.scrollRow = 0
+						m.ensureRowVisible()
+						m.ensureColVisible()
+						break
+					}
+				}
 			}
 		case key.Matches(msg, common.BoardKeyMap.Down):
 			col := m.columns[m.curCol]
 			if m.curRow < len(col.issues)-1 {
 				m.curRow++
 				m.ensureRowVisible()
+			} else {
+				// Wrap to first issue in next non-empty column
+				for ci := m.curCol + 1; ci < len(m.columns); ci++ {
+					if len(m.columns[ci].issues) > 0 {
+						m.curCol = ci
+						m.curRow = 0
+						m.scrollRow = 0
+						m.ensureRowVisible()
+						m.ensureColVisible()
+						break
+					}
+				}
 			}
 		case key.Matches(msg, common.BoardKeyMap.Open):
 			if len(m.columns) > 0 && len(m.columns[m.curCol].issues) > 0 {
@@ -215,6 +257,8 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 			return m, func() tea.Msg { return common.ReverseSortMsg{} }
 		case key.Matches(msg, common.BoardKeyMap.Filter):
 			return m, func() tea.Msg { return common.ShowFilterMenuMsg{} }
+		case key.Matches(msg, common.BoardKeyMap.ToggleEmpty):
+			return m, func() tea.Msg { return common.ToggleEmptyColumnsMsg{} }
 		case key.Matches(msg, common.BoardKeyMap.ToList):
 			return m, func() tea.Msg { return common.SwitchScreenMsg{Screen: common.ScreenList} }
 		case key.Matches(msg, common.BoardKeyMap.Refresh):
@@ -223,22 +267,28 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 
 	case tea.MouseWheelMsg:
 		if msg.Button == tea.MouseWheelUp {
-			// Scroll left through columns
-			if m.curCol > 0 {
-				m.curCol--
-				m.clampRow()
-				m.scrollRow = 0
-				m.ensureRowVisible()
-				m.ensureColVisible()
+			// Scroll left through columns, skipping empty ones
+			for ci := m.curCol - 1; ci >= 0; ci-- {
+				if len(m.columns[ci].issues) > 0 {
+					m.curCol = ci
+					m.clampRow()
+					m.scrollRow = 0
+					m.ensureRowVisible()
+					m.ensureColVisible()
+					break
+				}
 			}
 		} else if msg.Button == tea.MouseWheelDown {
-			// Scroll right through columns
-			if m.curCol < len(m.columns)-1 {
-				m.curCol++
-				m.clampRow()
-				m.scrollRow = 0
-				m.ensureRowVisible()
-				m.ensureColVisible()
+			// Scroll right through columns, skipping empty ones
+			for ci := m.curCol + 1; ci < len(m.columns); ci++ {
+				if len(m.columns[ci].issues) > 0 {
+					m.curCol = ci
+					m.clampRow()
+					m.scrollRow = 0
+					m.ensureRowVisible()
+					m.ensureColVisible()
+					break
+				}
 			}
 		}
 
@@ -809,7 +859,7 @@ func (m Model) filteredIssues() []data.Issue {
 	return out
 }
 
-func groupByStatus(issues []data.Issue, statusFilter []data.Status) []column {
+func groupByStatus(issues []data.Issue, statusFilter []data.Status, hideEmpty bool) []column {
 	byStatus := make(map[data.Status][]data.Issue)
 	for _, iss := range issues {
 		byStatus[iss.Status] = append(byStatus[iss.Status], iss)
@@ -823,6 +873,9 @@ func groupByStatus(issues []data.Issue, statusFilter []data.Status) []column {
 
 	var cols []column
 	for _, s := range statuses {
+		if hideEmpty && len(byStatus[s]) == 0 {
+			continue
+		}
 		cols = append(cols, column{
 			status: s,
 			issues: byStatus[s],

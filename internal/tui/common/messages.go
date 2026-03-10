@@ -45,6 +45,7 @@ type EditFinishedMsg struct{ Err error }
 type WriteErrMsg struct{ Err error }
 type CycleSortMsg struct{}
 type ReverseSortMsg struct{}
+type ToggleEmptyColumnsMsg struct{}
 type ColumnSortMsg struct{ Mode data.SortMode }
 type MoveIssueMsg struct {
 	IssueID   int

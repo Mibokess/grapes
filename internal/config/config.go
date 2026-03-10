@@ -9,9 +9,18 @@ import (
 
 // ViewConfig controls startup defaults.
 type ViewConfig struct {
-	DefaultScreen string `toml:"default_screen"`
-	DefaultSort   string `toml:"default_sort"`
-	AutoCloseSubs bool   `toml:"auto_close_subs"`
+	DefaultScreen    string `toml:"default_screen"`
+	DefaultSort      string `toml:"default_sort"`
+	AutoCloseSubs    bool   `toml:"auto_close_subs"`
+	HideEmptyColumns *bool  `toml:"hide_empty_columns,omitempty"`
+}
+
+// HideEmpty returns whether empty board columns should be hidden (default true).
+func (v ViewConfig) HideEmpty() bool {
+	if v.HideEmptyColumns == nil {
+		return true
+	}
+	return *v.HideEmptyColumns
 }
 
 // ColorSetConfig holds color overrides for one theme mode.
@@ -131,6 +140,7 @@ type KeysConfig struct {
 	BoardLabel    string `toml:"board_label"`
 	BoardSort     string `toml:"board_sort"`
 	BoardReverse  string `toml:"board_reverse"`
+	BoardEmpty    string `toml:"board_empty"`
 
 	ListUp        string `toml:"list_up"`
 	ListDown      string `toml:"list_down"`
@@ -155,16 +165,28 @@ type KeysConfig struct {
 	DetailEdit     string `toml:"detail_edit"`
 }
 
+// SourcesConfig controls where grapes looks for additional issue directories.
+type SourcesConfig struct {
+	// Dirs lists glob patterns that resolve to issue directories.
+	// Patterns can be absolute or relative to the project root.
+	// Example: ".claude/worktrees/*/.grapes", "../other-project/.potatoes"
+	Dirs []string `toml:"dirs"`
+}
+
 // Config is the full application configuration.
 type Config struct {
-	View  ViewConfig  `toml:"view"`
-	Theme ThemeConfig `toml:"theme"`
-	Keys  KeysConfig  `toml:"keys"`
+	View    ViewConfig    `toml:"view"`
+	Sources SourcesConfig `toml:"sources"`
+	Theme   ThemeConfig   `toml:"theme"`
+	Keys    KeysConfig    `toml:"keys"`
 }
 
 // Defaults returns the default configuration matching the hardcoded values.
 func Defaults() Config {
 	return Config{
+		Sources: SourcesConfig{
+			Dirs: []string{".claude/worktrees/*/.grapes"},
+		},
 		View: ViewConfig{
 			DefaultScreen: "board",
 			DefaultSort:   "priority",
@@ -223,6 +245,7 @@ func Defaults() Config {
 			BoardLabel:    "t",
 			BoardSort:     "o",
 			BoardReverse:  "O",
+			BoardEmpty:    "E",
 			ListUp:        "k",
 			ListDown:      "j",
 			ListOpen:      "enter",

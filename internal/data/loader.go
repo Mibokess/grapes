@@ -206,7 +206,8 @@ func FindMainProjectRoot(issuesDir string) string {
 // NextID atomically reserves the next available issue ID across the main
 // project and all worktrees. It acquires an exclusive lock, scans all .grapes/
 // directories, creates the new issue directory locally, then releases the lock.
-func NextID(issuesDir string) (int, error) {
+// Extra worktree directories can be passed to scan beyond .claude/worktrees.
+func NextID(issuesDir string, extraDirs ...string) (int, error) {
 	mainRoot := FindMainProjectRoot(issuesDir)
 	mainGrapes := filepath.Join(mainRoot, ".grapes")
 
@@ -226,7 +227,7 @@ func NextID(issuesDir string) (int, error) {
 
 	// Find max ID across all sources
 	max := maxIDInDir(mainGrapes)
-	for _, dir := range FindWorktreeIssuesDirs(mainRoot) {
+	for _, dir := range FindWorktreeIssuesDirs(mainRoot, extraDirs...) {
 		if m := maxIDInDir(dir); m > max {
 			max = m
 		}
@@ -242,22 +243,28 @@ func NextID(issuesDir string) (int, error) {
 	return next, nil
 }
 
-// FindWorktreeIssuesDirs scans .claude/worktrees/*/.grapes/ relative to
-// projectRoot and returns a map of worktree name → .grapes/ directory path.
-func FindWorktreeIssuesDirs(projectRoot string) map[string]string {
-	worktreesDir := filepath.Join(projectRoot, ".claude", "worktrees")
-	entries, err := os.ReadDir(worktreesDir)
-	if err != nil {
-		return nil
-	}
+// FindWorktreeIssuesDirs resolves glob patterns to issue directories and returns
+// a map of display name → directory path. Relative patterns are resolved against
+// projectRoot. The display name is the parent directory of each matched path.
+func FindWorktreeIssuesDirs(projectRoot string, patterns ...string) map[string]string {
 	result := make(map[string]string)
-	for _, e := range entries {
-		if !e.IsDir() {
+	for _, pattern := range patterns {
+		if !filepath.IsAbs(pattern) {
+			pattern = filepath.Join(projectRoot, pattern)
+		}
+		matches, err := filepath.Glob(pattern)
+		if err != nil {
 			continue
 		}
-		grapesDir := filepath.Join(worktreesDir, e.Name(), ".grapes")
-		if info, err := os.Stat(grapesDir); err == nil && info.IsDir() {
-			result[e.Name()] = grapesDir
+		for _, match := range matches {
+			info, err := os.Stat(match)
+			if err != nil || !info.IsDir() {
+				continue
+			}
+			name := filepath.Base(filepath.Dir(match))
+			if _, exists := result[name]; !exists {
+				result[name] = match
+			}
 		}
 	}
 	return result
@@ -324,8 +331,9 @@ func issueToSource(iss Issue, name string, dir string, mtime time.Time) IssueSou
 
 // LoadAllSources loads issues from main and all worktree .grapes/ directories,
 // merging copies of the same issue ID into Sources. The active source is set to
-// the one with the most recent file mtime.
-func LoadAllSources(mainDir string, projectRoot string) ([]Issue, error) {
+// the one with the most recent file mtime. Extra worktree directories can be
+// passed to scan beyond .claude/worktrees.
+func LoadAllSources(mainDir string, projectRoot string, extraDirs ...string) ([]Issue, error) {
 	mainIssues, err := LoadAllIssues(mainDir)
 	if err != nil {
 		return nil, err
@@ -343,7 +351,7 @@ func LoadAllSources(mainDir string, projectRoot string) ([]Issue, error) {
 	}
 
 	// Load all worktree issues
-	worktrees := FindWorktreeIssuesDirs(projectRoot)
+	worktrees := FindWorktreeIssuesDirs(projectRoot, extraDirs...)
 	var wtNames []string
 	for name := range worktrees {
 		wtNames = append(wtNames, name)
