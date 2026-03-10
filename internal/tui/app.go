@@ -322,7 +322,32 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 
+	case tea.MouseReleaseMsg, tea.MouseWheelMsg:
+		// When any overlay is active, swallow release/wheel events so they
+		// don't leak to background views (e.g. board interpreting release as
+		// a card click, which would appear to "close" the overlay).
+		if m.filterPicker != nil || m.filterMenu != nil || m.picker != nil || m.labelPicker != nil {
+			return m, nil
+		}
+
 	case tea.MouseClickMsg, tea.MouseMotionMsg:
+		// When filter overlays are active, route all mouse events to them
+		if m.filterPicker != nil {
+			m.updateFilterPickerPosition()
+			var cmd tea.Cmd
+			fp := *m.filterPicker
+			fp, cmd = fp.Update(msg)
+			m.filterPicker = &fp
+			return m, cmd
+		}
+		if m.filterMenu != nil {
+			m.updateFilterMenuPosition()
+			var cmd tea.Cmd
+			fm := *m.filterMenu
+			fm, cmd = fm.Update(msg)
+			m.filterMenu = &fm
+			return m, cmd
+		}
 		// When picker is active, route all mouse events to it
 		if m.picker != nil {
 			m.updatePickerPosition()
@@ -368,6 +393,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.settings = settings.New(m.cfg, m.issuesDir, m.width, m.contentHeight(), m.theme).SetTopOffset(m.topOffset())
 					m.navStack = append(m.navStack, navEntry{screen: m.screen})
 					m.screen = common.ScreenSettings
+					return m, nil
+				}
+			}
+			// Click on filter bar → open filter menu
+			if click.Button == tea.MouseLeft && mouse.Y == common.AppHeaderHeight {
+				if m.screen == common.ScreenBoard || m.screen == common.ScreenList {
+					menu := filter.NewMenu(m.filters, len(m.collectAllLabels()), m.theme)
+					m.filterMenu = &menu
 					return m, nil
 				}
 			}
@@ -968,6 +1001,7 @@ func (m Model) View() tea.View {
 	}
 	bar := m.theme.StyleStatusBar.Width(m.width).Render(helpText)
 
+	// Render filter bar between header and content (always visible, clickable)
 	// Trim content if the bar wraps to multiple lines, so total height stays correct
 	if extraLines := strings.Count(helpText, "\n"); extraLines > 0 {
 		lines := strings.Split(content, "\n")
@@ -980,12 +1014,7 @@ func (m Model) View() tea.View {
 
 	// Render filter bar between header and content when filters are active
 	filterBar := filter.RenderBar(m.filters, m.width, m.theme)
-	var full string
-	if filterBar != "" {
-		full = lipgloss.JoinVertical(lipgloss.Left, header, filterBar, content, bar)
-	} else {
-		full = lipgloss.JoinVertical(lipgloss.Left, header, content, bar)
-	}
+	full := lipgloss.JoinVertical(lipgloss.Left, header, filterBar, content, bar)
 
 	v := tea.NewView(full)
 	v.AltScreen = true
@@ -1067,6 +1096,7 @@ func (m *Model) updatePickerPosition() {
 	offsetY := common.AppHeaderHeight + filter.BarHeight(m.filters)
 	m.picker.ScreenX = (m.width - fgW) / 2
 	m.picker.ScreenY = offsetY + (contentH-fgH)/2
+	m.picker.ScreenW = fgW
 }
 
 // buildLabelPicker creates a label picker for the given issue.
@@ -1100,6 +1130,51 @@ func (m *Model) updateLabelPickerPosition() {
 	offsetY := common.AppHeaderHeight + filter.BarHeight(m.filters)
 	m.labelPicker.ScreenX = (m.width - fgW) / 2
 	m.labelPicker.ScreenY = offsetY + (contentH-fgH)/2
+	m.labelPicker.ScreenW = fgW
+}
+
+// updateFilterMenuPosition computes the centered screen position of the filter
+// menu overlay and stores it on the model for mouse hit-testing.
+func (m *Model) updateFilterMenuPosition() {
+	if m.filterMenu == nil {
+		return
+	}
+	view := m.filterMenu.View()
+	lines := strings.Split(view, "\n")
+	fgH := len(lines)
+	fgW := 0
+	for _, l := range lines {
+		if w := lipgloss.Width(l); w > fgW {
+			fgW = w
+		}
+	}
+	contentH := m.contentHeight()
+	offsetY := common.AppHeaderHeight + filter.BarHeight(m.filters)
+	m.filterMenu.ScreenX = (m.width - fgW) / 2
+	m.filterMenu.ScreenY = offsetY + (contentH-fgH)/2
+	m.filterMenu.ScreenW = fgW
+}
+
+// updateFilterPickerPosition computes the centered screen position of the filter
+// multi-picker overlay and stores it on the model for mouse hit-testing.
+func (m *Model) updateFilterPickerPosition() {
+	if m.filterPicker == nil {
+		return
+	}
+	view := m.filterPicker.View()
+	lines := strings.Split(view, "\n")
+	fgH := len(lines)
+	fgW := 0
+	for _, l := range lines {
+		if w := lipgloss.Width(l); w > fgW {
+			fgW = w
+		}
+	}
+	contentH := m.contentHeight()
+	offsetY := common.AppHeaderHeight + filter.BarHeight(m.filters)
+	m.filterPicker.ScreenX = (m.width - fgW) / 2
+	m.filterPicker.ScreenY = offsetY + (contentH-fgH)/2
+	m.filterPicker.ScreenW = fgW
 }
 
 // topOffset returns the number of screen lines above the view content

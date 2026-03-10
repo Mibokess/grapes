@@ -23,6 +23,9 @@ type Menu struct {
 	categories []MenuCategory
 	cursor     int
 	theme      common.Theme
+
+	// Screen position and width, set by the app for mouse hit-testing.
+	ScreenX, ScreenY, ScreenW int
 }
 
 // NewMenu creates a filter menu from the current filter state.
@@ -65,6 +68,28 @@ func NewMenu(fs FilterSet, labelCount int, theme common.Theme) Menu {
 
 func (m Menu) Init() tea.Cmd { return nil }
 
+// boxHeight returns the total height of the rendered menu box.
+func (m Menu) boxHeight() int {
+	// border(1) + padding(1) + categories + padding(1) + border(1)
+	return len(m.categories) + 4
+}
+
+// selectCurrent returns a command for the currently highlighted category.
+func (m Menu) selectCurrent() tea.Cmd {
+	cat := m.categories[m.cursor]
+	switch cat.Field {
+	case "clear_all":
+		return func() tea.Msg { return common.ClearAllFiltersMsg{} }
+	case "top_level_only":
+		return func() tea.Msg { return common.FilterToggleTopLevelMsg{} }
+	case "has_children":
+		return func() tea.Msg { return common.FilterToggleChildrenMsg{} }
+	default:
+		field := cat.Field
+		return func() tea.Msg { return common.FilterMenuSelectMsg{Field: field} }
+	}
+}
+
 func (m Menu) Update(msg tea.Msg) (Menu, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyPressMsg:
@@ -78,20 +103,34 @@ func (m Menu) Update(msg tea.Msg) (Menu, tea.Cmd) {
 				m.cursor++
 			}
 		case key.Matches(msg, menuKeySelect):
-			cat := m.categories[m.cursor]
-			switch cat.Field {
-			case "clear_all":
-				return m, func() tea.Msg { return common.ClearAllFiltersMsg{} }
-			case "top_level_only":
-				return m, func() tea.Msg { return common.FilterToggleTopLevelMsg{} }
-			case "has_children":
-				return m, func() tea.Msg { return common.FilterToggleChildrenMsg{} }
-			default:
-				field := cat.Field
-				return m, func() tea.Msg { return common.FilterMenuSelectMsg{Field: field} }
-			}
+			return m, m.selectCurrent()
 		case key.Matches(msg, menuKeyCancel):
 			return m, func() tea.Msg { return common.FilterCancelMsg{} }
+		}
+
+	case tea.MouseClickMsg:
+		if msg.Button != tea.MouseLeft {
+			break
+		}
+		mouse := msg.Mouse()
+		// Options start 2 lines below menu top (border + padding)
+		relY := mouse.Y - m.ScreenY - 2
+		h := m.boxHeight()
+		inBox := mouse.Y >= m.ScreenY && mouse.Y < m.ScreenY+h &&
+			mouse.X >= m.ScreenX && mouse.X < m.ScreenX+m.ScreenW
+		if inBox && relY >= 0 && relY < len(m.categories) {
+			m.cursor = relY
+			return m, m.selectCurrent()
+		}
+		if !inBox {
+			return m, func() tea.Msg { return common.FilterCancelMsg{} }
+		}
+
+	case tea.MouseMotionMsg:
+		mouse := msg.Mouse()
+		relY := mouse.Y - m.ScreenY - 2
+		if relY >= 0 && relY < len(m.categories) {
+			m.cursor = relY
 		}
 	}
 	return m, nil
