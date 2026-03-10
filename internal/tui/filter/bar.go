@@ -8,24 +8,22 @@ import (
 	"charm.land/lipgloss/v2"
 )
 
-// BarHeight returns the number of lines the filter bar occupies (0 or 1).
-func BarHeight(fs FilterSet) int {
-	if fs.ActiveCount() == 0 {
-		return 0
-	}
+// BarHeight returns the number of lines the filter bar occupies (always 1).
+func BarHeight(_ FilterSet) int {
 	return 1
 }
 
-// RenderBar renders the filter chip bar. Returns "" when no filters are active.
+// RenderBar renders the filter chip bar. Shows "Filters: none" when empty.
 func RenderBar(fs FilterSet, width int, theme common.Theme) string {
+	barLabel := lipgloss.NewStyle().Bold(true).Foreground(theme.ColorText)
+	barBracket := lipgloss.NewStyle().Foreground(theme.ColorFaint)
+
 	if fs.ActiveCount() == 0 {
-		return ""
+		hint := lipgloss.NewStyle().Foreground(theme.ColorFaint)
+		return "  " + barLabel.Render("Filters:") + " " + hint.Render("none")
 	}
 
 	var chips []string
-
-	barLabel := lipgloss.NewStyle().Bold(true).Foreground(theme.ColorText)
-	barBracket := lipgloss.NewStyle().Foreground(theme.ColorFaint)
 
 	if len(fs.Statuses) > 0 {
 		chips = append(chips, renderChip("Status", statusValues(fs.Statuses), barBracket, func(v string) string {
