@@ -789,7 +789,9 @@ func (m Model) View() string {
 			case fieldKey:
 				valStr = val
 			case fieldAction:
-				if strings.HasPrefix(f.cfgKey, "worktree_dir_") {
+				if f.cfgKey == "default_worktree_dir" {
+					valStr = "default"
+				} else if strings.HasPrefix(f.cfgKey, "worktree_dir_") {
 					valStr = "×"
 				} else {
 					valStr = ""
@@ -918,7 +920,13 @@ func (m Model) effectiveFields() []field {
 	}
 
 	if catName == "Sources" {
-		var result []field
+		result := []field{
+			{
+				label:  ".claude/worktrees",
+				cfgKey: "default_worktree_dir",
+				kind:   fieldAction,
+			},
+		}
 		for i, dir := range m.cfg.Sources.WorktreeDirs {
 			result = append(result, field{
 				label:  dir,
