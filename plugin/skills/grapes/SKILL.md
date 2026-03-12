@@ -6,27 +6,29 @@ user-invokable: false
 
 # Grapes — File-Based Issue Tracker
 
-Issues are plain files in `.grapes/`. No database, no CLI. You manipulate them directly with file tools.
-
-## Structure
+Issues are plain files in `.grapes/`. IDs are numeric folder names.
 
 ```
 .grapes/<id>/
-  meta.toml       # status, priority, labels, dates (~7 lines)
+  meta.toml       # status, priority, labels, dates
   content.md      # issue description (markdown)
   comments.md     # append-only comment log
 ```
 
-IDs are numeric folder names. The folder listing is the index.
+## Creating and Updating Issues
 
-## `grapes issue` Command
+- `id=$(grapes issue)` — allocates the next ID, creates the directory and `meta.toml` with timestamps, prints the ID
+- `grapes issue <id>` — creates the directory if needed, sets `created` if missing, bumps `updated`
 
-- `id=$(grapes issue)` — allocate next ID, create directory, set timestamps, print ID
-- `grapes issue <id>` — create directory if needed, set `created` if missing, bump `updated`
+Run `grapes issue <id>` after modifying any issue files. Never write timestamps manually.
 
-Use `grapes issue` to create new issues and `grapes issue <id>` after modifying any issue files. **Never write timestamps manually** — the command handles `created` and `updated` automatically.
+The new `meta.toml` only has timestamps — you still need to populate title, status, priority, etc. and write `content.md`.
+Read the newly created files before editing them.
 
-## meta.toml Schema
+Issue files are tracked by git. 
+Commit them after creation or modification using the format: `#<id>: Create issue` or `#<id>: Update issue description`.
+
+## meta.toml
 
 ```toml
 title = "Short description of the issue"
@@ -39,30 +41,24 @@ created = 2026-02-27T09:15:00Z
 updated = 2026-02-27T14:30:00Z
 ```
 
-### Field Values
-
 - **status**: `backlog`, `todo`, `in_progress`, `done`, `cancelled`
 - **priority**: `urgent`, `high`, `medium`, `low`
-- **labels**: TOML list of freeform tags
-- **parent**: numeric ID of parent issue (omit for top-level issues)
-- **blocked_by**: TOML list of issue IDs this issue depends on (omit if none). The inverse (`blocks`) is computed at load time — only `blocked_by` is stored on disk.
-- **created** / **updated**: managed by `grapes issue`. Do not write manually.
+- **labels**: freeform tags
+- **parent**: numeric ID of parent issue (omit for top-level)
+- **blocked_by**: issue IDs this depends on (omit if none)
+- **created** / **updated**: managed by `grapes issue`, never write manually
 
-## comments.md Format
+## comments.md
+
+Append-only. Never edit or delete existing comments.
 
 ```markdown
 ### 2026-02-27T09:15
-Comment body here. Can be multiple lines.
+Comment body here.
 
 ### 2026-02-28T14:30
 Another comment.
 ```
 
-- Header: `### YYYY-MM-DDTHH:MM`
-- Append-only. Never edit or delete existing comments.
-
-## Principles
-
-- **Read only what you need.** meta.toml is ~7 lines. Read it first. Only load content.md or comments.md when you need the full description or comment history.
-- **Surgical edits.** Change one field in meta.toml, don't rewrite the file.
-- **The filesystem is the database.** Use grep/ls to query, file tools to read/write.
+`comments.md` contains progress updates, decisions, and context that may not be in `content.md`.
+When building a full picture of an issue, read both.
