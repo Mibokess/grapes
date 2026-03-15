@@ -17,8 +17,8 @@ Issues are plain files in `.grapes/`. IDs are numeric folder names.
 
 ## Creating and Updating Issues
 
-- `id=$(grapes issue)` — allocates the next ID, creates the directory and `meta.toml` with timestamps, prints the ID
-- `grapes issue <id>` — creates the directory if needed, sets `created` if missing, bumps `updated`
+- `id=$(grapes issue)` — creates the directory and prints the next ID
+- `grapes issue <id>` — bumps `updated`
 
 Run `grapes issue <id>` after modifying any issue files. Never write timestamps manually.
 
