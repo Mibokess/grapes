@@ -134,13 +134,6 @@ func TestList_KeyShiftB_SwitchesToBoard(t *testing.T) {
 	}
 }
 
-func TestList_KeyR_Refreshes(t *testing.T) {
-	m := newListModel()
-	_, cmd := m.Update(keyMsg("r"))
-	if _, ok := extractMsg(cmd).(common.RefreshMsg); !ok {
-		t.Error("r should send RefreshMsg")
-	}
-}
 
 func TestList_KeySlash_EntersFilterMode(t *testing.T) {
 	m := newListModel()

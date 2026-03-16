@@ -261,8 +261,6 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 			return m, func() tea.Msg { return common.ToggleEmptyColumnsMsg{} }
 		case key.Matches(msg, common.BoardKeyMap.ToList):
 			return m, func() tea.Msg { return common.SwitchScreenMsg{Screen: common.ScreenList} }
-		case key.Matches(msg, common.BoardKeyMap.Refresh):
-			return m, func() tea.Msg { return common.RefreshMsg{} }
 		}
 
 	case tea.MouseWheelMsg:
