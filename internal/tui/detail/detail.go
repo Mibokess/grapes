@@ -69,6 +69,18 @@ func New(issue data.Issue, allIssues []data.Issue, width, height int, theme comm
 	}
 }
 
+// UpdateIssue re-renders the detail view with updated data while preserving
+// the current scroll position.
+func (m Model) UpdateIssue(issue data.Issue, allIssues []data.Issue) Model {
+	m.issue = issue
+	m.allIssues = allIssues
+	content, clickLines, clickZones := renderIssue(issue, allIssues, m.width, m.theme, m.worktreeNames)
+	m.viewport.SetContent(content)
+	m.clickLines = clickLines
+	m.clickZones = clickZones
+	return m
+}
+
 func (m Model) SetTheme(t common.Theme) Model {
 	m.theme = t
 	return m
