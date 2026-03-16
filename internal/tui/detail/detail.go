@@ -3,6 +3,7 @@ package detail
 import (
 	"fmt"
 	"image/color"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -328,7 +329,8 @@ func renderIssue(issue data.Issue, allIssues []data.Issue, width int, theme comm
 	}
 
 	// Row 6: blocks
-	for _, blockedID := range issue.Blocks {
+	blocks := blocksForSource(allIssues, issue.ID, issue.Worktree)
+	for _, blockedID := range blocks {
 		blockedTitle, _, _ := findRelatedIssue(allIssues, blockedID, issue.Worktree)
 		link := theme.StyleSectionHeader.Render("▸") +
 			theme.StyleFaint.Render(" Blocks: ") +
@@ -391,9 +393,10 @@ func renderIssue(issue data.Issue, allIssues []data.Issue, width int, theme comm
 		b.WriteString(rendered + "\n")
 	}
 
-	if len(issue.Children) > 0 {
+	children := childrenForSource(allIssues, issue.ID, issue.Worktree)
+	if len(children) > 0 {
 		b.WriteString(" " + theme.StyleSectionHeader.Render("Sub-issues") + " " + sectionUnderline + "\n\n")
-		for _, childID := range issue.Children {
+		for _, childID := range children {
 			childTitle, childStatus, childLabels := findRelatedIssue(allIssues, childID, issue.Worktree)
 			icon := theme.StatusStyle(childStatus).Render(common.StatusIcon(childStatus) + " " + childStatus.Label())
 			lineNum := strings.Count(b.String(), "\n")
@@ -442,6 +445,58 @@ func findRelatedIssue(allIssues []data.Issue, id int, worktree string) (string, 
 		return allIssues[i].Title, allIssues[i].Status, allIssues[i].Labels
 	}
 	return "", "", nil
+}
+
+// sourceParent returns the parent ID for an issue when viewed from a given source,
+// falling back to the issue's active parent when the source doesn't exist.
+func sourceParent(iss data.Issue, worktree string) *int {
+	for _, s := range iss.Sources {
+		if s.Name == worktree {
+			return s.Parent
+		}
+	}
+	return iss.Parent
+}
+
+// childrenForSource computes which issues have parentID as their parent
+// when viewed from the given source.
+func childrenForSource(allIssues []data.Issue, parentID int, worktree string) []int {
+	var kids []int
+	for _, iss := range allIssues {
+		p := sourceParent(iss, worktree)
+		if p != nil && *p == parentID {
+			kids = append(kids, iss.ID)
+		}
+	}
+	sort.Ints(kids)
+	return kids
+}
+
+// sourceBlockedBy returns the blocked_by list for an issue when viewed from a given source,
+// falling back to the issue's active blocked_by when the source doesn't exist.
+func sourceBlockedBy(iss data.Issue, worktree string) []int {
+	for _, s := range iss.Sources {
+		if s.Name == worktree {
+			return s.BlockedBy
+		}
+	}
+	return iss.BlockedBy
+}
+
+// blocksForSource computes which issues have blockerID in their blocked_by
+// when viewed from the given source.
+func blocksForSource(allIssues []data.Issue, blockerID int, worktree string) []int {
+	var blocks []int
+	for _, iss := range allIssues {
+		for _, id := range sourceBlockedBy(iss, worktree) {
+			if id == blockerID {
+				blocks = append(blocks, iss.ID)
+				break
+			}
+		}
+	}
+	sort.Ints(blocks)
+	return blocks
 }
 
 func renderMarkdown(content string, width int, glamourStyle string) string {

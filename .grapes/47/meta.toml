@@ -1,0 +1,6 @@
+title = 'Detail view computes children/blocks from global active sources instead of viewing source'
+status = 'in_progress'
+priority = 'high'
+labels = ['bug', 'detail-view', 'worktree']
+created = 2026-03-16T17:27:00Z
+updated = 2026-03-16T17:38:00Z
