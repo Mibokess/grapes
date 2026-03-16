@@ -295,13 +295,7 @@ func renderIssue(issue data.Issue, allIssues []data.Issue, width int, theme comm
 
 	// Row 4: parent link
 	if issue.Parent != nil {
-		parentTitle := ""
-		for _, iss := range allIssues {
-			if iss.ID == *issue.Parent {
-				parentTitle = iss.Title
-				break
-			}
-		}
+		parentTitle, _, _ := findRelatedIssue(allIssues, *issue.Parent, issue.Worktree)
 		parentLink := theme.StyleSectionHeader.Render("↑") +
 			theme.StyleFaint.Render(" Parent: ") +
 			theme.StyleSectionHeader.Render(fmt.Sprintf("#%d", *issue.Parent)) +
@@ -312,13 +306,7 @@ func renderIssue(issue data.Issue, allIssues []data.Issue, width int, theme comm
 
 	// Row 5: blocked by
 	for _, blockerID := range issue.BlockedBy {
-		blockerTitle := ""
-		for _, iss := range allIssues {
-			if iss.ID == blockerID {
-				blockerTitle = iss.Title
-				break
-			}
-		}
+		blockerTitle, _, _ := findRelatedIssue(allIssues, blockerID, issue.Worktree)
 		link := theme.StyleSectionHeader.Render("⊘") +
 			theme.StyleFaint.Render(" Blocked by: ") +
 			theme.StyleSectionHeader.Render(fmt.Sprintf("#%d", blockerID)) +
@@ -329,13 +317,7 @@ func renderIssue(issue data.Issue, allIssues []data.Issue, width int, theme comm
 
 	// Row 6: blocks
 	for _, blockedID := range issue.Blocks {
-		blockedTitle := ""
-		for _, iss := range allIssues {
-			if iss.ID == blockedID {
-				blockedTitle = iss.Title
-				break
-			}
-		}
+		blockedTitle, _, _ := findRelatedIssue(allIssues, blockedID, issue.Worktree)
 		link := theme.StyleSectionHeader.Render("▸") +
 			theme.StyleFaint.Render(" Blocks: ") +
 			theme.StyleSectionHeader.Render(fmt.Sprintf("#%d", blockedID)) +
@@ -400,21 +382,7 @@ func renderIssue(issue data.Issue, allIssues []data.Issue, width int, theme comm
 	if len(issue.Children) > 0 {
 		b.WriteString(" " + theme.StyleSectionHeader.Render("Sub-issues") + " " + sectionUnderline + "\n\n")
 		for _, childID := range issue.Children {
-			var child *data.Issue
-			for i := range allIssues {
-				if allIssues[i].ID == childID {
-					child = &allIssues[i]
-					break
-				}
-			}
-			childTitle := ""
-			childStatus := data.Status("")
-			var childLabels []string
-			if child != nil {
-				childTitle = child.Title
-				childStatus = child.Status
-				childLabels = child.Labels
-			}
+			childTitle, childStatus, childLabels := findRelatedIssue(allIssues, childID, issue.Worktree)
 			icon := theme.StatusStyle(childStatus).Render(common.StatusIcon(childStatus) + " " + childStatus.Label())
 			lineNum := strings.Count(b.String(), "\n")
 			clickLines[lineNum] = childID
@@ -445,6 +413,23 @@ func renderIssue(issue data.Issue, allIssues []data.Issue, width int, theme comm
 	}
 
 	return b.String(), clickLines, zones
+}
+
+// findRelatedIssue returns title, status, and labels for a related issue,
+// preferring the source that matches the viewing issue's worktree name.
+func findRelatedIssue(allIssues []data.Issue, id int, worktree string) (string, data.Status, []string) {
+	for i := range allIssues {
+		if allIssues[i].ID != id {
+			continue
+		}
+		for _, s := range allIssues[i].Sources {
+			if s.Name == worktree {
+				return s.Title, s.Status, s.Labels
+			}
+		}
+		return allIssues[i].Title, allIssues[i].Status, allIssues[i].Labels
+	}
+	return "", "", nil
 }
 
 func renderMarkdown(content string, width int, glamourStyle string) string {

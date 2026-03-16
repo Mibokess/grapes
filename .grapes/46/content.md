@@ -30,11 +30,11 @@ This affects all four relationship types: Parent (line 298-304), BlockedBy (line
 
 ## Acceptance Criteria
 
-- [ ] `SwitchSourceMsg` handler calls `RewireRelationships` (or equivalent) after switching a source so that `Children` and `Blocks` reflect the new active `Parent`/`BlockedBy` values
-- [ ] Related issues rendered in the detail view (Parent, BlockedBy, Blocks, Children) display title/status/labels from the **same source directory** as the viewing issue's active source, falling back to the related issue's own active source if it doesn't exist in that source
-- [ ] Switching sources on an issue updates the sub-issues section to reflect the new relationship state
-- [ ] Existing tests pass (`go test ./...`)
-- [ ] No regressions in single-source behavior (issues with only one source render identically to before)
+- [x] `SwitchSourceMsg` handler calls `RewireRelationships` (or equivalent) after switching a source so that `Children` and `Blocks` reflect the new active `Parent`/`BlockedBy` values
+- [x] Related issues rendered in the detail view (Parent, BlockedBy, Blocks, Children) display title/status/labels from the **same source directory** as the viewing issue's active source, falling back to the related issue's own active source if it doesn't exist in that source
+- [x] Switching sources on an issue updates the sub-issues section to reflect the new relationship state
+- [x] Existing tests pass (`go test ./...`)
+- [x] No regressions in single-source behavior (issues with only one source render identically to before)
 
 ## Verify
 

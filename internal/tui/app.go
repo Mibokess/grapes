@@ -427,6 +427,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		for i := range m.issues {
 			if m.issues[i].ID == msg.IssueID {
 				m.issues[i].SwitchSource(msg.SourceIdx)
+				data.RewireRelationships(m.issues)
 				if m.screen == common.ScreenDetail {
 					m.detail = detail.New(m.issues[i], m.issues, m.width, m.contentHeight(), m.theme).SetTopOffset(m.topOffset()).SetWorktreeNames(m.worktreeNames)
 				}
