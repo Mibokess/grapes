@@ -86,6 +86,12 @@ func (m Model) SetSize(w, h int) Model {
 	m.height = h
 	m.viewport.SetWidth(w)
 	m.viewport.SetHeight(h)
+	if m.ready {
+		content, clickLines, clickZones := renderIssue(m.issue, m.allIssues, w, m.theme, m.worktreeNames)
+		m.viewport.SetContent(content)
+		m.clickLines = clickLines
+		m.clickZones = clickZones
+	}
 	return m
 }
 
