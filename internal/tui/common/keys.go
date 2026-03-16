@@ -39,7 +39,6 @@ type BoardKeys struct {
 	Search        key.Binding
 	Clear         key.Binding
 	Filter        key.Binding
-	Refresh       key.Binding
 	CycleStatus   key.Binding
 	CyclePriority key.Binding
 	Labels        key.Binding
@@ -89,10 +88,6 @@ var BoardKeyMap = BoardKeys{
 		key.WithKeys("f"),
 		key.WithHelp("f", "filter"),
 	),
-	Refresh: key.NewBinding(
-		key.WithKeys("r"),
-		key.WithHelp("r", "refresh"),
-	),
 	CycleStatus: key.NewBinding(
 		key.WithKeys("s"),
 		key.WithHelp("s", "status"),
@@ -129,7 +124,6 @@ type ListKeys struct {
 	Filter           key.Binding
 	StructuredFilter key.Binding
 	Clear            key.Binding
-	Refresh          key.Binding
 	CycleStatus      key.Binding
 	CyclePriority    key.Binding
 	Labels           key.Binding
@@ -171,10 +165,6 @@ var ListKeyMap = ListKeys{
 	Clear: key.NewBinding(
 		key.WithKeys("esc"),
 		key.WithHelp("esc", "clear filter"),
-	),
-	Refresh: key.NewBinding(
-		key.WithKeys("r"),
-		key.WithHelp("r", "refresh"),
 	),
 	CycleStatus: key.NewBinding(
 		key.WithKeys("s"),

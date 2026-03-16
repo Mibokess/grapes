@@ -223,8 +223,6 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 			return m, textinput.Blink
 		case key.Matches(msg, common.ListKeyMap.ToBoard):
 			return m, func() tea.Msg { return common.SwitchScreenMsg{Screen: common.ScreenBoard} }
-		case key.Matches(msg, common.ListKeyMap.Refresh):
-			return m, func() tea.Msg { return common.RefreshMsg{} }
 		}
 
 	case tea.MouseWheelMsg:

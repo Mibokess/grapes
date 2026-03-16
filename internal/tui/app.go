@@ -884,11 +884,12 @@ func (m Model) View() tea.View {
 			m.theme.FormatKeyHint("s", "status"),
 			m.theme.FormatKeyHint("p", "priority"),
 			m.theme.FormatKeyHint("t", "labels"),
-			m.theme.FormatKeyHint("drag", "move"),
 			m.theme.FormatKeyHint("f", "filter"),
 			m.theme.FormatKeyHint("/", "search"),
 			m.theme.FormatKeyHint("o/O", sortLabel),
+			m.theme.FormatKeyHint("E", "empty cols"),
 			m.theme.FormatKeyHint("L", "list"),
+			m.theme.FormatKeyHint("C", "config"),
 			m.theme.FormatKeyHint("q", "quit"),
 		}
 	case common.ScreenList:
@@ -908,6 +909,7 @@ func (m Model) View() tea.View {
 			m.theme.FormatKeyHint("f", "filter"),
 			m.theme.FormatKeyHint("/", "search"),
 			m.theme.FormatKeyHint("B", "board"),
+			m.theme.FormatKeyHint("C", "config"),
 			m.theme.FormatKeyHint("q", "quit"),
 		}
 	case common.ScreenDetail:
@@ -920,6 +922,7 @@ func (m Model) View() tea.View {
 			m.theme.FormatKeyHint("t", "labels"),
 			m.theme.FormatKeyHint("c", "comment"),
 			m.theme.FormatKeyHint("esc/⌫", "back"),
+			m.theme.FormatKeyHint("C", "config"),
 			m.theme.FormatKeyHint("q", "quit"),
 		}
 	case common.ScreenSettings:

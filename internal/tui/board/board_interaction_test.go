@@ -177,13 +177,6 @@ func TestBoard_KeyShiftL_SwitchesToList(t *testing.T) {
 	}
 }
 
-func TestBoard_KeyR_Refreshes(t *testing.T) {
-	m := newBoardModel()
-	_, cmd := m.Update(keyMsg("r"))
-	if _, ok := extractMsg(cmd).(common.RefreshMsg); !ok {
-		t.Error("r should send RefreshMsg")
-	}
-}
 
 // boardWithGap creates a board where backlog and in_progress have issues
 // but todo is empty, simulating a filtered view with a gap.
