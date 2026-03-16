@@ -543,11 +543,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		filtered := m.filteredIssues()
 		m.board = m.board.SetWorktreeNames(wtNames).SetIssues(filtered)
 		m.list = m.list.SetWorktreeNames(wtNames).SetIssues(filtered)
-		// Re-create detail view if it's showing, so changes are visible
+		// Update detail view content if it's showing, preserving scroll position
 		if m.screen == common.ScreenDetail {
 			for _, iss := range issues {
 				if iss.ID == m.detail.IssueID() {
-					m.detail = detail.New(iss, m.issues, m.width, m.contentHeight(), m.theme).SetTopOffset(m.topOffset()).SetWorktreeNames(wtNames)
+					m.detail = m.detail.UpdateIssue(iss, m.issues).SetWorktreeNames(wtNames)
 					break
 				}
 			}
