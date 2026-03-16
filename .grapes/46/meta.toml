@@ -1,0 +1,6 @@
+title = 'Detail view shows stale/inconsistent data for cross-issue relationships after source switch'
+status = 'backlog'
+priority = 'medium'
+labels = ['bug', 'multi-source']
+created = 2026-03-16T16:38:00Z
+updated = 2026-03-16T16:38:00Z
