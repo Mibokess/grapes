@@ -31,7 +31,7 @@ jobs:
           fi
 
       - name: Create tag
-        if: steps.check.outputs.exists == 'false' && steps.version.outputs.version != 'dev'
+        if: steps.check.outputs.exists == 'false'
         run: |
           git tag "v${{ steps.version.outputs.version }}"
           git push origin "v${{ steps.version.outputs.version }}"
