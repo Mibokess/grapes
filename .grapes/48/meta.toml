@@ -1,0 +1,6 @@
+title = 'Add GoReleaser config and GitHub Actions release workflow'
+status = 'in_progress'
+priority = 'medium'
+labels = ['infra', 'distribution']
+created = 2026-03-17T09:46:00Z
+updated = 2026-03-17T09:47:00Z

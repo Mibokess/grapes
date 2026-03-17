@@ -11,7 +11,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 )
 
-var version = "0.1.7"
+var version = "dev"
 
 func main() {
 	cwd, err := os.Getwd()

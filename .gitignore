@@ -21,6 +21,9 @@ Thumbs.db
 # Local
 old/
 
+# GoReleaser
+dist/
+
 # Grapes temp files
 .grapes/*/tmp/
 .grapes/tmp/
