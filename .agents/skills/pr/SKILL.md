@@ -49,8 +49,6 @@ gh pr create --title "#<id>: Short description" --body "$(cat <<'EOF'
 
 ## Changes
 [git diff --stat output]
-
-Generated with Claude Code
 EOF
 )"
 ```
