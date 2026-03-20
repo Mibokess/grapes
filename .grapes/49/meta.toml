@@ -1,0 +1,6 @@
+title = "Fix build on Windows: syscall.Flock is Linux-only"
+status = 'in_progress'
+priority = 'high'
+labels = ['bug', 'windows', 'cross-platform']
+created = 2026-03-20T00:00:00Z
+updated = 2026-03-20T00:00:00Z

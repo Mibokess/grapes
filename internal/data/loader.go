@@ -9,7 +9,6 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"syscall"
 	"time"
 
 	toml "github.com/pelletier/go-toml/v2"
@@ -220,10 +219,10 @@ func NextID(issuesDir string, extraDirs ...string) (int, error) {
 	defer lockFile.Close()
 	defer os.Remove(lockPath)
 
-	if err := syscall.Flock(int(lockFile.Fd()), syscall.LOCK_EX); err != nil {
+	if err := flockExclusive(lockFile.Fd()); err != nil {
 		return 0, fmt.Errorf("acquiring lock: %w", err)
 	}
-	defer syscall.Flock(int(lockFile.Fd()), syscall.LOCK_UN)
+	defer flockUnlock(lockFile.Fd())
 
 	// Find max ID across all sources
 	max := maxIDInDir(mainGrapes)
