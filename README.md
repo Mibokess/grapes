@@ -21,6 +21,8 @@ The TUI watches the filesystem and updates in real time — so when an agent mov
 
 ## Install
 
+Download a binary from [GitHub Releases](https://github.com/Mibokess/grapes/releases), or install with Go:
+
 ```sh
 go install github.com/Mibokess/grapes@latest
 ```
@@ -35,53 +37,49 @@ cd grapes && go build -o grapes .
 ## Quick Start
 
 ```sh
-mkdir -p .grapes
-grapes                # launch the TUI
+grapes                # launch the TUI (creates .grapes/ if needed)
 ```
 
-Create an issue:
+## CLI
 
-```sh
-next=$(grapes next-id)
+| Command              | Description                                              |
+| -------------------- | -------------------------------------------------------- |
+| `grapes`             | Launch the TUI                                           |
+| `grapes issue`       | Allocate next ID, create directory, stamp timestamps     |
+| `grapes issue <id>`  | Stamp timestamps on an existing issue                    |
+| `grapes validate`    | Validate all issues                                      |
+| `grapes validate ID` | Validate specific issues                                 |
 
-cat > .grapes/$next/meta.toml << 'EOF'
-title = "Fix login redirect loop"
-status = 'todo'
-priority = 'high'
-labels = ['bug']
-created = '2026-03-05T10:00'
-updated = '2026-03-05T10:00'
-EOF
-
-touch .grapes/$next/content.md .grapes/$next/comments.md
-```
-
-Validate issues:
-
-```sh
-grapes validate          # all issues
-grapes validate 42 43    # specific issues
-```
+`grapes issue` scans the main project and all worktrees, using file locking to prevent ID collisions.
 
 ## Features
 
 **Three views** — Kanban board, sortable list, and full detail view with rendered markdown. Switch with `B`, `L`, and `Enter`/`Esc`.
 
-**Filtering and search** — Filter by status, priority, labels, or sub-issue scope (`f`). Full-text search in list view (`/`).
+**Filtering and search** — Filter by status, priority, labels, or sub-issue scope (`f`). Full-text search across all views (`/`).
 
-**Inline editing** — Press `e` to open any issue in `$EDITOR`. Press `s`/`p` to cycle status or priority. Drag cards between columns.
+**Inline editing** — Press `e` to open any issue in `$EDITOR`. Press `s`/`p`/`t` to cycle status, priority, or pick labels. Drag cards between columns on the board.
 
 **Sub-issues and dependencies** — Set `parent = 1` to nest under an issue. Set `blocked_by = [3, 5]` to declare dependencies. The TUI renders the full hierarchy with navigable links.
 
 **Live reload** — File changes from agents, editors, or other tools appear instantly via filesystem watching.
 
-**Themes** — Ships with 450+ color presets (Catppuccin, Dracula, Gruvbox, Nord, Tokyo Night, and more). Configure in `~/.grapes/config.toml` or press `C` in the TUI.
+**Multi-source** — Aggregates issues from git worktrees. See which worktree an issue came from, click to switch sources.
 
-**Concurrent-safe IDs** — `grapes next-id` scans the main project and all worktrees, using file locking to prevent collisions.
+**Themes** — Ships with 450+ color presets (Catppuccin, Dracula, Gruvbox, Nord, Tokyo Night, and more). Press `C` in the TUI or configure in `.grapes/config.toml`.
+
+**Settings** — Press `C` to configure theme, colors, and keybindings from within the TUI. All keybindings are customizable in `.grapes/config.toml`.
 
 ## Agent Integration
 
-Grapes ships with [Claude Code](https://docs.anthropic.com/en/docs/claude-code) skills for creating, updating, searching, and commenting on issues. Copy the `plugin/` directory to use them in your project.
+Grapes ships with a [Claude Code](https://docs.anthropic.com/en/docs/claude-code) plugin that teaches agents how to create, update, and manage issues.
+
+Install via Claude Code's plugin system:
+
+```sh
+/plugin marketplace add Mibokess/grapes
+/plugin install grapes@grapes
+```
 
 The design principle: agents don't need a special client. Any tool that can read and write files can work with grapes issues.
 
