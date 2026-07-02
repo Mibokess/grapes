@@ -224,9 +224,20 @@ func NextID(issuesDir string, extraDirs ...string) (int, error) {
 	}
 	defer flockUnlock(lockFile.Fd())
 
+	// Collect every .grapes/ to scan: this repo's git worktrees (auto-discovered),
+	// plus any configured glob patterns. Keyed by directory path to de-duplicate a
+	// worktree that both git and a glob report.
+	scanDirs := make(map[string]bool)
+	for _, dir := range FindGitWorktreeGrapesDirs(mainRoot) {
+		scanDirs[filepath.Clean(dir)] = true
+	}
+	for _, dir := range FindWorktreeIssuesDirs(mainRoot, extraDirs...) {
+		scanDirs[filepath.Clean(dir)] = true
+	}
+
 	// Find max ID across all sources
 	max := maxIDInDir(mainGrapes)
-	for _, dir := range FindWorktreeIssuesDirs(mainRoot, extraDirs...) {
+	for dir := range scanDirs {
 		if m := maxIDInDir(dir); m > max {
 			max = m
 		}
@@ -265,6 +276,33 @@ func FindWorktreeIssuesDirs(projectRoot string, patterns ...string) map[string]s
 				result[name] = match
 			}
 		}
+	}
+	return result
+}
+
+// FindGitWorktreeGrapesDirs enumerates this repository's worktrees via
+// git worktree list --porcelain and returns a map of display name → .grapes/
+// directory for each worktree that has one. The display name is the base name of
+// the worktree path. Returns an empty map when git is unavailable or mainRoot is
+// not a git repository, so callers degrade to glob-based discovery.
+func FindGitWorktreeGrapesDirs(mainRoot string) map[string]string {
+	result := make(map[string]string)
+	cmd := exec.Command("git", "worktree", "list", "--porcelain")
+	cmd.Dir = mainRoot
+	out, err := cmd.Output()
+	if err != nil {
+		return result
+	}
+	for _, line := range strings.Split(string(out), "\n") {
+		path, ok := strings.CutPrefix(line, "worktree ")
+		if !ok {
+			continue
+		}
+		grapesDir := filepath.Join(path, ".grapes")
+		if info, err := os.Stat(grapesDir); err != nil || !info.IsDir() {
+			continue
+		}
+		result[filepath.Base(path)] = grapesDir
 	}
 	return result
 }
@@ -349,8 +387,25 @@ func LoadAllSources(mainDir string, projectRoot string, extraDirs ...string) ([]
 		issueMap[iss.ID] = &issCopy
 	}
 
-	// Load all worktree issues
+	// Load all worktree issues: this repo's git worktrees (auto-discovered), plus
+	// any configured glob patterns.
 	worktrees := FindWorktreeIssuesDirs(projectRoot, extraDirs...)
+	seenDirs := make(map[string]bool)
+	for _, dir := range worktrees {
+		seenDirs[filepath.Clean(dir)] = true
+	}
+	currentDir := filepath.Clean(mainDir)
+	for name, dir := range FindGitWorktreeGrapesDirs(FindMainProjectRoot(mainDir)) {
+		clean := filepath.Clean(dir)
+		if clean == currentDir || seenDirs[clean] {
+			continue // already loaded as main, or already found via glob
+		}
+		if _, ok := worktrees[name]; ok {
+			continue // name already used (mirrors FindWorktreeIssuesDirs de-dup)
+		}
+		seenDirs[clean] = true
+		worktrees[name] = dir
+	}
 	var wtNames []string
 	for name := range worktrees {
 		wtNames = append(wtNames, name)
