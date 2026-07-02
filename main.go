@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"strconv"
 
@@ -11,9 +12,30 @@ import (
 	tea "charm.land/bubbletea/v2"
 )
 
-var version = "0.1.8"
+var version = "0.1.9"
 
 func main() {
+	// Handle help/version and reject unknown commands before touching the
+	// filesystem, so they work anywhere without triggering the .grapes/
+	// creation prompt below. issue/validate need issuesDir and are
+	// dispatched further down.
+	if len(os.Args) > 1 {
+		switch os.Args[1] {
+		case "help", "--help", "-h":
+			writeHelp(os.Stdout)
+			os.Exit(0)
+		case "version", "--version", "-v":
+			fmt.Println(version)
+			os.Exit(0)
+		case "issue", "validate":
+			// handled after issuesDir is resolved below
+		default:
+			fmt.Fprintf(os.Stderr, "Unknown command: %s\n\n", os.Args[1])
+			writeHelp(os.Stderr)
+			os.Exit(2)
+		}
+	}
+
 	cwd, err := os.Getwd()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
@@ -61,6 +83,40 @@ func main() {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
+}
+
+func writeHelp(w io.Writer) {
+	fmt.Fprint(w, `grapes — file-based issue tracker (TUI + CLI)
+
+USAGE:
+  grapes                    Launch the interactive TUI (needs a real terminal)
+  grapes <command> [args]
+
+COMMANDS:
+  issue                     Allocate the next ID, create .grapes/<id>/, print the ID
+  issue <id>                Bump the 'updated' timestamp on issue <id>
+  validate [<id>...]        Validate all issues, or only the given IDs
+  help, --help, -h          Show this help
+  version, --version, -v    Show the version
+
+ISSUE FILES (.grapes/<id>/):
+  meta.toml                 title, status, priority, labels, dates
+  content.md                issue description (markdown)
+  comments.md               append-only comment log
+
+  status:   backlog, todo, in_progress, done, cancelled
+  priority: urgent, high, medium, low
+
+TYPICAL AGENT WORKFLOW:
+  id=$(grapes issue)        # create .grapes/$id/, capture the new ID
+  # edit .grapes/$id/meta.toml and content.md
+  grapes issue $id          # bump 'updated' after editing
+  grapes validate $id       # check the issue is well-formed
+
+NOTE:
+  Bare 'grapes' opens a full-screen TUI and requires an interactive terminal.
+  Automated/agent environments should use the subcommands above instead.
+`)
 }
 
 func runIssue(issuesDir string, args []string) int {

@@ -56,5 +56,7 @@ The `.agents/` directory contains workflow skills that can be copied into any pr
 | `grapes issue <id>`  | Stamp timestamps on an existing issue                |
 | `grapes validate`    | Validate all issues                                  |
 | `grapes validate ID` | Validate specific issues                             |
+| `grapes help`        | Show usage help (`--help`, `-h`)                     |
+| `grapes version`     | Show the version (`--version`, `-v`)                 |
 
 `grapes issue` scans the main project and all worktrees, using file locking to prevent ID collisions.
