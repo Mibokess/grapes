@@ -1,0 +1,6 @@
+title = 'Add self-contained `grapes --help`/`version` and reject unknown commands instead of launching the TUI'
+status = 'in_progress'
+priority = 'high'
+labels = ['cli', 'dx', 'agents']
+created = 2026-07-02T18:00:00Z
+updated = 2026-07-02T18:09:00Z
