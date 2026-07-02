@@ -169,7 +169,11 @@ type KeysConfig struct {
 type SourcesConfig struct {
 	// Dirs lists glob patterns that resolve to issue directories.
 	// Patterns can be absolute or relative to the project root.
-	// Example: ".claude/worktrees/*/.grapes", "../other-project/.potatoes"
+	//
+	// This repo's own git worktrees are discovered automatically (via
+	// git worktree list), so they do not need to be listed here. Use Dirs only
+	// for additional non-worktree sources, such as a separate repository with a
+	// custom issue-folder name, e.g. "../other-project/.potatoes".
 	Dirs []string `toml:"dirs"`
 }
 
@@ -185,7 +189,7 @@ type Config struct {
 func Defaults() Config {
 	return Config{
 		Sources: SourcesConfig{
-			Dirs: []string{".claude/worktrees/*/.grapes"},
+			Dirs: []string{},
 		},
 		View: ViewConfig{
 			DefaultScreen: "board",

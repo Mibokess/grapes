@@ -2,9 +2,43 @@ package data
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strconv"
 	"testing"
 )
+
+// setupGitRepoWithWorktree creates a git repo at <base>/main and adds a linked
+// worktree at <base>/wt (deliberately NOT under .claude/worktrees/*). It returns
+// the main root and the worktree path. The test is skipped if git is missing.
+func setupGitRepoWithWorktree(t *testing.T) (mainRoot, wtPath string) {
+	t.Helper()
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not available")
+	}
+	base := t.TempDir()
+	mainRoot = filepath.Join(base, "main")
+	wtPath = filepath.Join(base, "wt")
+
+	git := func(dir string, args ...string) {
+		t.Helper()
+		cmd := exec.Command("git", args...)
+		cmd.Dir = dir
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+	}
+
+	os.MkdirAll(mainRoot, 0o755)
+	git(mainRoot, "init", "-q")
+	git(mainRoot, "config", "user.email", "test@example.com")
+	git(mainRoot, "config", "user.name", "Test")
+	os.WriteFile(filepath.Join(mainRoot, "README"), []byte("x"), 0o644)
+	git(mainRoot, "add", "README")
+	git(mainRoot, "commit", "-q", "-m", "init")
+	git(mainRoot, "worktree", "add", "-q", "-b", "feature", wtPath)
+	return mainRoot, wtPath
+}
 
 func TestMaxIDInDir(t *testing.T) {
 	dir := t.TempDir()
@@ -76,6 +110,93 @@ func TestNextIDWithWorktree(t *testing.T) {
 	}
 	if id != 9 {
 		t.Errorf("got %d, want 9 (should see worktree ID 8)", id)
+	}
+}
+
+func TestNextIDGitWorktree(t *testing.T) {
+	mainRoot, wtPath := setupGitRepoWithWorktree(t)
+
+	mainGrapes := filepath.Join(mainRoot, ".grapes")
+	os.MkdirAll(filepath.Join(mainGrapes, "1"), 0o755)
+	os.MkdirAll(filepath.Join(mainGrapes, "5"), 0o755)
+
+	// Worktree lives outside .claude/worktrees/* and holds a higher ID.
+	wtGrapes := filepath.Join(wtPath, ".grapes")
+	os.MkdirAll(filepath.Join(wtGrapes, "8"), 0o755)
+
+	// From main, with NO glob patterns, git discovery must still find ID 8.
+	id, err := NextID(mainGrapes)
+	if err != nil {
+		t.Fatalf("NextID from main: %v", err)
+	}
+	if id != 9 {
+		t.Errorf("from main: got %d, want 9 (should see git worktree ID 8)", id)
+	}
+	os.RemoveAll(filepath.Join(mainGrapes, "9")) // undo reservation for next check
+
+	// From inside the worktree, it must see both main and worktree IDs.
+	id, err = NextID(wtGrapes)
+	if err != nil {
+		t.Fatalf("NextID from worktree: %v", err)
+	}
+	if id != 9 {
+		t.Errorf("from worktree: got %d, want 9", id)
+	}
+	if _, err := os.Stat(filepath.Join(wtGrapes, "9")); os.IsNotExist(err) {
+		t.Error("new issue dir should be created in the local (worktree) .grapes/")
+	}
+}
+
+func TestFindGitWorktreeGrapesDirs(t *testing.T) {
+	mainRoot, wtPath := setupGitRepoWithWorktree(t)
+	os.MkdirAll(filepath.Join(wtPath, ".grapes", "3"), 0o755)
+
+	dirs := FindGitWorktreeGrapesDirs(mainRoot)
+	if _, ok := dirs[filepath.Base(wtPath)]; !ok {
+		t.Errorf("expected worktree %q in %v", filepath.Base(wtPath), dirs)
+	}
+
+	// Non-git directory degrades to an empty map, no error.
+	if got := FindGitWorktreeGrapesDirs(t.TempDir()); len(got) != 0 {
+		t.Errorf("non-git dir: got %v, want empty", got)
+	}
+}
+
+func TestLoadAllSourcesGitWorktree(t *testing.T) {
+	mainRoot, wtPath := setupGitRepoWithWorktree(t)
+
+	writeIssue := func(grapes string, id int, title string) {
+		t.Helper()
+		dir := filepath.Join(grapes, strconv.Itoa(id))
+		os.MkdirAll(dir, 0o755)
+		os.WriteFile(filepath.Join(dir, "meta.toml"), []byte("title = \""+title+"\"\n"), 0o644)
+	}
+
+	mainGrapes := filepath.Join(mainRoot, ".grapes")
+	writeIssue(mainGrapes, 1, "main issue")
+
+	// Worktree issue outside .claude/worktrees/* with a distinct ID.
+	wtGrapes := filepath.Join(wtPath, ".grapes")
+	writeIssue(wtGrapes, 7, "worktree issue")
+
+	// From main, with NO glob patterns, the worktree issue must be discovered.
+	issues, err := LoadAllSources(mainGrapes, mainRoot)
+	if err != nil {
+		t.Fatalf("LoadAllSources: %v", err)
+	}
+	byID := make(map[int]Issue)
+	for _, iss := range issues {
+		byID[iss.ID] = iss
+	}
+	if _, ok := byID[1]; !ok {
+		t.Error("missing main issue 1")
+	}
+	wt, ok := byID[7]
+	if !ok {
+		t.Fatalf("missing git-worktree issue 7; got IDs %v", byID)
+	}
+	if wt.Title != "worktree issue" {
+		t.Errorf("issue 7 title: got %q, want %q", wt.Title, "worktree issue")
 	}
 }
 
