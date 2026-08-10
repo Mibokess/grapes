@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/Mibokess/grapes/internal/fsutil"
 	toml "github.com/pelletier/go-toml/v2"
 )
 
@@ -185,7 +186,12 @@ type Config struct {
 	Keys    KeysConfig    `toml:"keys"`
 }
 
-// Defaults returns the default configuration matching the hardcoded values.
+// Defaults returns the default configuration.
+//
+// Theme colors are deliberately empty: they are *overrides*, and the built-in
+// palette lives in the theme package, which is the one place that knows what a
+// color means. An empty value therefore says "use the active theme's color",
+// which is what makes an override on top of a preset possible.
 func Defaults() Config {
 	return Config{
 		Sources: SourcesConfig{
@@ -196,41 +202,7 @@ func Defaults() Config {
 			DefaultSort:   "priority",
 		},
 		Theme: ThemeConfig{
-			Mode:            "auto",
-			Accent:          "#a371f7",
-			AccentBg:        "#2d1b69",
-			Border:          "#30363d",
-			Text:            "#e6edf3",
-			Muted:           "#8b949e",
-			Faint:           "#484f58",
-			Surface:         "#161b22",
-			ColorBacklog:    "#8b949e",
-			ColorTodo:       "#388bfd",
-			ColorInProgress: "#d29922",
-			ColorDone:       "#3fb950",
-			ColorCancelled:  "#6e7681",
-			ColorUrgent:     "#f85149",
-			ColorHigh:       "#d29922",
-			ColorMedium:     "#388bfd",
-			ColorLow:        "#6e7681",
-			Light: ColorSetConfig{
-				Accent:          "#8250df",
-				AccentBg:        "#eddeff",
-				Border:          "#d0d7de",
-				Text:            "#1f2328",
-				Muted:           "#656d76",
-				Faint:           "#afb8c1",
-				Surface:         "#f6f8fa",
-				ColorBacklog:    "#656d76",
-				ColorTodo:       "#0969da",
-				ColorInProgress: "#9a6700",
-				ColorDone:       "#1a7f37",
-				ColorCancelled:  "#8c959f",
-				ColorUrgent:     "#cf222e",
-				ColorHigh:       "#9a6700",
-				ColorMedium:     "#0969da",
-				ColorLow:        "#8c959f",
-			},
+			Mode: "auto",
 		},
 		Keys: KeysConfig{
 			Quit:           "q",
@@ -304,5 +276,5 @@ func Save(issuesDir string, cfg Config) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(path, raw, 0644)
+	return fsutil.WriteFile(path, raw, 0o644)
 }

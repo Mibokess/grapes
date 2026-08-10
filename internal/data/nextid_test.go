@@ -180,9 +180,12 @@ func TestLoadAllSourcesGitWorktree(t *testing.T) {
 	writeIssue(wtGrapes, 7, "worktree issue")
 
 	// From main, with NO glob patterns, the worktree issue must be discovered.
-	issues, err := LoadAllSources(mainGrapes, mainRoot)
+	issues, problems, err := LoadAllSources(mainGrapes, mainRoot)
 	if err != nil {
 		t.Fatalf("LoadAllSources: %v", err)
+	}
+	if len(problems) > 0 {
+		t.Fatalf("unexpected load problems: %v", problems)
 	}
 	byID := make(map[int]Issue)
 	for _, iss := range issues {

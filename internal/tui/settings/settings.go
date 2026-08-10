@@ -40,6 +40,82 @@ type field struct {
 	options []string // for enum fields
 }
 
+// keyBindings lists every rebindable action once: the settings row it renders
+// and the config field it reads and writes. One table means a new binding
+// cannot show up in the UI without being editable, or vice versa.
+var keyBindings = []struct {
+	label  string
+	cfgKey string
+	field  func(*config.KeysConfig) *string
+}{
+	{"Quit", "quit", func(k *config.KeysConfig) *string { return &k.Quit }},
+	{"Board: Up", "board_up", func(k *config.KeysConfig) *string { return &k.BoardUp }},
+	{"Board: Down", "board_down", func(k *config.KeysConfig) *string { return &k.BoardDown }},
+	{"Board: Left", "board_left", func(k *config.KeysConfig) *string { return &k.BoardLeft }},
+	{"Board: Right", "board_right", func(k *config.KeysConfig) *string { return &k.BoardRight }},
+	{"Board: Open", "board_open", func(k *config.KeysConfig) *string { return &k.BoardOpen }},
+	{"Board: Edit", "board_edit", func(k *config.KeysConfig) *string { return &k.BoardEdit }},
+	{"Board: To list", "board_to_list", func(k *config.KeysConfig) *string { return &k.BoardToList }},
+	{"Board: Search", "board_search", func(k *config.KeysConfig) *string { return &k.BoardSearch }},
+	{"Board: Filter", "board_filter", func(k *config.KeysConfig) *string { return &k.BoardFilter }},
+	{"Board: Status", "board_status", func(k *config.KeysConfig) *string { return &k.BoardStatus }},
+	{"Board: Priority", "board_priority", func(k *config.KeysConfig) *string { return &k.BoardPriority }},
+	{"Board: Label", "board_label", func(k *config.KeysConfig) *string { return &k.BoardLabel }},
+	{"Board: Sort", "board_sort", func(k *config.KeysConfig) *string { return &k.BoardSort }},
+	{"Board: Reverse", "board_reverse", func(k *config.KeysConfig) *string { return &k.BoardReverse }},
+	{"Board: Empty cols", "board_empty", func(k *config.KeysConfig) *string { return &k.BoardEmpty }},
+	{"List: Up", "list_up", func(k *config.KeysConfig) *string { return &k.ListUp }},
+	{"List: Down", "list_down", func(k *config.KeysConfig) *string { return &k.ListDown }},
+	{"List: Open", "list_open", func(k *config.KeysConfig) *string { return &k.ListOpen }},
+	{"List: Edit", "list_edit", func(k *config.KeysConfig) *string { return &k.ListEdit }},
+	{"List: To board", "list_to_board", func(k *config.KeysConfig) *string { return &k.ListToBoard }},
+	{"List: Search", "list_search", func(k *config.KeysConfig) *string { return &k.ListSearch }},
+	{"List: Filter", "list_filter", func(k *config.KeysConfig) *string { return &k.ListFilter }},
+	{"List: Status", "list_status", func(k *config.KeysConfig) *string { return &k.ListStatus }},
+	{"List: Priority", "list_priority", func(k *config.KeysConfig) *string { return &k.ListPriority }},
+	{"List: Label", "list_label", func(k *config.KeysConfig) *string { return &k.ListLabel }},
+	{"List: Sort", "list_sort", func(k *config.KeysConfig) *string { return &k.ListSort }},
+	{"List: Reverse", "list_reverse", func(k *config.KeysConfig) *string { return &k.ListReverse }},
+	{"Detail: Back", "detail_back", func(k *config.KeysConfig) *string { return &k.DetailBack }},
+	{"Detail: To board", "detail_to_board", func(k *config.KeysConfig) *string { return &k.DetailToBoard }},
+	{"Detail: To list", "detail_to_list", func(k *config.KeysConfig) *string { return &k.DetailToList }},
+	{"Detail: Status", "detail_status", func(k *config.KeysConfig) *string { return &k.DetailStatus }},
+	{"Detail: Priority", "detail_priority", func(k *config.KeysConfig) *string { return &k.DetailPriority }},
+	{"Detail: Label", "detail_label", func(k *config.KeysConfig) *string { return &k.DetailLabel }},
+	{"Detail: Comment", "detail_comment", func(k *config.KeysConfig) *string { return &k.DetailComment }},
+	{"Detail: Edit", "detail_edit", func(k *config.KeysConfig) *string { return &k.DetailEdit }},
+}
+
+// keyBindingField returns a pointer to the configured key for cfgKey, or nil.
+func keyBindingField(k *config.KeysConfig, cfgKey string) *string {
+	for _, kb := range keyBindings {
+		if kb.cfgKey == cfgKey {
+			return kb.field(k)
+		}
+	}
+	return nil
+}
+
+// themeFields builds the Theme category rows from the shared color registry.
+func themeFields() []field {
+	fields := []field{
+		{label: "Theme", cfgKey: "theme_preset", kind: fieldEnum, options: common.CuratedPresets},
+	}
+	for _, key := range common.ColorKeys {
+		fields = append(fields, field{label: common.ColorLabels[key], cfgKey: key, kind: fieldColor})
+	}
+	return fields
+}
+
+// keysFields builds the Keys category rows from the binding table.
+func keysFields() []field {
+	fields := make([]field, 0, len(keyBindings))
+	for _, kb := range keyBindings {
+		fields = append(fields, field{label: kb.label, cfgKey: kb.cfgKey, kind: fieldKey})
+	}
+	return fields
+}
+
 type category struct {
 	name   string
 	fields []field
@@ -87,67 +163,8 @@ func New(cfg config.Config, issuesDir string, w, h int, theme common.Theme) Mode
 				{label: "Hide empty columns", cfgKey: "hide_empty_columns", kind: fieldEnum, options: []string{"off", "on"}},
 			},
 		},
-		{
-			name: "Theme",
-			fields: []field{
-				{label: "Theme", cfgKey: "theme_preset", kind: fieldEnum, options: common.CuratedPresets},
-				{label: "Accent", cfgKey: "accent", kind: fieldColor},
-				{label: "Accent BG", cfgKey: "accent_bg", kind: fieldColor},
-				{label: "Border", cfgKey: "border", kind: fieldColor},
-				{label: "Text", cfgKey: "text", kind: fieldColor},
-				{label: "Muted", cfgKey: "muted", kind: fieldColor},
-				{label: "Faint", cfgKey: "faint", kind: fieldColor},
-				{label: "Surface", cfgKey: "surface", kind: fieldColor},
-				{label: "Backlog", cfgKey: "color_backlog", kind: fieldColor},
-				{label: "Todo", cfgKey: "color_todo", kind: fieldColor},
-				{label: "In Progress", cfgKey: "color_in_progress", kind: fieldColor},
-				{label: "Done", cfgKey: "color_done", kind: fieldColor},
-				{label: "Cancelled", cfgKey: "color_cancelled", kind: fieldColor},
-				{label: "Urgent", cfgKey: "color_urgent", kind: fieldColor},
-				{label: "High", cfgKey: "color_high", kind: fieldColor},
-				{label: "Medium", cfgKey: "color_medium", kind: fieldColor},
-				{label: "Low", cfgKey: "color_low", kind: fieldColor},
-			},
-		},
-		{
-			name: "Keys",
-			fields: []field{
-				{label: "Quit", cfgKey: "quit", kind: fieldKey},
-				{label: "Board: Up", cfgKey: "board_up", kind: fieldKey},
-				{label: "Board: Down", cfgKey: "board_down", kind: fieldKey},
-				{label: "Board: Left", cfgKey: "board_left", kind: fieldKey},
-				{label: "Board: Right", cfgKey: "board_right", kind: fieldKey},
-				{label: "Board: Open", cfgKey: "board_open", kind: fieldKey},
-				{label: "Board: Edit", cfgKey: "board_edit", kind: fieldKey},
-				{label: "Board: To list", cfgKey: "board_to_list", kind: fieldKey},
-				{label: "Board: Filter", cfgKey: "board_filter", kind: fieldKey},
-				{label: "Board: Status", cfgKey: "board_status", kind: fieldKey},
-				{label: "Board: Priority", cfgKey: "board_priority", kind: fieldKey},
-				{label: "Board: Label", cfgKey: "board_label", kind: fieldKey},
-				{label: "Board: Sort", cfgKey: "board_sort", kind: fieldKey},
-				{label: "Board: Reverse", cfgKey: "board_reverse", kind: fieldKey},
-				{label: "List: Up", cfgKey: "list_up", kind: fieldKey},
-				{label: "List: Down", cfgKey: "list_down", kind: fieldKey},
-				{label: "List: Open", cfgKey: "list_open", kind: fieldKey},
-				{label: "List: Edit", cfgKey: "list_edit", kind: fieldKey},
-				{label: "List: To board", cfgKey: "list_to_board", kind: fieldKey},
-				{label: "List: Search", cfgKey: "list_search", kind: fieldKey},
-				{label: "List: Filter", cfgKey: "list_filter", kind: fieldKey},
-				{label: "List: Status", cfgKey: "list_status", kind: fieldKey},
-				{label: "List: Priority", cfgKey: "list_priority", kind: fieldKey},
-				{label: "List: Label", cfgKey: "list_label", kind: fieldKey},
-				{label: "List: Sort", cfgKey: "list_sort", kind: fieldKey},
-				{label: "List: Reverse", cfgKey: "list_reverse", kind: fieldKey},
-				{label: "Detail: Back", cfgKey: "detail_back", kind: fieldKey},
-				{label: "Detail: To board", cfgKey: "detail_to_board", kind: fieldKey},
-				{label: "Detail: To list", cfgKey: "detail_to_list", kind: fieldKey},
-				{label: "Detail: Status", cfgKey: "detail_status", kind: fieldKey},
-				{label: "Detail: Priority", cfgKey: "detail_priority", kind: fieldKey},
-				{label: "Detail: Label", cfgKey: "detail_label", kind: fieldKey},
-				{label: "Detail: Comment", cfgKey: "detail_comment", kind: fieldKey},
-				{label: "Detail: Edit", cfgKey: "detail_edit", kind: fieldKey},
-			},
-		},
+		{name: "Theme", fields: themeFields()},
+		{name: "Keys", fields: keysFields()},
 		{
 			name:   "Sources",
 			fields: []field{}, // populated dynamically by effectiveFields()
@@ -248,7 +265,7 @@ func (m Model) PickerView() string {
 
 	content := strings.Join(rows, "\n")
 
-	f := m.currentField()
+	f, _ := m.currentField()
 	title := " " + titleStyle.Render(f.label) + " "
 
 	box := lipgloss.NewStyle().
@@ -502,51 +519,21 @@ func (m Model) handleMouseClick(mouse tea.Mouse) (Model, tea.Cmd) {
 		if idx >= 0 && idx < len(fields) {
 			if m.focus == paneFields && m.fieldIdx == idx {
 				// Already selected — activate (same as pressing Enter)
-				f := fields[idx]
-				switch f.kind {
-				case fieldAction:
-					return m.activateAction(f)
-				case fieldEnum:
-					if len(f.options) > 3 {
-						m.openPicker(f)
-						return m, nil
-					}
-					cur := m.getFieldValue(f.cfgKey)
-					for i, opt := range f.options {
-						if opt == cur {
-							next := f.options[(i+1)%len(f.options)]
-							m.setFieldValue(f.cfgKey, next)
-							if f.cfgKey == "theme_preset" {
-								newTheme := common.NewThemeFromConfig(m.cfg.Theme, m.termIsDark)
-								m.theme = newTheme
-								return m, func() tea.Msg { return common.ThemeMsg{Theme: newTheme} }
-							}
-							return m, nil
-						}
-					}
-					m.setFieldValue(f.cfgKey, f.options[0])
-					if f.cfgKey == "theme_preset" {
-						newTheme := common.NewThemeFromConfig(m.cfg.Theme, m.termIsDark)
-						m.theme = newTheme
-						return m, func() tea.Msg { return common.ThemeMsg{Theme: newTheme} }
-					}
-				default:
-					m.editing = true
-					m.input.SetValue(m.getFieldValue(f.cfgKey))
-					m.input.Focus()
-					m.input.CursorEnd()
-				}
-			} else {
-				m.fieldIdx = idx
-				m.focus = paneFields
+				return m.activateField(fields[idx])
 			}
+			m.fieldIdx = idx
+			m.focus = paneFields
 		}
 	}
 	return m, nil
 }
 
 func (m Model) updateEditing(msg tea.KeyPressMsg) (Model, tea.Cmd) {
-	f := m.currentField()
+	f, ok := m.currentField()
+	if !ok {
+		m.editing = false
+		return m, nil
+	}
 
 	switch {
 	case key.Matches(msg, key.NewBinding(key.WithKeys("enter"))):
@@ -677,51 +664,73 @@ func (m Model) updateNavigating(msg tea.KeyPressMsg) (Model, tea.Cmd) {
 			m.fieldIdx = 0
 			return m, nil
 		}
-		f := m.currentField()
-		switch f.kind {
-		case fieldAction:
-			return m.activateAction(f)
-		case fieldEnum:
-			if len(f.options) > 3 {
-				m.openPicker(f)
-				return m, nil
-			}
-			// Cycle through options (for small lists)
-			cur := m.getFieldValue(f.cfgKey)
-			for i, opt := range f.options {
-				if opt == cur {
-					next := f.options[(i+1)%len(f.options)]
-					m.setFieldValue(f.cfgKey, next)
-					if f.cfgKey == "theme_preset" {
-						newTheme := common.NewThemeFromConfig(m.cfg.Theme, m.termIsDark)
-						m.theme = newTheme
-						return m, func() tea.Msg { return common.ThemeMsg{Theme: newTheme} }
-					}
-					return m, nil
-				}
-			}
-			m.setFieldValue(f.cfgKey, f.options[0])
-			if f.cfgKey == "theme_preset" {
-				newTheme := common.NewThemeFromConfig(m.cfg.Theme, m.termIsDark)
-				m.theme = newTheme
-				return m, func() tea.Msg { return common.ThemeMsg{Theme: newTheme} }
-			}
-			return m, nil
-		default:
-			// Start inline editing
-			m.editing = true
-			m.input.SetValue(m.getFieldValue(f.cfgKey))
-			m.input.Focus()
-			m.input.CursorEnd()
+		f, ok := m.currentField()
+		if !ok {
 			return m, nil
 		}
+		return m.activateField(f)
 	}
 
 	return m, nil
 }
 
-func (m Model) currentField() field {
-	return m.effectiveFields()[m.fieldIdx]
+// activateField performs the "Enter" action for a field: run it, cycle it,
+// open a picker for it, or start editing it. Keyboard and mouse both come
+// through here so the two cannot drift apart.
+func (m Model) activateField(f field) (Model, tea.Cmd) {
+	switch f.kind {
+	case fieldAction:
+		return m.activateAction(f)
+
+	case fieldEnum:
+		// Long option lists get a picker; short ones cycle in place.
+		if len(f.options) > 3 {
+			m.openPicker(f)
+			return m, nil
+		}
+		if len(f.options) == 0 {
+			return m, nil
+		}
+		next := f.options[0]
+		cur := m.getFieldValue(f.cfgKey)
+		for i, opt := range f.options {
+			if opt == cur {
+				next = f.options[(i+1)%len(f.options)]
+				break
+			}
+		}
+		return m.applyEnum(f.cfgKey, next)
+
+	default:
+		// Start inline editing
+		m.editing = true
+		m.input.SetValue(m.getFieldValue(f.cfgKey))
+		m.input.Focus()
+		m.input.CursorEnd()
+		return m, nil
+	}
+}
+
+// applyEnum stores an enum choice and rebuilds the theme when the choice was a
+// theme preset, so the whole app repaints immediately.
+func (m Model) applyEnum(cfgKey, val string) (Model, tea.Cmd) {
+	m.setFieldValue(cfgKey, val)
+	if cfgKey != "theme_preset" {
+		return m, nil
+	}
+	newTheme := common.NewThemeFromConfig(m.cfg.Theme, m.termIsDark)
+	m.theme = newTheme
+	return m, func() tea.Msg { return common.ThemeMsg{Theme: newTheme} }
+}
+
+// currentField returns the selected field. The cursor can outlive the row it
+// pointed at, since the field list changes with the config.
+func (m Model) currentField() (field, bool) {
+	fields := m.effectiveFields()
+	if m.fieldIdx < 0 || m.fieldIdx >= len(fields) {
+		return field{}, false
+	}
+	return fields[m.fieldIdx], true
 }
 
 func (m Model) View() string {
@@ -878,24 +887,19 @@ func (m Model) effectiveIsDark() bool {
 	return m.cfg.Theme.EffectiveIsDark(m.termIsDark)
 }
 
-// defaultColorForKey returns the default color value for a theme color key
-// based on the current effective mode.
-func (m Model) defaultColorForKey(cfgKey string) string {
-	defaults := config.Defaults()
-	isDark := m.effectiveIsDark()
-	return getColorFromSet(defaults.Theme.ColorsFor(isDark), cfgKey)
-}
-
-// isColorOverridden returns true if a color field differs from the theme default.
+// isColorOverridden reports whether the user has set this color explicitly.
+// An empty stored value means "whatever the active theme says", so overridden
+// is simply "non-empty" — and it stays meaningful under a preset, where the
+// theme's own colors are not the built-in ones.
 func (m Model) isColorOverridden(cfgKey string) bool {
-	current := getColorFromSet(m.cfg.Theme.ColorsFor(m.effectiveIsDark()), cfgKey)
-	return current != m.defaultColorForKey(cfgKey)
+	return common.GetColor(m.cfg.Theme.ColorsFor(m.effectiveIsDark()), cfgKey) != ""
 }
 
-// hasAnyColorOverride returns true if any theme color differs from defaults.
+// hasAnyColorOverride returns true if any theme color has been overridden.
 func (m Model) hasAnyColorOverride() bool {
-	for _, f := range m.categories[1].fields { // Theme category
-		if f.kind == fieldColor && m.isColorOverridden(f.cfgKey) {
+	colors := m.cfg.Theme.ColorsFor(m.effectiveIsDark())
+	for _, key := range common.ColorKeys {
+		if common.GetColor(colors, key) != "" {
 			return true
 		}
 	}
@@ -950,9 +954,9 @@ func (m Model) effectiveFields() []field {
 func (m Model) activateAction(f field) (Model, tea.Cmd) {
 	switch {
 	case f.cfgKey == "reset_colors":
-		defaults := config.Defaults()
-		isDark := m.effectiveIsDark()
-		m.cfg.Theme.SetColorsFor(isDark, defaults.Theme.ColorsFor(isDark))
+		// Clearing the overrides hands the colors back to the active theme,
+		// which is the built-in palette or the selected preset.
+		m.cfg.Theme.SetColorsFor(m.effectiveIsDark(), config.ColorSetConfig{})
 		newTheme := common.NewThemeFromConfig(m.cfg.Theme, m.termIsDark)
 		m.theme = newTheme
 		// Clamp fieldIdx since reset row may disappear
@@ -988,6 +992,10 @@ func (m Model) activateAction(f field) (Model, tea.Cmd) {
 }
 
 // getFieldValue reads the current value for a config key.
+//
+// Colors report the *effective* value — the one the active theme renders with,
+// preset included — not the stored override, so the swatch always matches what
+// is on screen.
 func (m Model) getFieldValue(cfgKey string) string {
 	switch cfgKey {
 	case "default_screen":
@@ -1017,78 +1025,13 @@ func (m Model) getFieldValue(cfgKey string) string {
 			return "on"
 		}
 		return "off"
-	case "accent", "accent_bg", "border", "text", "muted", "faint", "surface",
-		"color_backlog", "color_todo", "color_in_progress", "color_done", "color_cancelled",
-		"color_urgent", "color_high", "color_medium", "color_low":
-		return getColorFromSet(m.cfg.Theme.ColorsFor(m.effectiveIsDark()), cfgKey)
-	case "quit":
-		return m.cfg.Keys.Quit
-	case "board_up":
-		return m.cfg.Keys.BoardUp
-	case "board_down":
-		return m.cfg.Keys.BoardDown
-	case "board_left":
-		return m.cfg.Keys.BoardLeft
-	case "board_right":
-		return m.cfg.Keys.BoardRight
-	case "board_open":
-		return m.cfg.Keys.BoardOpen
-	case "board_edit":
-		return m.cfg.Keys.BoardEdit
-	case "board_to_list":
-		return m.cfg.Keys.BoardToList
-	case "board_filter":
-		return m.cfg.Keys.BoardFilter
-	case "board_status":
-		return m.cfg.Keys.BoardStatus
-	case "board_priority":
-		return m.cfg.Keys.BoardPriority
-	case "board_label":
-		return m.cfg.Keys.BoardLabel
-	case "board_sort":
-		return m.cfg.Keys.BoardSort
-	case "board_reverse":
-		return m.cfg.Keys.BoardReverse
-	case "list_up":
-		return m.cfg.Keys.ListUp
-	case "list_down":
-		return m.cfg.Keys.ListDown
-	case "list_open":
-		return m.cfg.Keys.ListOpen
-	case "list_edit":
-		return m.cfg.Keys.ListEdit
-	case "list_to_board":
-		return m.cfg.Keys.ListToBoard
-	case "list_search":
-		return m.cfg.Keys.ListSearch
-	case "list_filter":
-		return m.cfg.Keys.ListFilter
-	case "list_status":
-		return m.cfg.Keys.ListStatus
-	case "list_priority":
-		return m.cfg.Keys.ListPriority
-	case "list_label":
-		return m.cfg.Keys.ListLabel
-	case "list_sort":
-		return m.cfg.Keys.ListSort
-	case "list_reverse":
-		return m.cfg.Keys.ListReverse
-	case "detail_back":
-		return m.cfg.Keys.DetailBack
-	case "detail_to_board":
-		return m.cfg.Keys.DetailToBoard
-	case "detail_to_list":
-		return m.cfg.Keys.DetailToList
-	case "detail_status":
-		return m.cfg.Keys.DetailStatus
-	case "detail_priority":
-		return m.cfg.Keys.DetailPriority
-	case "detail_label":
-		return m.cfg.Keys.DetailLabel
-	case "detail_comment":
-		return m.cfg.Keys.DetailComment
-	case "detail_edit":
-		return m.cfg.Keys.DetailEdit
+	}
+	if common.IsColorKey(cfgKey) {
+		return common.GetColor(m.theme.Colors, cfgKey)
+	}
+	keys := m.cfg.Keys
+	if p := keyBindingField(&keys, cfgKey); p != nil {
+		return *p
 	}
 	return ""
 }
@@ -1098,8 +1041,10 @@ func (m *Model) setFieldValue(cfgKey, val string) {
 	switch cfgKey {
 	case "default_screen":
 		m.cfg.View.DefaultScreen = val
+		return
 	case "default_sort":
 		m.cfg.View.DefaultSort = val
+		return
 	case "theme_preset":
 		switch val {
 		case "Auto":
@@ -1115,160 +1060,23 @@ func (m *Model) setFieldValue(cfgKey, val string) {
 			m.cfg.Theme.Preset = val
 			m.cfg.Theme.Mode = "auto"
 		}
+		return
 	case "auto_close_subs":
 		m.cfg.View.AutoCloseSubs = val == "on"
+		return
 	case "hide_empty_columns":
 		b := val == "on"
 		m.cfg.View.HideEmptyColumns = &b
-	case "accent", "accent_bg", "border", "text", "muted", "faint", "surface",
-		"color_backlog", "color_todo", "color_in_progress", "color_done", "color_cancelled",
-		"color_urgent", "color_high", "color_medium", "color_low":
+		return
+	}
+	if common.IsColorKey(cfgKey) {
 		isDark := m.effectiveIsDark()
 		colors := m.cfg.Theme.ColorsFor(isDark)
-		setColorOnSet(&colors, cfgKey, val)
+		common.SetColor(&colors, cfgKey, val)
 		m.cfg.Theme.SetColorsFor(isDark, colors)
-	case "quit":
-		m.cfg.Keys.Quit = val
-	case "board_up":
-		m.cfg.Keys.BoardUp = val
-	case "board_down":
-		m.cfg.Keys.BoardDown = val
-	case "board_left":
-		m.cfg.Keys.BoardLeft = val
-	case "board_right":
-		m.cfg.Keys.BoardRight = val
-	case "board_open":
-		m.cfg.Keys.BoardOpen = val
-	case "board_edit":
-		m.cfg.Keys.BoardEdit = val
-	case "board_to_list":
-		m.cfg.Keys.BoardToList = val
-	case "board_filter":
-		m.cfg.Keys.BoardFilter = val
-	case "board_status":
-		m.cfg.Keys.BoardStatus = val
-	case "board_priority":
-		m.cfg.Keys.BoardPriority = val
-	case "board_label":
-		m.cfg.Keys.BoardLabel = val
-	case "board_sort":
-		m.cfg.Keys.BoardSort = val
-	case "board_reverse":
-		m.cfg.Keys.BoardReverse = val
-	case "list_up":
-		m.cfg.Keys.ListUp = val
-	case "list_down":
-		m.cfg.Keys.ListDown = val
-	case "list_open":
-		m.cfg.Keys.ListOpen = val
-	case "list_edit":
-		m.cfg.Keys.ListEdit = val
-	case "list_to_board":
-		m.cfg.Keys.ListToBoard = val
-	case "list_search":
-		m.cfg.Keys.ListSearch = val
-	case "list_filter":
-		m.cfg.Keys.ListFilter = val
-	case "list_status":
-		m.cfg.Keys.ListStatus = val
-	case "list_priority":
-		m.cfg.Keys.ListPriority = val
-	case "list_label":
-		m.cfg.Keys.ListLabel = val
-	case "list_sort":
-		m.cfg.Keys.ListSort = val
-	case "list_reverse":
-		m.cfg.Keys.ListReverse = val
-	case "detail_back":
-		m.cfg.Keys.DetailBack = val
-	case "detail_to_board":
-		m.cfg.Keys.DetailToBoard = val
-	case "detail_to_list":
-		m.cfg.Keys.DetailToList = val
-	case "detail_status":
-		m.cfg.Keys.DetailStatus = val
-	case "detail_priority":
-		m.cfg.Keys.DetailPriority = val
-	case "detail_label":
-		m.cfg.Keys.DetailLabel = val
-	case "detail_comment":
-		m.cfg.Keys.DetailComment = val
-	case "detail_edit":
-		m.cfg.Keys.DetailEdit = val
+		return
 	}
-}
-
-func getColorFromSet(c config.ColorSetConfig, key string) string {
-	switch key {
-	case "accent":
-		return c.Accent
-	case "accent_bg":
-		return c.AccentBg
-	case "border":
-		return c.Border
-	case "text":
-		return c.Text
-	case "muted":
-		return c.Muted
-	case "faint":
-		return c.Faint
-	case "surface":
-		return c.Surface
-	case "color_backlog":
-		return c.ColorBacklog
-	case "color_todo":
-		return c.ColorTodo
-	case "color_in_progress":
-		return c.ColorInProgress
-	case "color_done":
-		return c.ColorDone
-	case "color_cancelled":
-		return c.ColorCancelled
-	case "color_urgent":
-		return c.ColorUrgent
-	case "color_high":
-		return c.ColorHigh
-	case "color_medium":
-		return c.ColorMedium
-	case "color_low":
-		return c.ColorLow
-	}
-	return ""
-}
-
-func setColorOnSet(c *config.ColorSetConfig, key, val string) {
-	switch key {
-	case "accent":
-		c.Accent = val
-	case "accent_bg":
-		c.AccentBg = val
-	case "border":
-		c.Border = val
-	case "text":
-		c.Text = val
-	case "muted":
-		c.Muted = val
-	case "faint":
-		c.Faint = val
-	case "surface":
-		c.Surface = val
-	case "color_backlog":
-		c.ColorBacklog = val
-	case "color_todo":
-		c.ColorTodo = val
-	case "color_in_progress":
-		c.ColorInProgress = val
-	case "color_done":
-		c.ColorDone = val
-	case "color_cancelled":
-		c.ColorCancelled = val
-	case "color_urgent":
-		c.ColorUrgent = val
-	case "color_high":
-		c.ColorHigh = val
-	case "color_medium":
-		c.ColorMedium = val
-	case "color_low":
-		c.ColorLow = val
+	if p := keyBindingField(&m.cfg.Keys, cfgKey); p != nil {
+		*p = val
 	}
 }

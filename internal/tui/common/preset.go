@@ -4,6 +4,7 @@ import (
 	"image/color"
 
 	"charm.land/lipgloss/v2"
+	"github.com/Mibokess/grapes/internal/config"
 	"github.com/lucasb-eyer/go-colorful"
 	themes "go.withmatt.com/themes"
 )
@@ -40,16 +41,32 @@ func PresetIsDark(t *themes.Theme) bool {
 func applyPreset(t *Theme, ext *themes.Theme) {
 	isDark := PresetIsDark(ext)
 
-	// Core colors.
-	t.ColorText = hexToColor(ext.Foreground)
-	t.ColorSurface = hexToColor(ext.Background)
-	t.ColorMuted = hexToColor(ext.BrightBlack)
-	t.ColorAccent = hexToColor(ext.Magenta)
+	// The palette, expressed in the same shape as a user color set so that
+	// overrides can be merged on top of it.
+	t.applyColorSet(config.ColorSetConfig{
+		Text:    ext.Foreground,
+		Surface: ext.Background,
+		Muted:   ext.BrightBlack,
+		Accent:  ext.Magenta,
 
-	// Derived colors (blended).
-	t.ColorFaint = hexToColor(blendHex(ext.BrightBlack, ext.Background, 0.6))
-	t.ColorBorder = hexToColor(blendHex(ext.BrightBlack, ext.Background, 0.4))
-	t.ColorAccentBg = hexToColor(blendHex(ext.Magenta, ext.Background, 0.85))
+		// Derived colors (blended).
+		Faint:    blendHex(ext.BrightBlack, ext.Background, 0.6),
+		Border:   blendHex(ext.BrightBlack, ext.Background, 0.4),
+		AccentBg: blendHex(ext.Magenta, ext.Background, 0.85),
+
+		// Status colors.
+		ColorBacklog:    ext.BrightBlack,
+		ColorTodo:       ext.Blue,
+		ColorInProgress: ext.Yellow,
+		ColorDone:       ext.Green,
+		ColorCancelled:  ext.BrightBlack,
+
+		// Priority colors.
+		ColorUrgent: ext.Red,
+		ColorHigh:   ext.Yellow,
+		ColorMedium: ext.Blue,
+		ColorLow:    ext.BrightBlack,
+	})
 
 	// Contrast for pill text.
 	if isDark {
@@ -58,21 +75,6 @@ func applyPreset(t *Theme, ext *themes.Theme) {
 		t.ColorContrast = hexToColor(blendHex(ext.Background, "#ffffff", 0.3))
 	}
 
-	// Status colors.
-	t.ColorBacklog = hexToColor(ext.BrightBlack)
-	t.ColorTodo = hexToColor(ext.Blue)
-	t.ColorInProgress = hexToColor(ext.Yellow)
-	t.ColorDone = hexToColor(ext.Green)
-	t.ColorCancelled = hexToColor(ext.BrightBlack)
-
-	// Priority colors.
-	t.ColorUrgent = hexToColor(ext.Red)
-	t.ColorHigh = hexToColor(ext.Yellow)
-	t.ColorMedium = hexToColor(ext.Blue)
-	t.ColorLow = hexToColor(ext.BrightBlack)
-
-	// Error & worktree.
-	t.ColorError = hexToColor(ext.Red)
 	t.ColorWorktree = hexToColor(fallback(ext.BrightMagenta, ext.Magenta))
 
 	// Pill backgrounds.

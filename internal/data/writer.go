@@ -3,90 +3,131 @@ package data
 import (
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/Mibokess/grapes/internal/fsutil"
 	toml "github.com/pelletier/go-toml/v2"
 )
 
-// UpdateField runs sed to replace a field value in meta.toml.
-//
-//	sed -i "s/^field = .*/field = 'newValue'/" .grapes/<id>/meta.toml
-func UpdateField(issuesDir string, issueID int, field, newValue string) error {
-	path := filepath.Join(issuesDir, strconv.Itoa(issueID), "meta.toml")
+// metaFileMode is the permission used for every file grapes writes.
+const metaFileMode = 0o644
 
-	fieldPattern := fmt.Sprintf(`s/^%s = .*/%s = '%s'/`, field, field, newValue)
-	if err := exec.Command("sed", "-i", fieldPattern, path).Run(); err != nil {
-		return fmt.Errorf("sed %s: %w", field, err)
-	}
-
-	return StampTimestamps(issuesDir, issueID)
+// metaPath returns the meta.toml path for an issue.
+func metaPath(issuesDir string, issueID int) string {
+	return filepath.Join(issuesDir, strconv.Itoa(issueID), "meta.toml")
 }
 
-// UpdateLabels replaces the labels array in meta.toml.
-func UpdateLabels(issuesDir string, issueID int, labels []string) error {
-	path := filepath.Join(issuesDir, strconv.Itoa(issueID), "meta.toml")
-
+// readMeta loads and parses an issue's meta.toml.
+func readMeta(path string) (meta, error) {
 	raw, err := os.ReadFile(path)
 	if err != nil {
-		return fmt.Errorf("read meta.toml: %w", err)
+		return meta{}, fmt.Errorf("read meta.toml: %w", err)
 	}
 	var m meta
 	if err := toml.Unmarshal(raw, &m); err != nil {
-		return fmt.Errorf("parse meta.toml: %w", err)
+		return meta{}, fmt.Errorf("parse %s: %w", path, err)
 	}
+	return m, nil
+}
 
-	m.Labels = labels
-	m.Updated = time.Now().UTC().Truncate(time.Minute)
-
+// writeMeta marshals and atomically writes an issue's meta.toml.
+func writeMeta(path string, m meta) error {
 	out, err := toml.Marshal(&m)
 	if err != nil {
 		return fmt.Errorf("marshal meta.toml: %w", err)
 	}
-	return os.WriteFile(path, out, 0644)
+	return fsutil.WriteFile(path, out, metaFileMode)
+}
+
+// stamp sets `updated` to now, and `created` too when it is missing.
+func stamp(m *meta, now time.Time) {
+	if m.Created.IsZero() {
+		m.Created = now
+	}
+	m.Updated = now
+}
+
+// UpdateField sets one meta.toml field and stamps the timestamps.
+//
+// The field name and the new value are both checked: writing a field grapes
+// does not know, or a status/priority outside the accepted set, is an error
+// rather than a write that appears to succeed and changes nothing.
+func UpdateField(issuesDir string, issueID int, field, newValue string) error {
+	path := metaPath(issuesDir, issueID)
+	m, err := readMeta(path)
+	if err != nil {
+		return err
+	}
+
+	switch field {
+	case "title":
+		if strings.TrimSpace(newValue) == "" {
+			return fmt.Errorf("title must not be empty")
+		}
+		m.Title = newValue
+	case "status":
+		if !validStatuses[newValue] {
+			return fmt.Errorf("%q is not a valid status", newValue)
+		}
+		m.Status = newValue
+	case "priority":
+		if !validPriorities[newValue] {
+			return fmt.Errorf("%q is not a valid priority", newValue)
+		}
+		m.Priority = newValue
+	default:
+		return fmt.Errorf("unknown meta.toml field %q", field)
+	}
+
+	stamp(&m, time.Now().UTC().Truncate(time.Minute))
+	return writeMeta(path, m)
+}
+
+// UpdateLabels replaces the labels array in meta.toml.
+func UpdateLabels(issuesDir string, issueID int, labels []string) error {
+	path := metaPath(issuesDir, issueID)
+	m, err := readMeta(path)
+	if err != nil {
+		return err
+	}
+	m.Labels = labels
+	stamp(&m, time.Now().UTC().Truncate(time.Minute))
+	return writeMeta(path, m)
 }
 
 // StampTimestamps reads meta.toml and sets `updated` to now. If `created` is
 // zero/missing, it sets `created` to now as well. This is the canonical way to
 // maintain timestamps — agents call `grapes issue <id>` which invokes this.
+//
+// A missing meta.toml is not an error: `grapes issue` stamps a directory it
+// has just created, and the file is written from scratch.
 func StampTimestamps(issuesDir string, issueID int) error {
-	path := filepath.Join(issuesDir, strconv.Itoa(issueID), "meta.toml")
-	now := time.Now().UTC().Truncate(time.Minute)
+	path := metaPath(issuesDir, issueID)
 
-	raw, err := os.ReadFile(path)
-	if err != nil && !os.IsNotExist(err) {
+	var m meta
+	if _, err := os.Stat(path); err == nil {
+		if m, err = readMeta(path); err != nil {
+			return err
+		}
+	} else if !os.IsNotExist(err) {
 		return fmt.Errorf("read meta.toml: %w", err)
 	}
 
-	var m meta
-	if len(raw) > 0 {
-		if err := toml.Unmarshal(raw, &m); err != nil {
-			return fmt.Errorf("parse meta.toml: %w", err)
-		}
-	}
-
-	if m.Created.IsZero() {
-		m.Created = now
-	}
-	m.Updated = now
-
-	out, err := toml.Marshal(&m)
-	if err != nil {
-		return fmt.Errorf("marshal meta.toml: %w", err)
-	}
-	return os.WriteFile(path, out, 0644)
+	stamp(&m, time.Now().UTC().Truncate(time.Minute))
+	return writeMeta(path, m)
 }
 
 // AppendComment appends a comment to an issue's comments.md using the standard
 // grapes format:
 //
-//	### YYYY-MM-DD
+//	### YYYY-MM-DDTHH:MM
 //	comment body
 //
-// A blank line is prepended if the file already has content.
+// A blank line is prepended if the file already has content. Timestamps are
+// UTC, matching the `created`/`updated` fields in meta.toml.
 func AppendComment(issuesDir string, issueID int, body string) error {
 	path := filepath.Join(issuesDir, strconv.Itoa(issueID), "comments.md")
 
@@ -95,8 +136,7 @@ func AppendComment(issuesDir string, issueID int, body string) error {
 		return fmt.Errorf("read comments: %w", err)
 	}
 
-	now := time.Now().Format("2006-01-02T15:04")
-	header := fmt.Sprintf("### %s", now)
+	now := time.Now().UTC().Format("2006-01-02T15:04")
 
 	var sb strings.Builder
 	if len(existing) > 0 {
@@ -108,12 +148,12 @@ func AppendComment(issuesDir string, issueID int, body string) error {
 		// Blank line separator before new comment
 		sb.WriteByte('\n')
 	}
-	sb.WriteString(header)
+	sb.WriteString("### " + now)
 	sb.WriteByte('\n')
 	sb.WriteString(body)
 	sb.WriteByte('\n')
 
-	return os.WriteFile(path, []byte(sb.String()), 0644)
+	return fsutil.WriteFile(path, []byte(sb.String()), metaFileMode)
 }
 
 // SerializeIssue renders a complete issue as an editable text document with
@@ -155,11 +195,17 @@ func SerializeIssue(issue Issue) string {
 		}
 	}
 
-	// Comments section
+	// Comments section. A comment with no date is text that preceded the first
+	// "### " header in comments.md; it is written back without a header so the
+	// edit round-trip preserves it.
 	if len(issue.Comments) > 0 {
 		sb.WriteString("\n## Comments\n")
 		for _, c := range issue.Comments {
-			sb.WriteString(fmt.Sprintf("\n### %s\n", c.Date))
+			if c.Date == "" {
+				sb.WriteString("\n")
+			} else {
+				sb.WriteString(fmt.Sprintf("\n### %s\n", c.Date))
+			}
 			sb.WriteString(c.Body)
 			if !strings.HasSuffix(c.Body, "\n") {
 				sb.WriteByte('\n')
@@ -198,6 +244,9 @@ func SaveIssueFromText(issuesDir string, issueID int, text string) error {
 	if len(parts) < 3 {
 		return fmt.Errorf("invalid format: missing TOML frontmatter delimiters")
 	}
+	if strings.TrimSpace(parts[0]) != "" {
+		return fmt.Errorf("invalid format: text before the opening +++ delimiter")
+	}
 	frontmatter := parts[1]
 	body := parts[2]
 
@@ -229,18 +278,13 @@ func SaveIssueFromText(issuesDir string, issueID int, text string) error {
 	content = strings.TrimSpace(content)
 	commentsRaw = strings.TrimSpace(commentsRaw)
 
-	// Write meta.toml
 	issueDir := filepath.Join(issuesDir, strconv.Itoa(issueID))
-	now := time.Now().UTC().Truncate(time.Minute)
 
-	// Read existing meta to preserve created date
-	existingMeta, err := os.ReadFile(filepath.Join(issueDir, "meta.toml"))
+	// Read existing meta to preserve fields the editable document does not
+	// carry: the created date, and any legacy comments stored in meta.toml.
+	existing, err := readMeta(filepath.Join(issueDir, "meta.toml"))
 	if err != nil {
-		return fmt.Errorf("reading existing meta: %w", err)
-	}
-	var existing meta
-	if err := toml.Unmarshal(existingMeta, &existing); err != nil {
-		return fmt.Errorf("parsing existing meta: %w", err)
+		return err
 	}
 
 	newMeta := meta{
@@ -250,29 +294,26 @@ func SaveIssueFromText(issuesDir string, issueID int, text string) error {
 		Labels:    em.Labels,
 		Parent:    em.Parent,
 		BlockedBy: em.BlockedBy,
+		Comments:  existing.Comments,
 		Created:   existing.Created,
-		Updated:   now,
 	}
-	metaBytes, err := toml.Marshal(&newMeta)
-	if err != nil {
-		return fmt.Errorf("marshaling meta: %w", err)
-	}
-	if err := os.WriteFile(filepath.Join(issueDir, "meta.toml"), metaBytes, 0644); err != nil {
-		return fmt.Errorf("writing meta.toml: %w", err)
+	stamp(&newMeta, time.Now().UTC().Truncate(time.Minute))
+	if err := writeMeta(filepath.Join(issueDir, "meta.toml"), newMeta); err != nil {
+		return err
 	}
 
 	// Write content.md
 	if content != "" {
 		content += "\n"
 	}
-	if err := os.WriteFile(filepath.Join(issueDir, "content.md"), []byte(content), 0644); err != nil {
+	if err := fsutil.WriteFile(filepath.Join(issueDir, "content.md"), []byte(content), metaFileMode); err != nil {
 		return fmt.Errorf("writing content.md: %w", err)
 	}
 
 	// Write comments.md only when there are comments; remove the file otherwise.
 	commentsPath := filepath.Join(issueDir, "comments.md")
 	if commentsRaw != "" {
-		if err := os.WriteFile(commentsPath, []byte(commentsRaw+"\n"), 0644); err != nil {
+		if err := fsutil.WriteFile(commentsPath, []byte(commentsRaw+"\n"), metaFileMode); err != nil {
 			return fmt.Errorf("writing comments.md: %w", err)
 		}
 	} else {

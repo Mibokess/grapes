@@ -13,6 +13,17 @@ import (
 	"github.com/charmbracelet/x/ansi"
 )
 
+// Card and column layout. Cards are a fixed height so that rendering, scrolling
+// and mouse hit-testing all agree on where a row starts.
+const (
+	// cardHeight is border(2) + ID(1) + title(2) + labels(1) + date(1).
+	cardHeight = 7
+	// colHeaderHeight is the column title plus its underline.
+	colHeaderHeight = 2
+	// minColWidth is the narrowest a column may get before one is dropped.
+	minColWidth = 22
+)
+
 type column struct {
 	status data.Status
 	issues []data.Issue
@@ -67,13 +78,46 @@ func (m Model) SetTopOffset(n int) Model {
 // SetStatusFilter sets the active status filter for column hiding.
 func (m Model) SetStatusFilter(statuses []data.Status) Model {
 	m.statusFilter = statuses
-	return m
+	return m.regroup()
 }
 
 // SetHideEmpty controls whether columns with no issues are hidden.
 func (m Model) SetHideEmpty(hide bool) Model {
 	m.hideEmpty = hide
+	return m.regroup()
+}
+
+// regroup rebuilds the columns from the current issues and options, then clamps
+// the cursor into the new layout. Every setter that changes what the columns
+// contain goes through it, so the view can never disagree with the options.
+func (m Model) regroup() Model {
+	m.columns = groupByStatus(m.filteredIssues(), m.statusFilter, m.hideEmpty)
+	if m.curCol >= len(m.columns) {
+		m.curCol = max(0, len(m.columns)-1)
+	}
+	m.clampRow()
+	m.ensureRowVisible()
+	m.ensureColVisible()
 	return m
+}
+
+// currentIssue returns the issue under the cursor, if there is one.
+func (m Model) currentIssue() (data.Issue, bool) {
+	col, ok := m.currentColumn()
+	if !ok || m.curRow < 0 || m.curRow >= len(col.issues) {
+		return data.Issue{}, false
+	}
+	return col.issues[m.curRow], true
+}
+
+// currentColumn returns the column under the cursor, if there is one. Every
+// column access goes through it: with hide-empty on (the default), a filter
+// that matches nothing leaves no columns at all.
+func (m Model) currentColumn() (column, bool) {
+	if m.curCol < 0 || m.curCol >= len(m.columns) {
+		return column{}, false
+	}
+	return m.columns[m.curCol], true
 }
 
 // HideEmpty returns whether empty columns are currently hidden.
@@ -111,15 +155,7 @@ func (m Model) SetSize(w, h int) Model {
 
 func (m Model) SetIssues(issues []data.Issue) Model {
 	m.allIssues = issues
-	m.columns = groupByStatus(m.filteredIssues(), m.statusFilter, m.hideEmpty)
-	if m.curCol >= len(m.columns) {
-		m.curCol = max(0, len(m.columns)-1)
-	}
-	if len(m.columns) > 0 && m.curRow >= len(m.columns[m.curCol].issues) {
-		m.curRow = max(0, len(m.columns[m.curCol].issues)-1)
-	}
-	m.ensureRowVisible()
-	return m
+	return m.regroup()
 }
 
 func (m Model) SetSortMode(mode data.SortMode) Model {
@@ -203,7 +239,10 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 				}
 			}
 		case key.Matches(msg, common.BoardKeyMap.Down):
-			col := m.columns[m.curCol]
+			col, ok := m.currentColumn()
+			if !ok {
+				break
+			}
 			if m.curRow < len(col.issues)-1 {
 				m.curRow++
 				m.ensureRowVisible()
@@ -221,32 +260,27 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 				}
 			}
 		case key.Matches(msg, common.BoardKeyMap.Open):
-			if len(m.columns) > 0 && len(m.columns[m.curCol].issues) > 0 {
-				issue := m.columns[m.curCol].issues[m.curRow]
+			if issue, ok := m.currentIssue(); ok {
 				return m, func() tea.Msg { return common.OpenDetailMsg{ID: issue.ID} }
 			}
 		case key.Matches(msg, common.BoardKeyMap.EditIssue):
-			if len(m.columns) > 0 && len(m.columns[m.curCol].issues) > 0 {
-				issue := m.columns[m.curCol].issues[m.curRow]
+			if issue, ok := m.currentIssue(); ok {
 				return m, func() tea.Msg { return common.LaunchEditMsg{ID: issue.ID} }
 			}
 		case key.Matches(msg, common.BoardKeyMap.CycleStatus):
-			if len(m.columns) > 0 && len(m.columns[m.curCol].issues) > 0 {
-				issue := m.columns[m.curCol].issues[m.curRow]
+			if issue, ok := m.currentIssue(); ok {
 				return m, func() tea.Msg {
 					return common.ShowPickerMsg{IssueID: issue.ID, Field: "status"}
 				}
 			}
 		case key.Matches(msg, common.BoardKeyMap.CyclePriority):
-			if len(m.columns) > 0 && len(m.columns[m.curCol].issues) > 0 {
-				issue := m.columns[m.curCol].issues[m.curRow]
+			if issue, ok := m.currentIssue(); ok {
 				return m, func() tea.Msg {
 					return common.ShowPickerMsg{IssueID: issue.ID, Field: "priority"}
 				}
 			}
 		case key.Matches(msg, common.BoardKeyMap.Labels):
-			if len(m.columns) > 0 && len(m.columns[m.curCol].issues) > 0 {
-				issue := m.columns[m.curCol].issues[m.curRow]
+			if issue, ok := m.currentIssue(); ok {
 				return m, func() tea.Msg {
 					return common.ShowLabelPickerMsg{IssueID: issue.ID}
 				}
@@ -337,8 +371,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 				m.ensureColVisible()
 			}
 		case tea.MouseForward:
-			if len(m.columns) > 0 && len(m.columns[m.curCol].issues) > 0 {
-				issue := m.columns[m.curCol].issues[m.curRow]
+			if issue, ok := m.currentIssue(); ok {
 				return m, func() tea.Msg { return common.OpenDetailMsg{ID: issue.ID} }
 			}
 		}
@@ -375,22 +408,27 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 					return common.MoveIssueMsg{IssueID: issueID, NewStatus: newStatus}
 				}
 			}
-		} else if wasMouseDown && len(m.columns) > 0 && len(m.columns[m.curCol].issues) > 0 {
+		} else if wasMouseDown {
 			// Clean click (no drag movement) — open detail
-			issue := m.columns[m.curCol].issues[m.curRow]
-			return m, func() tea.Msg { return common.OpenDetailMsg{ID: issue.ID} }
+			if issue, ok := m.currentIssue(); ok {
+				return m, func() tea.Msg { return common.OpenDetailMsg{ID: issue.ID} }
+			}
 		}
 	}
 	return m, nil
 }
 
 func (m *Model) clampRow() {
-	if len(m.columns) == 0 {
+	col, ok := m.currentColumn()
+	if !ok {
+		m.curRow = 0
 		return
 	}
-	col := m.columns[m.curCol]
 	if m.curRow >= len(col.issues) {
 		m.curRow = max(0, len(col.issues)-1)
+	}
+	if m.curRow < 0 {
+		m.curRow = 0
 	}
 }
 
@@ -409,8 +447,8 @@ func (m Model) maxVisibleCards() int {
 	// Each card: border(2) + ID(1) + title(2) + meta(1) + date(1) = 7 lines.
 	// Column header takes 2 lines (text + separator).
 	// Reserve 1 extra line for a "more" indicator.
-	const cardHeight = 7
-	const overhead = 3
+	// Reserve the column header plus one line for a "more" indicator.
+	const overhead = colHeaderHeight + 1
 
 	available := m.height - overhead
 	if m.filtering || m.filter.Value() != "" {
@@ -448,23 +486,7 @@ func (m Model) View() string {
 		filterLine = m.theme.StyleSubtitle.Render(fmt.Sprintf("  Filter: %s", m.filter.Value()))
 	}
 
-	visible := m.visCols
-	if visible > len(m.columns)-m.scrollCol {
-		visible = len(m.columns) - m.scrollCol
-	}
-
-	// Shrink visible column count until each column is at least minColWidth wide.
-	// Account for inter-column gaps (1 char each, except after last column).
-	const minColWidth = 22
-	totalGaps := visible - 1
-	for visible > 1 && (m.width-totalGaps)/visible < minColWidth {
-		visible--
-		totalGaps = visible - 1
-	}
-	colWidth := (m.width - totalGaps) / visible
-	if colWidth < minColWidth {
-		colWidth = minColWidth
-	}
+	visible, colWidth := m.visibleColWidth()
 
 	renderedCols := make([]string, visible)
 	for i := 0; i < visible; i++ {
@@ -480,14 +502,11 @@ func (m Model) View() string {
 
 	board := lipgloss.JoinHorizontal(lipgloss.Top, renderedCols...)
 
-	// Overlay floating card at cursor during drag — temporarily clear dragging
-	// so renderCard uses the active style instead of the ghost style.
+	// Overlay the card being dragged at the cursor, drawn in the active style so
+	// it reads as the thing you are holding.
 	if m.dragging {
 		if issue, ok := m.findIssue(m.dragIssueID); ok {
-			saved := m.dragging
-			m.dragging = false
-			floating := m.renderCard(issue, colWidth, true)
-			m.dragging = saved
+			floating := m.renderCard(issue, colWidth, cardActive)
 			board = m.overlayAt(board, floating, m.dragX, m.dragY-m.topOffset)
 		}
 	}
@@ -530,15 +549,13 @@ func (m Model) renderColumn(col column, width int, isActive bool) string {
 	ghostInsertIdx := -1
 	if isDropTarget {
 		if issue, ok := m.findIssue(m.dragIssueID); ok {
-			ghostCard = m.renderGhostCard(issue, width)
+			ghostCard = m.renderCard(issue, width, cardGhost)
 			// Figure out which slot the cursor is near based on Y position
-			const headerH = 2
-			const cardH = 7
-			yInCol := m.dragY - m.topOffset - headerH
+			yInCol := m.dragY - m.topOffset - colHeaderHeight
 			if yInCol < 0 {
 				ghostInsertIdx = 0
 			} else {
-				ghostInsertIdx = yInCol / cardH
+				ghostInsertIdx = yInCol / cardHeight
 			}
 		}
 	}
@@ -574,8 +591,7 @@ func (m Model) renderColumn(col column, width int, isActive bool) string {
 		if ghostCard != "" && visibleIdx == ghostInsertIdx {
 			cards = append(cards, ghostCard)
 		}
-		active := isActive && i == m.curRow
-		cards = append(cards, m.renderCard(col.issues[i], width, active))
+		cards = append(cards, m.renderCard(col.issues[i], width, m.modeFor(col.issues[i], isActive && i == m.curRow)))
 		visibleIdx++
 	}
 	// If cursor is past the last card, append ghost at the end
@@ -593,15 +609,29 @@ func (m Model) renderColumn(col column, width int, isActive bool) string {
 	return lipgloss.JoinVertical(lipgloss.Left, header, content)
 }
 
-func (m Model) renderCard(issue data.Issue, width int, active bool) string {
-	isDragged := m.dragging && issue.ID == m.dragIssueID
+// cardMode selects how a card is drawn.
+type cardMode int
+
+const (
+	cardNormal  cardMode = iota
+	cardActive           // under the cursor
+	cardDragged          // the source card, left in place while a drag is in flight
+	cardGhost            // the drop preview shown in the target column
+)
+
+// renderCard draws one issue card. Every card is exactly cardHeight lines tall,
+// including empty label and date lines, so column layout and mouse hit-testing
+// can rely on a fixed row height.
+func (m Model) renderCard(issue data.Issue, width int, mode cardMode) string {
+	faint := mode == cardDragged || mode == cardGhost
 
 	style := m.theme.StyleCard.Width(width - 2) // -2 for border chars
-	if isDragged {
+	switch {
+	case faint:
 		style = m.theme.StyleDragCard.Width(width - 2)
-	} else if active {
+	case mode == cardActive:
 		style = m.theme.StyleActiveCard.Width(width - 2)
-	} else if issue.Worktree != "" {
+	case issue.Worktree != "":
 		c := m.theme.WorktreeColorFor(issue.Worktree, m.worktreeNames)
 		style = m.theme.StyleCard.Width(width - 2).BorderForeground(c)
 	}
@@ -611,56 +641,30 @@ func (m Model) renderCard(issue data.Issue, width int, active bool) string {
 	innerW := width - 6
 
 	// Line 1: #ID + priority icon (small, muted — like Linear's "ETA-502")
-	idStr := m.theme.StyleFaint.Render(fmt.Sprintf("#%d", issue.ID))
-	prioIcon := m.theme.PriorityStyle(issue.Priority).Render(
-		strings.TrimSpace(common.PriorityIcon(issue.Priority)))
-	line1 := idStr
-	if issue.Priority <= data.PriorityHigh {
-		line1 += " " + prioIcon
-	}
-	if len(issue.Sources) > 1 {
-		line1 += " " + m.theme.RenderSourceIndicators(issue.Sources, m.worktreeNames)
-	} else if issue.Worktree != "" {
-		c := m.theme.WorktreeColorFor(issue.Worktree, m.worktreeNames)
-		line1 += " " + lipgloss.NewStyle().Foreground(c).Render(common.WorktreeIcon())
+	line1 := m.theme.StyleFaint.Render(fmt.Sprintf("#%d", issue.ID))
+	if mode != cardDragged {
+		if issue.Priority.AtLeast(data.PriorityHigh) {
+			line1 += " " + m.theme.PriorityStyle(issue.Priority).Render(
+				strings.TrimSpace(common.PriorityIcon(issue.Priority)))
+		}
+		line1 += m.renderSourceSuffix(issue, faint)
 	}
 
-	// Lines 2-3: Title wraps up to 2 lines, word-wrapping line 1
-	titleRunes := []rune(issue.Title)
-	var titleLine1, titleLine2 string
-	if len(titleRunes) <= innerW {
-		titleLine1 = issue.Title
-	} else {
-		// Find last space within innerW to break on a word boundary
-		breakAt := innerW
-		for i := innerW - 1; i > 0; i-- {
-			if titleRunes[i] == ' ' {
-				breakAt = i
-				break
-			}
-		}
-		titleLine1 = string(titleRunes[:breakAt])
-		rest := titleRunes[breakAt:]
-		// Trim leading space from the wrapped portion
-		if len(rest) > 0 && rest[0] == ' ' {
-			rest = rest[1:]
-		}
-		titleLine2 = truncate(string(rest), innerW)
-	}
-	// Always render title as exactly 2 lines so all cards have the same height.
+	// Lines 2-3: title, always two lines so all cards have the same height.
+	titleLine1, titleLine2 := wrapTitle(issue.Title, innerW)
 	title := titleLine1 + "\n" + titleLine2
-	if isDragged {
-		title = m.theme.StyleFaint.Render(titleLine1 + "\n" + titleLine2)
-	} else if active {
+	switch {
+	case faint:
+		title = m.theme.StyleFaint.Render(title)
+	case mode == cardActive:
 		title = m.theme.StyleTitle.Render(title)
 	}
 
 	// Line 4: labels (compact, muted)
-	var metaLine string
 	var meta []string
 	used := 0
 	for _, l := range issue.Labels {
-		lw := len([]rune(l))
+		lw := ansi.StringWidth(l)
 		sep := 0
 		if len(meta) > 0 {
 			sep = 2 // "  "
@@ -668,16 +672,14 @@ func (m Model) renderCard(issue data.Issue, width int, active bool) string {
 		if used+sep+lw > innerW {
 			break
 		}
-		if isDragged {
+		if faint {
 			meta = append(meta, m.theme.StyleFaint.Render(l))
 		} else {
 			meta = append(meta, m.theme.RenderLabel(l))
 		}
 		used += sep + lw
 	}
-	if len(meta) > 0 {
-		metaLine = strings.Join(meta, "  ")
-	}
+	metaLine := strings.Join(meta, "  ")
 
 	// Line 5: Date — show "Updated" when sorting by updated, otherwise "Created"
 	var dateLine string
@@ -687,25 +689,70 @@ func (m Model) renderCard(issue data.Issue, width int, active bool) string {
 		dateLine = m.theme.StyleFaint.Render("Created " + issue.Created.Format("Jan 2 15:04"))
 	}
 
-	// When dragged, force all content to faint
-	if isDragged {
-		line1 = m.theme.StyleFaint.Render(fmt.Sprintf("#%d", issue.ID))
-	}
-
 	// Always include all 5 lines: ID, title (2), meta, date — for uniform card height.
 	content := line1 + "\n" + title + "\n" + metaLine + "\n" + dateLine
 
 	return style.Render(content)
 }
 
-// visibleColWidth computes the number of visible columns (after narrowing
-// for minimum width) and the content width of each column.
+// modeFor picks the drawing mode for a card in its column: the card being
+// dragged stays visible in place, dimmed.
+func (m Model) modeFor(issue data.Issue, active bool) cardMode {
+	switch {
+	case m.dragging && issue.ID == m.dragIssueID:
+		return cardDragged
+	case active:
+		return cardActive
+	default:
+		return cardNormal
+	}
+}
+
+// renderSourceSuffix renders the "where does this issue live" markers that
+// follow the ID: one icon per source, or a single worktree icon.
+func (m Model) renderSourceSuffix(issue data.Issue, faint bool) string {
+	switch {
+	case len(issue.Sources) > 1:
+		if faint {
+			return " " + m.theme.StyleFaint.Render(fmt.Sprintf("(%d)", len(issue.Sources)))
+		}
+		return " " + m.theme.RenderSourceIndicators(issue.Sources, m.worktreeNames)
+	case issue.Worktree != "":
+		if faint {
+			return " " + m.theme.StyleFaint.Render(common.WorktreeIcon())
+		}
+		c := m.theme.WorktreeColorFor(issue.Worktree, m.worktreeNames)
+		return " " + lipgloss.NewStyle().Foreground(c).Render(common.WorktreeIcon())
+	}
+	return ""
+}
+
+// wrapTitle splits a title across the two lines a card gives it, breaking on a
+// word boundary where there is one. Widths are measured in terminal cells, so
+// wide glyphs (CJK, emoji) do not push the text past the card border.
+func wrapTitle(title string, innerW int) (first, second string) {
+	if innerW <= 0 {
+		return "", ""
+	}
+	if ansi.StringWidth(title) <= innerW {
+		return title, ""
+	}
+	head := ansi.Truncate(title, innerW, "")
+	rest := title[len(head):]
+	if i := strings.LastIndexByte(head, ' '); i > 0 {
+		head, rest = title[:i], title[i:]
+	}
+	return head, truncate(strings.TrimPrefix(rest, " "), innerW)
+}
+
+// visibleColWidth computes the number of visible columns (after narrowing for
+// minimum width) and the content width of each column. Inter-column gaps are one
+// character each, except after the last column.
 func (m Model) visibleColWidth() (visible, colWidth int) {
 	visible = m.visCols
 	if visible > len(m.columns)-m.scrollCol {
 		visible = len(m.columns) - m.scrollCol
 	}
-	const minColWidth = 22
 	totalGaps := visible - 1
 	for visible > 1 && (m.width-totalGaps)/visible < minColWidth {
 		visible--
@@ -751,9 +798,8 @@ func (m Model) cardAt(x, y int) (colIdx, rowIdx int, ok bool) {
 		return 0, 0, false
 	}
 
-	// Skip lines above content (app header + filter bar) + column header (2 lines).
-	const headerH = 2
-	totalSkip := m.topOffset + headerH
+	// Skip lines above content (app header + filter bar) + the column header.
+	totalSkip := m.topOffset + colHeaderHeight
 	if y < totalSkip {
 		return 0, 0, false
 	}
@@ -773,8 +819,7 @@ func (m Model) cardAt(x, y int) (colIdx, rowIdx int, ok bool) {
 		yOffset--
 	}
 
-	const cardH = 7
-	ri := yOffset/cardH + scrollOff
+	ri := yOffset/cardHeight + scrollOff
 	// Clamp to visible window — reject clicks on "more" indicators.
 	maxCards := m.maxVisibleCards()
 	endIdx := scrollOff + maxCards
@@ -811,8 +856,7 @@ func (m Model) moreIndicatorAt(x, y int) (colIdx, dir int) {
 		scrollOff = m.scrollRow
 	}
 
-	const headerH = 2
-	totalSkip := m.topOffset + headerH
+	totalSkip := m.topOffset + colHeaderHeight
 	if y < totalSkip {
 		return 0, 0
 	}
@@ -833,9 +877,8 @@ func (m Model) moreIndicatorAt(x, y int) (colIdx, dir int) {
 		if scrollOff > 0 {
 			adj--
 		}
-		const cardH = 7
 		visibleCards := endIdx - scrollOff
-		if adj >= visibleCards*cardH {
+		if adj >= visibleCards*cardHeight {
 			return ci, 1
 		}
 	}
@@ -882,18 +925,18 @@ func groupByStatus(issues []data.Issue, statusFilter []data.Status, hideEmpty bo
 	return cols
 }
 
-func truncate(s string, maxLen int) string {
-	if maxLen <= 0 {
+// truncate shortens s to maxWidth terminal cells, marking the cut with "...".
+func truncate(s string, maxWidth int) string {
+	if maxWidth <= 0 {
 		return ""
 	}
-	runes := []rune(s)
-	if len(runes) <= maxLen {
+	if ansi.StringWidth(s) <= maxWidth {
 		return s
 	}
-	if maxLen <= 3 {
-		return string(runes[:maxLen])
+	if maxWidth <= 3 {
+		return ansi.Truncate(s, maxWidth, "")
 	}
-	return string(runes[:maxLen-3]) + "..."
+	return ansi.Truncate(s, maxWidth, "...")
 }
 
 func min(a, b int) int {
@@ -908,75 +951,6 @@ func max(a, b int) int {
 		return a
 	}
 	return b
-}
-
-// renderGhostCard renders a card in the ghost/dim style for the drop preview.
-func (m Model) renderGhostCard(issue data.Issue, width int) string {
-	style := m.theme.StyleDragCard.Width(width - 2)
-	innerW := width - 6
-
-	idStr := m.theme.StyleFaint.Render(fmt.Sprintf("#%d", issue.ID))
-	prioIcon := m.theme.PriorityStyle(issue.Priority).Render(
-		strings.TrimSpace(common.PriorityIcon(issue.Priority)))
-	line1 := idStr
-	if issue.Priority <= data.PriorityHigh {
-		line1 += " " + prioIcon
-	}
-	if len(issue.Sources) > 1 {
-		line1 += " " + m.theme.StyleFaint.Render(fmt.Sprintf("(%d)", len(issue.Sources)))
-	} else if issue.Worktree != "" {
-		line1 += " " + m.theme.StyleFaint.Render(common.WorktreeIcon())
-	}
-
-	titleRunes := []rune(issue.Title)
-	var titleLine1, titleLine2 string
-	if len(titleRunes) <= innerW {
-		titleLine1 = issue.Title
-	} else {
-		breakAt := innerW
-		for i := innerW - 1; i > 0; i-- {
-			if titleRunes[i] == ' ' {
-				breakAt = i
-				break
-			}
-		}
-		titleLine1 = string(titleRunes[:breakAt])
-		rest := titleRunes[breakAt:]
-		if len(rest) > 0 && rest[0] == ' ' {
-			rest = rest[1:]
-		}
-		titleLine2 = truncate(string(rest), innerW)
-	}
-	title := m.theme.StyleFaint.Render(titleLine1 + "\n" + titleLine2)
-
-	var metaLine string
-	var meta []string
-	used := 0
-	for _, l := range issue.Labels {
-		lw := len([]rune(l))
-		sep := 0
-		if len(meta) > 0 {
-			sep = 2
-		}
-		if used+sep+lw > innerW {
-			break
-		}
-		meta = append(meta, m.theme.StyleFaint.Render(l))
-		used += sep + lw
-	}
-	if len(meta) > 0 {
-		metaLine = strings.Join(meta, "  ")
-	}
-
-	var dateLine string
-	if m.sortMode == data.SortByUpdated && !issue.Updated.IsZero() {
-		dateLine = m.theme.StyleFaint.Render("Updated " + issue.Updated.Format("Jan 2 15:04"))
-	} else if !issue.Created.IsZero() {
-		dateLine = m.theme.StyleFaint.Render("Created " + issue.Created.Format("Jan 2 15:04"))
-	}
-
-	content := line1 + "\n" + title + "\n" + metaLine + "\n" + dateLine
-	return style.Render(content)
 }
 
 // findIssue looks up an issue by ID across all columns.

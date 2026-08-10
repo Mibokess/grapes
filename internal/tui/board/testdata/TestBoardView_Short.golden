@@ -1,7 +1,7 @@
   ○ BACKLOG (1)                    ◌ TODO (1)                       ◑ IN_PROGRESS (2)             
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ╭────────────────────────────╮   ╭────────────────────────────╮   ╭────────────────────────────╮  
-│ #3                         │   │ #2                         │   │ #1 !                       │  
+│ #3                         │   │ #2 !!                      │   │ #1 !                       │  
 │ Add dark mode support      │   │ Fix dashboard loading      │   │ Implement user             │  
 │                            │   │ performance                │   │ authentication             │  
 │ frontend  design           │   │ performance  frontend      │   │ backend  security          │  

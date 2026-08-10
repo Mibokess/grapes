@@ -92,12 +92,53 @@ var worktreeColorsLight = []color.Color{
 	lipgloss.Color("#1a7f37"), // light green
 }
 
-// T is the global theme instance used for rendering. It defaults to dark.
-var T = NewTheme(true)
+// BuiltinDark is the default dark palette. It is the single source of truth for
+// the built-in colors: config holds only the user's overrides.
+var BuiltinDark = config.ColorSetConfig{
+	Accent:          "#a371f7",
+	AccentBg:        "#2d1b69",
+	Border:          "#30363d",
+	Text:            "#e6edf3",
+	Muted:           "#8b949e",
+	Faint:           "#484f58",
+	Surface:         "#161b22",
+	ColorBacklog:    "#8b949e",
+	ColorTodo:       "#388bfd",
+	ColorInProgress: "#d29922",
+	ColorDone:       "#3fb950",
+	ColorCancelled:  "#6e7681",
+	ColorUrgent:     "#f85149",
+	ColorHigh:       "#d29922",
+	ColorMedium:     "#388bfd",
+	ColorLow:        "#6e7681",
+}
 
-// ApplyTheme rebuilds the global theme from user config overrides.
-func ApplyTheme(cfg config.ThemeConfig, termIsDark bool) {
-	T = NewThemeFromConfig(cfg, termIsDark)
+// BuiltinLight is the default light palette.
+var BuiltinLight = config.ColorSetConfig{
+	Accent:          "#8250df",
+	AccentBg:        "#eddeff",
+	Border:          "#d0d7de",
+	Text:            "#1f2328",
+	Muted:           "#656d76",
+	Faint:           "#afb8c1",
+	Surface:         "#f6f8fa",
+	ColorBacklog:    "#656d76",
+	ColorTodo:       "#0969da",
+	ColorInProgress: "#9a6700",
+	ColorDone:       "#1a7f37",
+	ColorCancelled:  "#8c959f",
+	ColorUrgent:     "#cf222e",
+	ColorHigh:       "#9a6700",
+	ColorMedium:     "#0969da",
+	ColorLow:        "#8c959f",
+}
+
+// BuiltinColors returns the built-in palette for the given mode.
+func BuiltinColors(isDark bool) config.ColorSetConfig {
+	if isDark {
+		return BuiltinDark
+	}
+	return BuiltinLight
 }
 
 // ThemeMsg is sent when the terminal background is detected and the theme changes.
@@ -108,6 +149,11 @@ type LabelColor struct{ Fg, Bg color.Color }
 
 // Theme holds all colors and pre-built styles for the TUI.
 type Theme struct {
+	// Colors is the resolved palette behind the color fields below: the active
+	// base (built-in or preset) with the user's overrides applied. The settings
+	// screen reads it to show the hex value each field actually renders with.
+	Colors config.ColorSetConfig
+
 	// Raw colors — available for dynamic style construction.
 	ColorText     color.Color
 	ColorMuted    color.Color
@@ -161,7 +207,6 @@ type Theme struct {
 	StyleMetaBox       lipgloss.Style
 	StyleDragCard      lipgloss.Style
 	StyleDropTarget    lipgloss.Style
-	StyleWorktreeCard  lipgloss.Style
 	StyleWorktreeLabel lipgloss.Style
 	StyleWorktreeBadge lipgloss.Style
 
@@ -175,124 +220,105 @@ type Theme struct {
 // NewTheme creates a theme appropriate for the terminal background.
 func NewTheme(isDark bool) Theme {
 	var t Theme
+	t.setBuiltin(isDark)
+	t.buildStyles()
+	return t
+}
+
+// NewThemeFromConfig creates a theme for the resolved mode: an external preset
+// or the built-in palette as the base, with the user's color overrides applied
+// on top of whichever base was chosen.
+func NewThemeFromConfig(cfg config.ThemeConfig, termIsDark bool) Theme {
+	var t Theme
+	isDark := cfg.EffectiveIsDark(termIsDark)
+
+	ext, usePreset := resolvePreset(cfg.Preset)
+	if usePreset {
+		isDark = PresetIsDark(ext)
+		switch cfg.Mode {
+		case "light":
+			isDark = false
+		case "dark":
+			isDark = true
+		}
+		applyPreset(&t, ext)
+		// Override glamour style if mode was explicitly set.
+		if cfg.Mode == "light" || cfg.Mode == "dark" {
+			if isDark {
+				t.GlamourStyle = "dark"
+			} else {
+				t.GlamourStyle = "light"
+			}
+		}
+	} else {
+		t.setBuiltin(isDark)
+	}
+
+	t.applyColorSet(mergeColorSet(t.Colors, cfg.ColorsFor(isDark)))
+	t.buildStyles()
+	return t
+}
+
+// resolvePreset looks up an external theme by name. An empty name, "default",
+// or an unknown name means "use the built-in palette".
+func resolvePreset(name string) (*themes.Theme, bool) {
+	if name == "" || name == "default" {
+		return nil, false
+	}
+	ext, err := themes.GetTheme(name)
+	if err != nil {
+		return nil, false
+	}
+	return ext, true
+}
+
+// mergeColorSet returns base with every non-empty field of override applied.
+func mergeColorSet(base, override config.ColorSetConfig) config.ColorSetConfig {
+	for _, key := range ColorKeys {
+		if v := GetColor(override, key); v != "" {
+			SetColor(&base, key, v)
+		}
+	}
+	return base
+}
+
+// applyColorSet assigns the palette colors from a resolved color set and
+// records it as the theme's effective palette.
+func (t *Theme) applyColorSet(c config.ColorSetConfig) {
+	t.Colors = c
+	t.ColorText = lipgloss.Color(c.Text)
+	t.ColorMuted = lipgloss.Color(c.Muted)
+	t.ColorFaint = lipgloss.Color(c.Faint)
+	t.ColorBorder = lipgloss.Color(c.Border)
+	t.ColorSurface = lipgloss.Color(c.Surface)
+	t.ColorAccent = lipgloss.Color(c.Accent)
+	t.ColorAccentBg = lipgloss.Color(c.AccentBg)
+	t.ColorUrgent = lipgloss.Color(c.ColorUrgent)
+	t.ColorHigh = lipgloss.Color(c.ColorHigh)
+	t.ColorMedium = lipgloss.Color(c.ColorMedium)
+	t.ColorLow = lipgloss.Color(c.ColorLow)
+	t.ColorBacklog = lipgloss.Color(c.ColorBacklog)
+	t.ColorTodo = lipgloss.Color(c.ColorTodo)
+	t.ColorInProgress = lipgloss.Color(c.ColorInProgress)
+	t.ColorDone = lipgloss.Color(c.ColorDone)
+	t.ColorCancelled = lipgloss.Color(c.ColorCancelled)
+	// Errors are shown in the urgent color, in every palette.
+	t.ColorError = t.ColorUrgent
+}
+
+// setBuiltin loads the built-in palette and the colors derived from it.
+func (t *Theme) setBuiltin(isDark bool) {
 	if isDark {
 		t.setDarkColors()
 	} else {
 		t.setLightColors()
 	}
-	t.buildStyles()
-	return t
-}
-
-// NewThemeFromConfig creates a theme for the resolved mode, overridden by user config colors.
-func NewThemeFromConfig(cfg config.ThemeConfig, termIsDark bool) Theme {
-	// Try external preset first.
-	if p := cfg.Preset; p != "" && p != "default" {
-		if ext, err := themes.GetTheme(p); err == nil {
-			isDark := PresetIsDark(ext)
-			switch cfg.Mode {
-			case "light":
-				isDark = false
-			case "dark":
-				isDark = true
-			}
-			var t Theme
-			applyPreset(&t, ext)
-			// Override glamour style if mode was explicitly set.
-			if cfg.Mode == "light" || cfg.Mode == "dark" {
-				if isDark {
-					t.GlamourStyle = "dark"
-				} else {
-					t.GlamourStyle = "light"
-				}
-			}
-			t.buildStyles()
-			return t
-		}
-	}
-
-	// Built-in defaults.
-	isDark := cfg.EffectiveIsDark(termIsDark)
-	t := NewTheme(isDark)
-	applyColorOverrides(&t, cfg.ColorsFor(isDark))
-	t.buildStyles()
-	return t
-}
-
-func applyColorOverrides(t *Theme, c config.ColorSetConfig) {
-	if c.Text != "" {
-		t.ColorText = lipgloss.Color(c.Text)
-	}
-	if c.Muted != "" {
-		t.ColorMuted = lipgloss.Color(c.Muted)
-	}
-	if c.Faint != "" {
-		t.ColorFaint = lipgloss.Color(c.Faint)
-	}
-	if c.Border != "" {
-		t.ColorBorder = lipgloss.Color(c.Border)
-	}
-	if c.Surface != "" {
-		t.ColorSurface = lipgloss.Color(c.Surface)
-	}
-	if c.Accent != "" {
-		t.ColorAccent = lipgloss.Color(c.Accent)
-	}
-	if c.AccentBg != "" {
-		t.ColorAccentBg = lipgloss.Color(c.AccentBg)
-	}
-	if c.ColorUrgent != "" {
-		t.ColorUrgent = lipgloss.Color(c.ColorUrgent)
-		t.ColorError = t.ColorUrgent
-	}
-	if c.ColorHigh != "" {
-		t.ColorHigh = lipgloss.Color(c.ColorHigh)
-	}
-	if c.ColorMedium != "" {
-		t.ColorMedium = lipgloss.Color(c.ColorMedium)
-	}
-	if c.ColorLow != "" {
-		t.ColorLow = lipgloss.Color(c.ColorLow)
-	}
-	if c.ColorBacklog != "" {
-		t.ColorBacklog = lipgloss.Color(c.ColorBacklog)
-	}
-	if c.ColorTodo != "" {
-		t.ColorTodo = lipgloss.Color(c.ColorTodo)
-	}
-	if c.ColorInProgress != "" {
-		t.ColorInProgress = lipgloss.Color(c.ColorInProgress)
-	}
-	if c.ColorDone != "" {
-		t.ColorDone = lipgloss.Color(c.ColorDone)
-	}
-	if c.ColorCancelled != "" {
-		t.ColorCancelled = lipgloss.Color(c.ColorCancelled)
-	}
 }
 
 func (t *Theme) setDarkColors() {
-	t.ColorText = lipgloss.Color("#e6edf3")
-	t.ColorMuted = lipgloss.Color("#8b949e")
-	t.ColorFaint = lipgloss.Color("#484f58")
-	t.ColorBorder = lipgloss.Color("#30363d")
-	t.ColorSurface = lipgloss.Color("#161b22")
-	t.ColorAccent = lipgloss.Color("#a371f7")
-	t.ColorAccentBg = lipgloss.Color("#2d1b69")
+	t.applyColorSet(BuiltinDark)
 	t.ColorContrast = lipgloss.Color("#0d1117")
-	t.ColorError = lipgloss.Color("#f85149")
 	t.ColorWorktree = lipgloss.Color("#f0883e")
-
-	t.ColorUrgent = lipgloss.Color("#f85149")
-	t.ColorHigh = lipgloss.Color("#d29922")
-	t.ColorMedium = lipgloss.Color("#388bfd")
-	t.ColorLow = lipgloss.Color("#6e7681")
-
-	t.ColorBacklog = lipgloss.Color("#8b949e")
-	t.ColorTodo = lipgloss.Color("#388bfd")
-	t.ColorInProgress = lipgloss.Color("#d29922")
-	t.ColorDone = lipgloss.Color("#3fb950")
-	t.ColorCancelled = lipgloss.Color("#6e7681")
 
 	t.PillBgBacklog = lipgloss.Color("#3d4148")
 	t.PillBgCancelled = lipgloss.Color("#21262d")
@@ -316,27 +342,9 @@ func (t *Theme) setDarkColors() {
 }
 
 func (t *Theme) setLightColors() {
-	t.ColorText = lipgloss.Color("#1f2328")
-	t.ColorMuted = lipgloss.Color("#656d76")
-	t.ColorFaint = lipgloss.Color("#afb8c1")
-	t.ColorBorder = lipgloss.Color("#d0d7de")
-	t.ColorSurface = lipgloss.Color("#f6f8fa")
-	t.ColorAccent = lipgloss.Color("#8250df")
-	t.ColorAccentBg = lipgloss.Color("#eddeff")
+	t.applyColorSet(BuiltinLight)
 	t.ColorContrast = lipgloss.Color("#ffffff")
-	t.ColorError = lipgloss.Color("#cf222e")
 	t.ColorWorktree = lipgloss.Color("#bc4c00")
-
-	t.ColorUrgent = lipgloss.Color("#cf222e")
-	t.ColorHigh = lipgloss.Color("#9a6700")
-	t.ColorMedium = lipgloss.Color("#0969da")
-	t.ColorLow = lipgloss.Color("#8c959f")
-
-	t.ColorBacklog = lipgloss.Color("#656d76")
-	t.ColorTodo = lipgloss.Color("#0969da")
-	t.ColorInProgress = lipgloss.Color("#9a6700")
-	t.ColorDone = lipgloss.Color("#1a7f37")
-	t.ColorCancelled = lipgloss.Color("#8c959f")
 
 	t.PillBgBacklog = lipgloss.Color("#d0d7de")
 	t.PillBgCancelled = lipgloss.Color("#eaeef2")
@@ -443,11 +451,6 @@ func (t *Theme) buildStyles() {
 
 	t.StyleDropTarget = lipgloss.NewStyle().
 		Bold(true).
-		Padding(0, 1)
-
-	t.StyleWorktreeCard = lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(t.ColorWorktree).
 		Padding(0, 1)
 
 	t.StyleWorktreeLabel = lipgloss.NewStyle().

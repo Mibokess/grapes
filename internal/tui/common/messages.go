@@ -43,6 +43,9 @@ type EditorFinishedMsg struct{ Err error }
 type LaunchEditMsg struct{ ID int }
 type EditFinishedMsg struct{ Err error }
 type WriteErrMsg struct{ Err error }
+
+// WatchErrMsg reports a file-watcher failure: live reload is degraded.
+type WatchErrMsg struct{ Err error }
 type CycleSortMsg struct{}
 type ReverseSortMsg struct{}
 type ToggleEmptyColumnsMsg struct{}
@@ -71,5 +74,4 @@ type SwitchSourceMsg struct {
 }
 
 // Settings screen messages.
-type OpenSettingsMsg struct{}
 type ConfigSavedMsg struct{ Config config.Config }

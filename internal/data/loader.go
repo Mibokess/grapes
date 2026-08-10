@@ -34,17 +34,75 @@ type meta struct {
 // maxSearchDepth is how many directory levels deep to search for .grapes/.
 const maxSearchDepth = 10
 
-// FindIssuesDir searches startDir and subdirectories (up to maxSearchDepth) for a .grapes/ directory.
+// LoadProblem records an issue directory that could not be loaded. Skipping a
+// malformed issue keeps the rest of the board usable, but the skip is reported
+// rather than swallowed, so the issue does not simply vanish from the TUI.
+type LoadProblem struct {
+	Dir string
+	ID  int // 0 when the whole directory failed to load
+	Err error
+}
+
+func (p LoadProblem) Error() string {
+	if p.ID == 0 {
+		return fmt.Sprintf("%s: %v", p.Dir, p.Err)
+	}
+	return fmt.Sprintf("#%d: %v", p.ID, p.Err)
+}
+
+// FindIssuesDir locates the .grapes/ directory to use for startDir.
+//
+// It walks up from startDir first, the way git finds .git, so grapes works from
+// any subdirectory of a project. Only when no ancestor holds one does it scan
+// downward (up to maxSearchDepth), which still allows running grapes from a
+// directory that merely contains the project.
 func FindIssuesDir(startDir string) (string, error) {
 	dir, err := filepath.Abs(startDir)
 	if err != nil {
 		return "", err
 	}
+	if found, ok := findIssuesDirUp(dir); ok {
+		return found, nil
+	}
+	found, err := findIssuesDirDown(dir)
+	if err != nil {
+		return "", fmt.Errorf("searching %s for .grapes/: %w", startDir, err)
+	}
+	if found != "" {
+		return found, nil
+	}
+	return "", fmt.Errorf(".grapes/ directory not found in %s or its parents", startDir)
+}
+
+// findIssuesDirUp walks from dir to the filesystem root looking for .grapes/.
+func findIssuesDirUp(dir string) (string, bool) {
+	for {
+		candidate := filepath.Join(dir, ".grapes")
+		if info, err := os.Stat(candidate); err == nil && info.IsDir() {
+			return candidate, true
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			return "", false
+		}
+		dir = parent
+	}
+}
+
+// findIssuesDirDown scans subdirectories of dir for a .grapes/ directory.
+// Returns "" when the scan completes without finding one.
+func findIssuesDirDown(dir string) (string, error) {
 	var found string
 	baseDepth := strings.Count(dir, string(filepath.Separator))
-	filepath.WalkDir(dir, func(path string, d os.DirEntry, err error) error {
-		if err != nil || found != "" {
-			return filepath.SkipDir
+	err := filepath.WalkDir(dir, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			if path == dir {
+				return err // the starting directory itself is unreadable
+			}
+			return filepath.SkipDir // an unreadable subtree is not fatal
+		}
+		if found != "" {
+			return filepath.SkipAll
 		}
 		if d.IsDir() && d.Name() == ".grapes" {
 			found = path
@@ -61,21 +119,24 @@ func FindIssuesDir(startDir string) (string, error) {
 		}
 		return nil
 	})
-	if found != "" {
-		return found, nil
+	if err != nil {
+		return "", err
 	}
-	return "", fmt.Errorf(".grapes/ directory not found in %s", startDir)
+	return found, nil
 }
 
 // LoadAllIssues scans the .grapes/ directory and returns all issues with
 // parent→children relationships built. Content and comments are loaded too.
-func LoadAllIssues(dir string) ([]Issue, error) {
+// Issue directories that fail to load are reported as problems and left out of
+// the returned slice.
+func LoadAllIssues(dir string) ([]Issue, []LoadProblem, error) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
-		return nil, fmt.Errorf("reading %s: %w", dir, err)
+		return nil, nil, fmt.Errorf("reading %s: %w", dir, err)
 	}
 
 	var issues []Issue
+	var problems []LoadProblem
 	childrenMap := make(map[int][]int) // parent ID → child IDs
 	blocksMap := make(map[int][]int)   // blocked ID → IDs it blocks
 
@@ -89,7 +150,8 @@ func LoadAllIssues(dir string) ([]Issue, error) {
 		}
 		issue, err := loadIssueMeta(dir, id)
 		if err != nil {
-			continue // skip malformed issues gracefully
+			problems = append(problems, LoadProblem{Dir: dir, ID: id, Err: err})
+			continue
 		}
 		// Load content and comments
 		issue.Content = readFileOr(filepath.Join(dir, e.Name(), "content.md"), "")
@@ -121,7 +183,7 @@ func LoadAllIssues(dir string) ([]Issue, error) {
 		return issues[i].ID < issues[j].ID
 	})
 
-	return issues, nil
+	return issues, problems, nil
 }
 
 func loadIssueMeta(dir string, id int) (Issue, error) {
@@ -209,14 +271,16 @@ func NextID(issuesDir string, extraDirs ...string) (int, error) {
 	mainRoot := FindMainProjectRoot(issuesDir)
 	mainGrapes := filepath.Join(mainRoot, ".grapes")
 
-	// Acquire exclusive lock
+	// Acquire exclusive lock. The lock file is deliberately left on disk:
+	// unlinking it while holding the lock lets a waiting process keep a lock on
+	// the orphaned inode while the next process locks a freshly created file,
+	// so two callers would scan for the max ID at the same time.
 	lockPath := filepath.Join(mainGrapes, ".lock")
 	lockFile, err := os.OpenFile(lockPath, os.O_CREATE|os.O_RDWR, 0o644)
 	if err != nil {
 		return 0, fmt.Errorf("opening lock file: %w", err)
 	}
 	defer lockFile.Close()
-	defer os.Remove(lockPath)
 
 	if err := flockExclusive(lockFile.Fd()); err != nil {
 		return 0, fmt.Errorf("acquiring lock: %w", err)
@@ -306,31 +370,6 @@ func FindGitWorktreeGrapesDirs(mainRoot string) map[string]string {
 	return result
 }
 
-// LoadWorktreeIssues loads issues from all worktree .grapes/ directories,
-// returning only issues whose IDs don't exist in mainIDs.
-// Deprecated: Use LoadAllSources instead for multi-source tracking.
-func LoadWorktreeIssues(projectRoot string, mainIDs map[int]bool) ([]Issue, error) {
-	worktrees := FindWorktreeIssuesDirs(projectRoot)
-	var all []Issue
-	seen := make(map[int]bool) // dedup across worktrees
-	for name, dir := range worktrees {
-		issues, err := LoadAllIssues(dir)
-		if err != nil {
-			continue
-		}
-		for i := range issues {
-			if mainIDs[issues[i].ID] || seen[issues[i].ID] {
-				continue
-			}
-			issues[i].Worktree = name
-			seen[issues[i].ID] = true
-			all = append(all, issues[i])
-		}
-	}
-	sort.Slice(all, func(i, j int) bool { return all[i].ID < all[j].ID })
-	return all, nil
-}
-
 // computeIssueMtime returns the most recent mtime across meta.toml, content.md,
 // and comments.md for the given issue.
 func computeIssueMtime(dir string, id int) time.Time {
@@ -369,10 +408,13 @@ func issueToSource(iss Issue, name string, dir string, mtime time.Time) IssueSou
 // merging copies of the same issue ID into Sources. The active source is set to
 // the one with the most recent file mtime. Extra worktree directories can be
 // passed to scan beyond .claude/worktrees.
-func LoadAllSources(mainDir string, projectRoot string, extraDirs ...string) ([]Issue, error) {
-	mainIssues, err := LoadAllIssues(mainDir)
+//
+// Issues that fail to load are reported as problems; only a main directory that
+// cannot be read at all is returned as an error.
+func LoadAllSources(mainDir string, projectRoot string, extraDirs ...string) ([]Issue, []LoadProblem, error) {
+	mainIssues, problems, err := LoadAllIssues(mainDir)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	// Build map: issueID → *Issue with Sources populated
@@ -413,8 +455,10 @@ func LoadAllSources(mainDir string, projectRoot string, extraDirs ...string) ([]
 
 	for _, name := range wtNames {
 		dir := worktrees[name]
-		wtIssues, err := LoadAllIssues(dir)
+		wtIssues, wtProblems, err := LoadAllIssues(dir)
+		problems = append(problems, wtProblems...)
 		if err != nil {
+			problems = append(problems, LoadProblem{Dir: dir, Err: err})
 			continue
 		}
 		for _, iss := range wtIssues {
@@ -460,7 +504,7 @@ func LoadAllSources(mainDir string, projectRoot string, extraDirs ...string) ([]
 
 	sort.Slice(result, func(i, j int) bool { return result[i].ID < result[j].ID })
 	RewireRelationships(result)
-	return result, nil
+	return result, problems, nil
 }
 
 // RewireRelationships rebuilds Children and Blocks slices from all issues'
@@ -491,6 +535,9 @@ func RewireRelationships(issues []Issue) {
 }
 
 // ParseComments parses comments.md using strict "### YYYY-MM-DD" headers.
+//
+// Text before the first header is kept as a leading comment with an empty Date
+// rather than discarded, so hand-written preambles survive the edit round-trip.
 func ParseComments(raw string) []Comment {
 	if strings.TrimSpace(raw) == "" {
 		return nil
@@ -498,25 +545,23 @@ func ParseComments(raw string) []Comment {
 
 	lines := strings.Split(raw, "\n")
 	var comments []Comment
-	var current *Comment
+	current := &Comment{} // the dateless preamble, dropped below if empty
 
 	for _, line := range lines {
 		if m := commentHeader.FindStringSubmatch(line); m != nil {
 			// Save previous comment
-			if current != nil {
-				current.Body = strings.TrimSpace(current.Body)
+			current.Body = strings.TrimSpace(current.Body)
+			if current.Date != "" || current.Body != "" {
 				comments = append(comments, *current)
 			}
-			current = &Comment{
-				Date: m[1],
-			}
-		} else if current != nil {
+			current = &Comment{Date: m[1]}
+		} else {
 			current.Body += line + "\n"
 		}
 	}
 	// Don't forget the last comment
-	if current != nil {
-		current.Body = strings.TrimSpace(current.Body)
+	current.Body = strings.TrimSpace(current.Body)
+	if current.Date != "" || current.Body != "" {
 		comments = append(comments, *current)
 	}
 

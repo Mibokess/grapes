@@ -13,7 +13,6 @@ type FilterSet struct {
 	Sources      []string // worktree names; "main" for main issues
 	HasChildren  *bool
 	TopLevelOnly bool // when true, only show issues without a parent
-	TextQuery    string
 }
 
 // Matches returns true if the issue passes all active filters.
@@ -62,11 +61,6 @@ func (f FilterSet) Matches(issue data.Issue) bool {
 	if f.TopLevelOnly && issue.Parent != nil {
 		return false
 	}
-	if f.TextQuery != "" {
-		if !data.MatchesQuery(issue, f.TextQuery) {
-			return false
-		}
-	}
 	return true
 }
 
@@ -77,8 +71,7 @@ func (f FilterSet) IsEmpty() bool {
 		len(f.Labels) == 0 &&
 		len(f.Sources) == 0 &&
 		f.HasChildren == nil &&
-		!f.TopLevelOnly &&
-		f.TextQuery == ""
+		!f.TopLevelOnly
 }
 
 // ActiveCount returns the number of active filter categories (excluding text query).
@@ -113,40 +106,6 @@ func (f *FilterSet) Clear() {
 	f.Sources = nil
 	f.HasChildren = nil
 	f.TopLevelOnly = false
-	f.TextQuery = ""
-}
-
-// ToggleStatus adds or removes a status from the filter.
-func (f *FilterSet) ToggleStatus(s data.Status) {
-	for i, v := range f.Statuses {
-		if v == s {
-			f.Statuses = append(f.Statuses[:i], f.Statuses[i+1:]...)
-			return
-		}
-	}
-	f.Statuses = append(f.Statuses, s)
-}
-
-// TogglePriority adds or removes a priority from the filter.
-func (f *FilterSet) TogglePriority(p data.Priority) {
-	for i, v := range f.Priorities {
-		if v == p {
-			f.Priorities = append(f.Priorities[:i], f.Priorities[i+1:]...)
-			return
-		}
-	}
-	f.Priorities = append(f.Priorities, p)
-}
-
-// ToggleLabel adds or removes a label from the filter.
-func (f *FilterSet) ToggleLabel(l string) {
-	for i, v := range f.Labels {
-		if v == l {
-			f.Labels = append(f.Labels[:i], f.Labels[i+1:]...)
-			return
-		}
-	}
-	f.Labels = append(f.Labels, l)
 }
 
 // Default returns a FilterSet with the default filters applied (top-level only).
