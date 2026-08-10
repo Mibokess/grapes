@@ -1,5 +1,5 @@
 title = "Build user preferences API endpoint"
-status = 'done'
+status = 'cancelled'
 priority = 'medium'
 labels = ['backend', 'api']
 blocked_by = [19]

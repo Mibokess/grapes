@@ -1,6 +1,6 @@
-title = "Auto-discover worktrees via git; fix ID collisions and demote Sources.Dirs to optional"
-status = 'in_progress'
+title = 'Auto-discover worktrees via git; fix ID collisions and demote Sources.Dirs to optional'
+status = 'done'
 priority = 'high'
 labels = ['bug', 'worktree', 'config']
 created = 2026-07-02T00:00:00Z
-updated = 2026-07-02T00:00:00Z
+updated = 2026-08-10T18:43:00Z

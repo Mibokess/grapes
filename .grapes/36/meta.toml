@@ -1,5 +1,5 @@
 id = 36
 title = "Board view: clicking '+N more' indicator opens hidden issue instead of scrolling"
-status = "todo"
+status = 'done'
 priority = "high"
 labels = ["bug", "tui"]

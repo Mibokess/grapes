@@ -1,5 +1,5 @@
 title = "Build filter chip bar component"
-status = 'todo'
+status = 'done'
 priority = 'medium'
 labels = ['feature', 'tui', 'filter']
 parent = 11

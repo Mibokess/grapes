@@ -1,5 +1,5 @@
 title = "Integrate filters into board view"
-status = 'todo'
+status = 'done'
 priority = 'medium'
 labels = ['feature', 'tui', 'board', 'filter']
 parent = 11
