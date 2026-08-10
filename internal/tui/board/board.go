@@ -4,12 +4,12 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/Mibokess/grapes/internal/data"
-	"github.com/Mibokess/grapes/internal/tui/common"
 	"charm.land/bubbles/v2/key"
 	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	"github.com/Mibokess/grapes/internal/data"
+	"github.com/Mibokess/grapes/internal/tui/common"
 	"github.com/charmbracelet/x/ansi"
 )
 
@@ -34,17 +34,17 @@ type Model struct {
 	theme     common.Theme
 
 	statusFilter []data.Status // non-empty when user has a status filter active
-	hideEmpty    bool           // hide columns with no issues
-	topOffset    int            // screen lines above this view's content (app header + filter bar)
+	hideEmpty    bool          // hide columns with no issues
+	topOffset    int           // screen lines above this view's content (app header + filter bar)
 
 	worktreeNames []string // sorted worktree names for consistent color assignment
 
 	// Drag-and-drop state
-	mouseDown   bool // left button is held (pending drag)
-	dragging    bool // true only once the mouse moves while held
-	dragIssueID int
-	dragFromCol int
-	dragOverCol int // column cursor is hovering over (-1 = none)
+	mouseDown    bool // left button is held (pending drag)
+	dragging     bool // true only once the mouse moves while held
+	dragIssueID  int
+	dragFromCol  int
+	dragOverCol  int // column cursor is hovering over (-1 = none)
 	dragX, dragY int // current cursor position (screen coords)
 }
 

@@ -3,10 +3,10 @@ package detail_test
 import (
 	"testing"
 
+	tea "charm.land/bubbletea/v2"
 	"github.com/Mibokess/grapes/internal/tui/common"
 	"github.com/Mibokess/grapes/internal/tui/detail"
 	"github.com/Mibokess/grapes/internal/tui/testutil"
-	tea "charm.land/bubbletea/v2"
 )
 
 func newDetailModel() detail.Model {

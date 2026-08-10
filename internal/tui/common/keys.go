@@ -1,8 +1,8 @@
 package common
 
 import (
-	"github.com/Mibokess/grapes/internal/config"
 	"charm.land/bubbles/v2/key"
+	"github.com/Mibokess/grapes/internal/config"
 )
 
 // GlobalKeys are available on every screen.

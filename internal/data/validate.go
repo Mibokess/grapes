@@ -104,7 +104,6 @@ func validateMeta(issueID int, m meta) []ValidationError {
 		})
 	}
 
-
 	return errs
 }
 

@@ -3,11 +3,11 @@ package board_test
 import (
 	"testing"
 
+	tea "charm.land/bubbletea/v2"
 	"github.com/Mibokess/grapes/internal/data"
 	"github.com/Mibokess/grapes/internal/tui/board"
 	"github.com/Mibokess/grapes/internal/tui/common"
 	"github.com/Mibokess/grapes/internal/tui/testutil"
-	tea "charm.land/bubbletea/v2"
 )
 
 func newBoardModel() board.Model {
@@ -176,7 +176,6 @@ func TestBoard_KeyShiftL_SwitchesToList(t *testing.T) {
 		t.Error("expected switch to list screen")
 	}
 }
-
 
 // boardWithGap creates a board where backlog and in_progress have issues
 // but todo is empty, simulating a filtered view with a gap.

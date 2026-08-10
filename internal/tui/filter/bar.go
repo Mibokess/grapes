@@ -3,9 +3,9 @@ package filter
 import (
 	"strings"
 
+	"charm.land/lipgloss/v2"
 	"github.com/Mibokess/grapes/internal/data"
 	"github.com/Mibokess/grapes/internal/tui/common"
-	"charm.land/lipgloss/v2"
 )
 
 // BarHeight returns the number of lines the filter bar occupies (always 1).

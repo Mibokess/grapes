@@ -3,11 +3,11 @@ package settings_test
 import (
 	"testing"
 
+	tea "charm.land/bubbletea/v2"
 	"github.com/Mibokess/grapes/internal/config"
 	"github.com/Mibokess/grapes/internal/tui/common"
 	"github.com/Mibokess/grapes/internal/tui/settings"
 	"github.com/Mibokess/grapes/internal/tui/testutil"
-	tea "charm.land/bubbletea/v2"
 )
 
 func newTestModel() settings.Model {

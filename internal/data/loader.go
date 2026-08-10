@@ -148,7 +148,6 @@ func loadIssueMeta(dir string, id int) (Issue, error) {
 	}, nil
 }
 
-
 func readFileOr(path, fallback string) string {
 	data, err := os.ReadFile(path)
 	if err != nil {
