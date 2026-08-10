@@ -1,3 +1,21 @@
+# Agent Guide
+
+Start with [`docs/README.md`](docs/README.md). It contains the project mental model,
+repository map, and a task-to-file routing table. Do not read the whole repository
+to get oriented.
+
+Read deeper documentation only when the task needs it:
+
+- [`docs/architecture.md`](docs/architecture.md) for runtime flow, data loading,
+  worktree merging, persistence, and TUI message routing.
+- [`docs/development.md`](docs/development.md) for change recipes, test locations,
+  golden files, configuration, and releases.
+
+Treat the documentation as a map, then verify the relevant symbols in code before
+changing behavior. If a change moves a responsibility, changes a runtime flow, or
+invalidates a documented invariant, update the corresponding document in the same
+change.
+
 # Zens
 Follow these zens as closely as possible, divering only if absolutely necessary.
 
