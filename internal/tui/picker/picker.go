@@ -3,10 +3,10 @@ package picker
 import (
 	"strings"
 
-	"github.com/Mibokess/grapes/internal/tui/common"
 	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	"github.com/Mibokess/grapes/internal/tui/common"
 )
 
 // Option represents a single selectable item in the picker.

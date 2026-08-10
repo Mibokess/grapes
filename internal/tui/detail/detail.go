@@ -7,12 +7,12 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/Mibokess/grapes/internal/data"
-	"github.com/Mibokess/grapes/internal/tui/common"
 	"charm.land/bubbles/v2/key"
 	"charm.land/bubbles/v2/viewport"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	"github.com/Mibokess/grapes/internal/data"
+	"github.com/Mibokess/grapes/internal/tui/common"
 	"github.com/charmbracelet/glamour"
 	"github.com/muesli/termenv"
 )
@@ -32,10 +32,10 @@ type Model struct {
 	ready         bool
 	width         int
 	height        int
-	clickLines    map[int]int  // content line number → issue ID for clickable links
-	clickZones    []clickZone  // rectangular click zones for metadata fields
-	topOffset     int          // screen lines above this view's content (app header + filter bar)
-	worktreeNames []string     // sorted worktree names for consistent color assignment
+	clickLines    map[int]int // content line number → issue ID for clickable links
+	clickZones    []clickZone // rectangular click zones for metadata fields
+	topOffset     int         // screen lines above this view's content (app header + filter bar)
+	worktreeNames []string    // sorted worktree names for consistent color assignment
 	theme         common.Theme
 }
 

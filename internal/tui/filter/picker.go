@@ -3,10 +3,10 @@ package filter
 import (
 	"strings"
 
-	"github.com/Mibokess/grapes/internal/tui/common"
 	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	"github.com/Mibokess/grapes/internal/tui/common"
 )
 
 // PickerOption represents a selectable item in the multi-picker.

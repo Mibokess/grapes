@@ -3,8 +3,8 @@ package common
 import (
 	"image/color"
 
-	"github.com/lucasb-eyer/go-colorful"
 	"charm.land/lipgloss/v2"
+	"github.com/lucasb-eyer/go-colorful"
 	themes "go.withmatt.com/themes"
 )
 

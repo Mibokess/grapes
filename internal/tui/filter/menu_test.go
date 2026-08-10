@@ -3,9 +3,9 @@ package filter
 import (
 	"testing"
 
+	tea "charm.land/bubbletea/v2"
 	"github.com/Mibokess/grapes/internal/config"
 	"github.com/Mibokess/grapes/internal/tui/common"
-	tea "charm.land/bubbletea/v2"
 )
 
 func newTestMenu() Menu {

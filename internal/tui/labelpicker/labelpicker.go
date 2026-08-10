@@ -3,20 +3,20 @@ package labelpicker
 import (
 	"strings"
 
-	"github.com/Mibokess/grapes/internal/tui/common"
 	"charm.land/bubbles/v2/key"
 	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	"github.com/Mibokess/grapes/internal/tui/common"
 )
 
 // Model is an overlay for editing an issue's labels.
 // It shows all known labels with checkboxes and a text input for new labels.
 type Model struct {
 	issueID  int
-	labels   []string       // all known labels (display order)
+	labels   []string        // all known labels (display order)
 	selected map[string]bool // currently checked labels
-	cursor   int            // cursor in label list (len(labels) = input field)
+	cursor   int             // cursor in label list (len(labels) = input field)
 	input    textinput.Model
 	theme    common.Theme
 

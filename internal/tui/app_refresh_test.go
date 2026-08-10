@@ -6,10 +6,10 @@ import (
 	"strconv"
 	"testing"
 
+	tea "charm.land/bubbletea/v2"
 	"github.com/Mibokess/grapes/internal/config"
 	"github.com/Mibokess/grapes/internal/data"
 	"github.com/Mibokess/grapes/internal/tui/common"
-	tea "charm.land/bubbletea/v2"
 )
 
 // createTestIssue writes a minimal meta.toml for an issue.

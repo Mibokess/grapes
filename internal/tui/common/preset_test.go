@@ -142,6 +142,27 @@ func TestNewThemeFromConfig_PresetWithModeOverride(t *testing.T) {
 	}
 }
 
+// Every curated preset must resolve in the themes library. The library
+// regenerates its theme set on each release, so a rename upstream would
+// otherwise silently fall the entry back to the default theme with the name
+// still offered in the settings UI.
+func TestCuratedPresets_AllResolve(t *testing.T) {
+	for _, name := range CuratedPresets {
+		switch name {
+		case "Auto", "Light", "Dark":
+			continue // built-ins, not backed by the themes library
+		}
+		ext, err := themes.GetTheme(name)
+		if err != nil {
+			t.Errorf("curated preset %q does not resolve: %v", name, err)
+			continue
+		}
+		if ext.Background == "" || ext.Foreground == "" {
+			t.Errorf("curated preset %q has an empty background/foreground", name)
+		}
+	}
+}
+
 func TestFallback(t *testing.T) {
 	if got := fallback("a", "b"); got != "a" {
 		t.Errorf("fallback should return a, got %s", got)

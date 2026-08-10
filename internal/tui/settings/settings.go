@@ -6,12 +6,12 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/Mibokess/grapes/internal/config"
-	"github.com/Mibokess/grapes/internal/tui/common"
 	"charm.land/bubbles/v2/key"
 	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	"github.com/Mibokess/grapes/internal/config"
+	"github.com/Mibokess/grapes/internal/tui/common"
 	themes "go.withmatt.com/themes"
 )
 
@@ -35,7 +35,7 @@ const (
 
 type field struct {
 	label   string
-	cfgKey  string   // key used to get/set on Config
+	cfgKey  string // key used to get/set on Config
 	kind    fieldKind
 	options []string // for enum fields
 }
@@ -47,9 +47,9 @@ type category struct {
 
 // Model is the settings screen model.
 type Model struct {
-	cfg       config.Config
-	original  config.Config // snapshot for cancel
-	issuesDir string
+	cfg        config.Config
+	original   config.Config // snapshot for cancel
+	issuesDir  string
 	theme      common.Theme
 	termIsDark bool
 
@@ -84,7 +84,7 @@ func New(cfg config.Config, issuesDir string, w, h int, theme common.Theme) Mode
 				{label: "Default screen", cfgKey: "default_screen", kind: fieldEnum, options: []string{"board", "list"}},
 				{label: "Default sort", cfgKey: "default_sort", kind: fieldEnum, options: []string{"priority", "updated", "created", "id", "title", "status"}},
 				{label: "Auto-close sub-issues", cfgKey: "auto_close_subs", kind: fieldEnum, options: []string{"off", "on"}},
-			{label: "Hide empty columns", cfgKey: "hide_empty_columns", kind: fieldEnum, options: []string{"off", "on"}},
+				{label: "Hide empty columns", cfgKey: "hide_empty_columns", kind: fieldEnum, options: []string{"off", "on"}},
 			},
 		},
 		{

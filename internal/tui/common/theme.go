@@ -4,9 +4,9 @@ import (
 	"image/color"
 	"strings"
 
+	"charm.land/lipgloss/v2"
 	"github.com/Mibokess/grapes/internal/config"
 	"github.com/Mibokess/grapes/internal/data"
-	"charm.land/lipgloss/v2"
 	themes "go.withmatt.com/themes"
 )
 

@@ -3,10 +3,10 @@ package list_test
 import (
 	"testing"
 
+	tea "charm.land/bubbletea/v2"
 	"github.com/Mibokess/grapes/internal/tui/common"
 	"github.com/Mibokess/grapes/internal/tui/list"
 	"github.com/Mibokess/grapes/internal/tui/testutil"
-	tea "charm.land/bubbletea/v2"
 )
 
 func newListModel() list.Model {
@@ -133,7 +133,6 @@ func TestList_KeyShiftB_SwitchesToBoard(t *testing.T) {
 		t.Error("expected switch to board screen")
 	}
 }
-
 
 func TestList_KeySlash_EntersFilterMode(t *testing.T) {
 	m := newListModel()

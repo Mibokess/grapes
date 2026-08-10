@@ -3,10 +3,10 @@ package filter
 import (
 	"testing"
 
-	"github.com/Mibokess/grapes/internal/config"
-	"github.com/Mibokess/grapes/internal/tui/common"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	"github.com/Mibokess/grapes/internal/config"
+	"github.com/Mibokess/grapes/internal/tui/common"
 )
 
 func newTestMultiPicker() MultiPicker {
@@ -50,8 +50,8 @@ func TestMultiPicker_KeyToggle(t *testing.T) {
 
 func TestMultiPicker_KeyConfirm(t *testing.T) {
 	m := newTestMultiPicker()
-	m, _ = m.Update(tea.KeyPressMsg(tea.Key{Code: ' '})) // toggle first
-	_, cmd := m.Update(tea.KeyPressMsg(tea.Key{Code: 13}))         // enter
+	m, _ = m.Update(tea.KeyPressMsg(tea.Key{Code: ' '}))   // toggle first
+	_, cmd := m.Update(tea.KeyPressMsg(tea.Key{Code: 13})) // enter
 	msg, ok := extractMsg(cmd).(common.FilterPickerResultMsg)
 	if !ok {
 		t.Fatalf("enter should send FilterPickerResultMsg, got %T", extractMsg(cmd))

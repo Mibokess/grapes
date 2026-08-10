@@ -5,13 +5,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Mibokess/grapes/internal/data"
-	"github.com/Mibokess/grapes/internal/tui/common"
 	"charm.land/bubbles/v2/key"
 	"charm.land/bubbles/v2/table"
 	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	"github.com/Mibokess/grapes/internal/data"
+	"github.com/Mibokess/grapes/internal/tui/common"
 	"github.com/charmbracelet/x/ansi"
 )
 
@@ -32,17 +32,17 @@ var columnSortModes = []data.SortMode{
 const stickyWidth = 6 // ID column width (4) + 2 padding
 
 type Model struct {
-	allIssues    []data.Issue
-	table        table.Model
-	filter       textinput.Model
-	filtering    bool
-	width        int
-	height       int
-	visibleStart int // first visible row index, mirrors table's internal start
-	scrollX      int // horizontal scroll offset for columns after the sticky ID
-	sortMode     data.SortMode
-	sortAsc      bool
-	topOffset     int // screen lines above this view's content (app header + filter bar)
+	allIssues     []data.Issue
+	table         table.Model
+	filter        textinput.Model
+	filtering     bool
+	width         int
+	height        int
+	visibleStart  int // first visible row index, mirrors table's internal start
+	scrollX       int // horizontal scroll offset for columns after the sticky ID
+	sortMode      data.SortMode
+	sortAsc       bool
+	topOffset     int      // screen lines above this view's content (app header + filter bar)
 	worktreeNames []string // sorted worktree names for consistent color assignment
 	theme         common.Theme
 }
@@ -75,7 +75,7 @@ func New(issues []data.Issue) Model {
 
 func (m Model) Init() tea.Cmd { return nil }
 
-func (m Model) Filtering() bool    { return m.filtering }
+func (m Model) Filtering() bool     { return m.filtering }
 func (m Model) HScrollActive() bool { return m.needsHScroll() }
 
 // updateVisibleStart keeps visibleStart in sync with the table's internal scroll position.
