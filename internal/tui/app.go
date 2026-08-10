@@ -2,6 +2,7 @@ package tui
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -90,7 +91,17 @@ func NewModel(issues []data.Issue, issuesDir string, cfg config.Config, version 
 		}
 	}
 
+	// Configured startup sort. An unknown name is reported rather than ignored.
+	var sortErr string
 	sortMode := data.SortByPriority
+	if name := cfg.View.DefaultSort; name != "" {
+		mode, ok := data.ParseSortMode(name)
+		if ok {
+			sortMode = mode
+		} else {
+			sortErr = "Unknown default_sort " + strconv.Quote(name) + " (using priority)"
+		}
+	}
 	data.SortIssues(issues, sortMode, false)
 
 	filters := filter.Default()
@@ -101,20 +112,7 @@ func NewModel(issues []data.Issue, issuesDir string, cfg config.Config, version 
 		}
 	}
 
-	// Collect sorted worktree names for consistent color assignment
-	wtSet := make(map[string]bool)
-	for _, iss := range issues {
-		for _, s := range iss.Sources {
-			if s.Name != "" {
-				wtSet[s.Name] = true
-			}
-		}
-	}
-	var wtNames []string
-	for n := range wtSet {
-		wtNames = append(wtNames, n)
-	}
-	sort.Strings(wtNames)
+	wtNames := worktreeNames(issues)
 
 	l := list.New(filtered)
 	l = l.SetSortState(sortMode, false)
@@ -130,7 +128,8 @@ func NewModel(issues []data.Issue, issuesDir string, cfg config.Config, version 
 	// Apply configured keybindings
 	common.ApplyKeys(cfg.Keys)
 
-	statusMsg := ""
+	// Startup problems share one status line; the first one is shown.
+	statusMsg := sortErr
 	if watchErr != nil {
 		statusMsg = "Live reload unavailable: " + watchErr.Error()
 	}
@@ -212,6 +211,47 @@ func (m Model) childStatusUpdates(issueID int, newStatus string) []childUpdate {
 	return updates
 }
 
+// worktreeNames returns the sorted worktree names across all issue sources.
+// The order fixes each worktree's color, so it must be stable between reloads.
+func worktreeNames(issues []data.Issue) []string {
+	seen := make(map[string]bool)
+	var names []string
+	for _, iss := range issues {
+		for _, s := range iss.Sources {
+			if s.Name != "" && !seen[s.Name] {
+				seen[s.Name] = true
+				names = append(names, s.Name)
+			}
+		}
+	}
+	sort.Strings(names)
+	return names
+}
+
+// loadProblemSummary turns skipped issues into one status-bar line, naming the
+// first problem and counting the rest. An issue that fails to parse disappears
+// from the board, which is confusing if nothing says so.
+func loadProblemSummary(problems []data.LoadProblem) string {
+	switch len(problems) {
+	case 0:
+		return ""
+	case 1:
+		return "Skipped " + problems[0].Error()
+	default:
+		return fmt.Sprintf("Skipped %s (+%d more)", problems[0].Error(), len(problems)-1)
+	}
+}
+
+// pruneWatchDirs drops watches on directories that no longer exist, so a long
+// session does not accumulate descriptors for deleted issues and worktrees.
+func pruneWatchDirs(w *fsnotify.Watcher) {
+	for _, dir := range w.WatchList() {
+		if info, err := os.Stat(dir); err != nil || !info.IsDir() {
+			_ = w.Remove(dir)
+		}
+	}
+}
+
 // addWatchDirs watches the issues directory and all numeric subdirectories.
 //
 // A failure on issuesDir itself is returned, since that one disables live
@@ -267,10 +307,13 @@ func (m Model) watchCmd() tea.Cmd {
 					}
 				}
 				return common.RefreshMsg{}
-			case _, ok := <-w.Errors:
+			case err, ok := <-w.Errors:
 				if !ok {
 					return nil
 				}
+				// Live reload is degraded from here; say so instead of going
+				// quietly static.
+				return common.WatchErrMsg{Err: err}
 			}
 		}
 	}
@@ -340,6 +383,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			break // fall through to screen-specific handler
 		}
 		if key.Matches(msg, common.GlobalKeyMap.Quit) {
+			if m.watcher != nil {
+				m.watcher.Close()
+			}
 			return m, tea.Quit
 		}
 		// Open settings
@@ -547,24 +593,17 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case common.RefreshMsg:
-		issues, err := data.LoadAllSources(m.issuesDir, m.projectRoot, m.cfg.Sources.Dirs...)
+		issues, problems, err := data.LoadAllSources(m.issuesDir, m.projectRoot, m.cfg.Sources.Dirs...)
 		if err != nil {
-			return m, m.watchCmd()
+			m.statusMsg = "Reload failed: " + err.Error()
+			return m, tea.Batch(m.watchCmd(), m.clearStatusAfter(5*time.Second))
 		}
-		// Collect sorted worktree names for consistent color assignment
-		wtSet := make(map[string]bool)
-		for _, iss := range issues {
-			for _, s := range iss.Sources {
-				if s.Name != "" {
-					wtSet[s.Name] = true
-				}
-			}
+		var problemCmd tea.Cmd
+		if msg := loadProblemSummary(problems); msg != "" {
+			m.statusMsg = msg
+			problemCmd = m.clearStatusAfter(5 * time.Second)
 		}
-		var wtNames []string
-		for n := range wtSet {
-			wtNames = append(wtNames, n)
-		}
-		sort.Strings(wtNames)
+		wtNames := worktreeNames(issues)
 		m.worktreeNames = wtNames
 
 		data.SortIssues(issues, m.sortMode, m.sortAsc)
@@ -590,8 +629,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			for _, dir := range data.FindWorktreeIssuesDirs(m.projectRoot, m.cfg.Sources.Dirs...) {
 				_ = addWatchDirs(m.watcher, dir)
 			}
+			pruneWatchDirs(m.watcher)
 		}
-		return m, m.watchCmd()
+		return m, tea.Batch(m.watchCmd(), problemCmd)
 
 	case common.ShowPickerMsg:
 		p := m.buildPicker(msg.IssueID, msg.Field)
@@ -601,29 +641,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case common.MoveIssueMsg:
 		srcDir := m.issueSourceDir(msg.IssueID)
 		childUpdates := m.childStatusUpdates(msg.IssueID, string(msg.NewStatus))
-		return m, func() tea.Msg {
-			if err := data.UpdateField(srcDir, msg.IssueID, "status", string(msg.NewStatus)); err != nil {
-				return common.WriteErrMsg{Err: err}
-			}
-			for _, cu := range childUpdates {
-				data.UpdateField(cu.dir, cu.id, "status", "done")
-			}
-			return nil // fsnotify will trigger refresh
-		}
+		return m, writeFieldCmd(srcDir, msg.IssueID, "status", string(msg.NewStatus), childUpdates)
 
 	case common.PickerResultMsg:
 		m.picker = nil
 		srcDir := m.issueSourceDir(msg.IssueID)
 		childUpdates := m.childStatusUpdates(msg.IssueID, msg.Value)
-		return m, func() tea.Msg {
-			if err := data.UpdateField(srcDir, msg.IssueID, msg.Field, msg.Value); err != nil {
-				return common.WriteErrMsg{Err: err}
-			}
-			for _, cu := range childUpdates {
-				data.UpdateField(cu.dir, cu.id, "status", "done")
-			}
-			return nil // fsnotify will trigger refresh
-		}
+		return m, writeFieldCmd(srcDir, msg.IssueID, msg.Field, msg.Value, childUpdates)
 
 	case common.PickerCancelMsg:
 		m.picker = nil
@@ -830,6 +854,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.statusMsg = "Write error: " + msg.Err.Error()
 		return m, m.clearStatusAfter(3 * time.Second)
 
+	case common.WatchErrMsg:
+		// Keep watching: fsnotify reports recoverable errors here too.
+		m.statusMsg = "Live reload error: " + msg.Err.Error()
+		return m, tea.Batch(m.watchCmd(), m.clearStatusAfter(5*time.Second))
+
 	case clearStatusMsg:
 		m.statusMsg = ""
 		return m, nil
@@ -906,56 +935,62 @@ func (m Model) View() tea.View {
 	}
 	sortLabel := m.sortMode.Label() + " " + sortArrow
 
+	// Help hints read the live keymaps, so rebinding a key in the config screen
+	// changes what the status bar advertises.
+	hint := m.theme.FormatKeyHint
+	k := common.KeyLabel
+	bk, lk, dk, gk := common.BoardKeyMap, common.ListKeyMap, common.DetailKeyMap, common.GlobalKeyMap
+
 	switch m.screen {
 	case common.ScreenBoard:
 		content = m.board.View()
 		helpParts = []string{
-			m.theme.FormatKeyHint("hjkl", "navigate"),
-			m.theme.FormatKeyHint("enter", "open"),
-			m.theme.FormatKeyHint("e", "edit"),
-			m.theme.FormatKeyHint("s", "status"),
-			m.theme.FormatKeyHint("p", "priority"),
-			m.theme.FormatKeyHint("t", "labels"),
-			m.theme.FormatKeyHint("f", "filter"),
-			m.theme.FormatKeyHint("/", "search"),
-			m.theme.FormatKeyHint("o/O", sortLabel),
-			m.theme.FormatKeyHint("E", "empty cols"),
-			m.theme.FormatKeyHint("L", "list"),
-			m.theme.FormatKeyHint("C", "config"),
-			m.theme.FormatKeyHint("q", "quit"),
+			hint(k(bk.Left)+k(bk.Down)+k(bk.Up)+k(bk.Right), "navigate"),
+			hint(k(bk.Open), "open"),
+			hint(k(bk.EditIssue), "edit"),
+			hint(k(bk.CycleStatus), "status"),
+			hint(k(bk.CyclePriority), "priority"),
+			hint(k(bk.Labels), "labels"),
+			hint(k(bk.Filter), "filter"),
+			hint(k(bk.Search), "search"),
+			hint(k(bk.CycleSort)+"/"+k(bk.ReverseSort), sortLabel),
+			hint(k(bk.ToggleEmpty), "empty cols"),
+			hint(k(bk.ToList), "list"),
+			hint(k(gk.Settings), "config"),
+			hint(k(gk.Quit), "quit"),
 		}
 	case common.ScreenList:
 		content = m.list.View()
-		navHint := "jk"
+		navHint := k(lk.Down) + k(lk.Up)
 		if m.list.HScrollActive() {
-			navHint = "hjkl"
+			navHint = k(lk.ScrollLeft) + k(lk.Down) + k(lk.Up) + k(lk.ScrollRight)
 		}
 		helpParts = []string{
-			m.theme.FormatKeyHint(navHint, "navigate"),
-			m.theme.FormatKeyHint("enter", "open"),
-			m.theme.FormatKeyHint("e", "edit"),
-			m.theme.FormatKeyHint("s", "status"),
-			m.theme.FormatKeyHint("p", "priority"),
-			m.theme.FormatKeyHint("t", "labels"),
-			m.theme.FormatKeyHint("o/O", sortLabel),
-			m.theme.FormatKeyHint("f", "filter"),
-			m.theme.FormatKeyHint("/", "search"),
-			m.theme.FormatKeyHint("B", "board"),
-			m.theme.FormatKeyHint("C", "config"),
-			m.theme.FormatKeyHint("q", "quit"),
+			hint(navHint, "navigate"),
+			hint(k(lk.Open), "open"),
+			hint(k(lk.EditIssue), "edit"),
+			hint(k(lk.CycleStatus), "status"),
+			hint(k(lk.CyclePriority), "priority"),
+			hint(k(lk.Labels), "labels"),
+			hint(k(lk.CycleSort)+"/"+k(lk.ReverseSort), sortLabel),
+			hint(k(lk.StructuredFilter), "filter"),
+			hint(k(lk.Filter), "search"),
+			hint(k(lk.ToBoard), "board"),
+			hint(k(gk.Settings), "config"),
+			hint(k(gk.Quit), "quit"),
 		}
 	case common.ScreenDetail:
 		content = m.detail.View()
 		helpParts = []string{
-			m.theme.FormatKeyHint("jk", "scroll"),
-			m.theme.FormatKeyHint("e", "edit"),
-			m.theme.FormatKeyHint("s", "status"),
-			m.theme.FormatKeyHint("p", "priority"),
-			m.theme.FormatKeyHint("t", "labels"),
-			m.theme.FormatKeyHint("c", "comment"),
-			m.theme.FormatKeyHint("esc/⌫", "back"),
-			m.theme.FormatKeyHint("C", "config"),
-			m.theme.FormatKeyHint("q", "quit"),
+			hint("jk", "scroll"),
+			hint(k(dk.EditIssue), "edit"),
+			hint(k(dk.CycleStatus), "status"),
+			hint(k(dk.CyclePriority), "priority"),
+			hint(k(dk.Labels), "labels"),
+			hint(k(dk.AddComment), "comment"),
+			hint(k(dk.Back)+"/⌫", "back"),
+			hint(k(gk.Settings), "config"),
+			hint(k(gk.Quit), "quit"),
 		}
 	case common.ScreenSettings:
 		content = m.settings.View()
@@ -1055,6 +1090,23 @@ func (m Model) View() tea.View {
 	v.AltScreen = true
 	v.MouseMode = tea.MouseModeCellMotion
 	return v
+}
+
+// writeFieldCmd writes one field on an issue, then cascades "done" to the given
+// children. A failure anywhere is reported: a sub-issue that quietly refuses to
+// close is worse than one that says why.
+func writeFieldCmd(dir string, issueID int, field, value string, children []childUpdate) tea.Cmd {
+	return func() tea.Msg {
+		if err := data.UpdateField(dir, issueID, field, value); err != nil {
+			return common.WriteErrMsg{Err: err}
+		}
+		for _, cu := range children {
+			if err := data.UpdateField(cu.dir, cu.id, "status", string(data.StatusDone)); err != nil {
+				return common.WriteErrMsg{Err: fmt.Errorf("closing sub-issue #%d: %w", cu.id, err)}
+			}
+		}
+		return nil // fsnotify will trigger refresh
+	}
 }
 
 // clearStatusAfter returns a command that clears the status message after a delay.

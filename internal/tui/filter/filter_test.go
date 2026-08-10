@@ -105,30 +105,6 @@ func TestFilterSet_Matches(t *testing.T) {
 			want:   true,
 		},
 		{
-			name:   "text query matches title",
-			filter: FilterSet{TextQuery: "login"},
-			issue:  base,
-			want:   true,
-		},
-		{
-			name:   "text query matches content",
-			filter: FilterSet{TextQuery: "crashes"},
-			issue:  base,
-			want:   true,
-		},
-		{
-			name:   "text query case insensitive",
-			filter: FilterSet{TextQuery: "LOGIN"},
-			issue:  base,
-			want:   true,
-		},
-		{
-			name:   "text query no match",
-			filter: FilterSet{TextQuery: "dashboard"},
-			issue:  base,
-			want:   false,
-		},
-		{
 			name: "AND across categories - all match",
 			filter: FilterSet{
 				Statuses:   []data.Status{data.StatusInProgress},
@@ -191,9 +167,6 @@ func TestFilterSet_IsEmpty(t *testing.T) {
 	if (FilterSet{Statuses: []data.Status{data.StatusDone}}).IsEmpty() {
 		t.Error("FilterSet with statuses should not be empty")
 	}
-	if (FilterSet{TextQuery: "foo"}).IsEmpty() {
-		t.Error("FilterSet with text query should not be empty")
-	}
 	if (FilterSet{TopLevelOnly: true}).IsEmpty() {
 		t.Error("FilterSet with TopLevelOnly should not be empty")
 	}
@@ -206,36 +179,6 @@ func TestFilterSet_Default(t *testing.T) {
 	}
 	if d.ActiveCount() != 1 {
 		t.Errorf("Default() ActiveCount() = %d, want 1", d.ActiveCount())
-	}
-}
-
-func TestFilterSet_Toggle(t *testing.T) {
-	var f FilterSet
-	f.ToggleStatus(data.StatusDone)
-	if len(f.Statuses) != 1 || f.Statuses[0] != data.StatusDone {
-		t.Error("ToggleStatus should add")
-	}
-	f.ToggleStatus(data.StatusDone)
-	if len(f.Statuses) != 0 {
-		t.Error("ToggleStatus should remove")
-	}
-
-	f.TogglePriority(data.PriorityHigh)
-	if len(f.Priorities) != 1 {
-		t.Error("TogglePriority should add")
-	}
-	f.TogglePriority(data.PriorityHigh)
-	if len(f.Priorities) != 0 {
-		t.Error("TogglePriority should remove")
-	}
-
-	f.ToggleLabel("bug")
-	if len(f.Labels) != 1 {
-		t.Error("ToggleLabel should add")
-	}
-	f.ToggleLabel("bug")
-	if len(f.Labels) != 0 {
-		t.Error("ToggleLabel should remove")
 	}
 }
 
@@ -264,7 +207,6 @@ func TestFilterSet_Clear(t *testing.T) {
 		Priorities:  []data.Priority{data.PriorityHigh},
 		Labels:      []string{"bug"},
 		HasChildren: boolPtr(true),
-		TextQuery:   "foo",
 	}
 	f.Clear()
 	if !f.IsEmpty() {
@@ -276,7 +218,6 @@ func TestFilterSet_ActiveCount(t *testing.T) {
 	f := FilterSet{
 		Statuses:   []data.Status{data.StatusDone},
 		Priorities: []data.Priority{data.PriorityHigh},
-		TextQuery:  "foo", // not counted
 	}
 	if f.ActiveCount() != 2 {
 		t.Errorf("ActiveCount() = %d, want 2", f.ActiveCount())

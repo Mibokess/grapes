@@ -8,7 +8,6 @@ import (
 // GlobalKeys are available on every screen.
 type GlobalKeys struct {
 	Quit     key.Binding
-	Help     key.Binding
 	Settings key.Binding
 }
 
@@ -16,10 +15,6 @@ var GlobalKeyMap = GlobalKeys{
 	Quit: key.NewBinding(
 		key.WithKeys("q", "ctrl+c"),
 		key.WithHelp("q", "quit"),
-	),
-	Help: key.NewBinding(
-		key.WithKeys("?"),
-		key.WithHelp("?", "help"),
 	),
 	Settings: key.NewBinding(
 		key.WithKeys("C"),
@@ -290,46 +285,85 @@ var SettingsKeyMap = SettingsKeys{
 	),
 }
 
+// The default keymaps, captured before any config is applied.
+var (
+	defaultGlobalKeys = GlobalKeyMap
+	defaultBoardKeys  = BoardKeyMap
+	defaultListKeys   = ListKeyMap
+	defaultDetailKeys = DetailKeyMap
+)
+
+// KeyLabel returns the primary key of a binding, for status-bar hints.
+// Hints are built from the live bindings so that rebinding a key in the config
+// also changes what the status bar advertises.
+func KeyLabel(b key.Binding) string {
+	keys := b.Keys()
+	if len(keys) == 0 {
+		return ""
+	}
+	return keys[0]
+}
+
+// rebind replaces a binding's primary key, keeping its fallback keys and help
+// text in sync. An empty configured key leaves the default binding untouched,
+// so a half-written config.toml cannot bind an action to nothing.
+func rebind(b *key.Binding, configured, help, action string, extraKeys ...string) {
+	if configured == "" {
+		return
+	}
+	keys := append([]string{configured}, extraKeys...)
+	*b = key.NewBinding(key.WithKeys(keys...), key.WithHelp(help, action))
+}
+
 // ApplyKeys updates all keybinding vars from a KeysConfig.
+//
+// It resets to the defaults first, so applying a config is idempotent: a key
+// the user clears returns to its default instead of keeping whatever an earlier
+// call installed.
 func ApplyKeys(k config.KeysConfig) {
-	GlobalKeyMap.Quit = key.NewBinding(key.WithKeys(k.Quit, "ctrl+c"), key.WithHelp(k.Quit, "quit"))
-	GlobalKeyMap.Settings = key.NewBinding(key.WithKeys(k.Settings), key.WithHelp(k.Settings, "config"))
+	GlobalKeyMap = defaultGlobalKeys
+	BoardKeyMap = defaultBoardKeys
+	ListKeyMap = defaultListKeys
+	DetailKeyMap = defaultDetailKeys
 
-	BoardKeyMap.Up = key.NewBinding(key.WithKeys(k.BoardUp, "up"), key.WithHelp(k.BoardUp+"/up", "up"))
-	BoardKeyMap.Down = key.NewBinding(key.WithKeys(k.BoardDown, "down"), key.WithHelp(k.BoardDown+"/down", "down"))
-	BoardKeyMap.Left = key.NewBinding(key.WithKeys(k.BoardLeft, "left"), key.WithHelp(k.BoardLeft+"/left", "left"))
-	BoardKeyMap.Right = key.NewBinding(key.WithKeys(k.BoardRight, "right"), key.WithHelp(k.BoardRight+"/right", "right"))
-	BoardKeyMap.Open = key.NewBinding(key.WithKeys(k.BoardOpen), key.WithHelp(k.BoardOpen, "open"))
-	BoardKeyMap.EditIssue = key.NewBinding(key.WithKeys(k.BoardEdit), key.WithHelp(k.BoardEdit, "edit"))
-	BoardKeyMap.ToList = key.NewBinding(key.WithKeys(k.BoardToList), key.WithHelp(k.BoardToList, "list view"))
-	BoardKeyMap.Search = key.NewBinding(key.WithKeys(k.BoardSearch), key.WithHelp(k.BoardSearch, "search"))
-	BoardKeyMap.Filter = key.NewBinding(key.WithKeys(k.BoardFilter), key.WithHelp(k.BoardFilter, "filter"))
-	BoardKeyMap.CycleStatus = key.NewBinding(key.WithKeys(k.BoardStatus), key.WithHelp(k.BoardStatus, "status"))
-	BoardKeyMap.CyclePriority = key.NewBinding(key.WithKeys(k.BoardPriority), key.WithHelp(k.BoardPriority, "priority"))
-	BoardKeyMap.Labels = key.NewBinding(key.WithKeys(k.BoardLabel), key.WithHelp(k.BoardLabel, "labels"))
-	BoardKeyMap.CycleSort = key.NewBinding(key.WithKeys(k.BoardSort), key.WithHelp(k.BoardSort, "order"))
-	BoardKeyMap.ReverseSort = key.NewBinding(key.WithKeys(k.BoardReverse), key.WithHelp(k.BoardReverse, "reverse"))
-	BoardKeyMap.ToggleEmpty = key.NewBinding(key.WithKeys(k.BoardEmpty), key.WithHelp(k.BoardEmpty, "empty cols"))
+	rebind(&GlobalKeyMap.Quit, k.Quit, k.Quit, "quit", "ctrl+c")
+	rebind(&GlobalKeyMap.Settings, k.Settings, k.Settings, "config")
 
-	ListKeyMap.Up = key.NewBinding(key.WithKeys(k.ListUp, "up"), key.WithHelp(k.ListUp+"/up", "up"))
-	ListKeyMap.Down = key.NewBinding(key.WithKeys(k.ListDown, "down"), key.WithHelp(k.ListDown+"/down", "down"))
-	ListKeyMap.Open = key.NewBinding(key.WithKeys(k.ListOpen), key.WithHelp(k.ListOpen, "open"))
-	ListKeyMap.EditIssue = key.NewBinding(key.WithKeys(k.ListEdit), key.WithHelp(k.ListEdit, "edit"))
-	ListKeyMap.ToBoard = key.NewBinding(key.WithKeys(k.ListToBoard), key.WithHelp(k.ListToBoard, "board view"))
-	ListKeyMap.Filter = key.NewBinding(key.WithKeys(k.ListSearch), key.WithHelp(k.ListSearch, "search"))
-	ListKeyMap.StructuredFilter = key.NewBinding(key.WithKeys(k.ListFilter), key.WithHelp(k.ListFilter, "filter"))
-	ListKeyMap.CycleStatus = key.NewBinding(key.WithKeys(k.ListStatus), key.WithHelp(k.ListStatus, "status"))
-	ListKeyMap.CyclePriority = key.NewBinding(key.WithKeys(k.ListPriority), key.WithHelp(k.ListPriority, "priority"))
-	ListKeyMap.Labels = key.NewBinding(key.WithKeys(k.ListLabel), key.WithHelp(k.ListLabel, "labels"))
-	ListKeyMap.CycleSort = key.NewBinding(key.WithKeys(k.ListSort), key.WithHelp(k.ListSort, "order"))
-	ListKeyMap.ReverseSort = key.NewBinding(key.WithKeys(k.ListReverse), key.WithHelp(k.ListReverse, "reverse"))
+	rebind(&BoardKeyMap.Up, k.BoardUp, k.BoardUp+"/up", "up", "up")
+	rebind(&BoardKeyMap.Down, k.BoardDown, k.BoardDown+"/down", "down", "down")
+	rebind(&BoardKeyMap.Left, k.BoardLeft, k.BoardLeft+"/left", "left", "left")
+	rebind(&BoardKeyMap.Right, k.BoardRight, k.BoardRight+"/right", "right", "right")
+	rebind(&BoardKeyMap.Open, k.BoardOpen, k.BoardOpen, "open")
+	rebind(&BoardKeyMap.EditIssue, k.BoardEdit, k.BoardEdit, "edit")
+	rebind(&BoardKeyMap.ToList, k.BoardToList, k.BoardToList, "list view")
+	rebind(&BoardKeyMap.Search, k.BoardSearch, k.BoardSearch, "search")
+	rebind(&BoardKeyMap.Filter, k.BoardFilter, k.BoardFilter, "filter")
+	rebind(&BoardKeyMap.CycleStatus, k.BoardStatus, k.BoardStatus, "status")
+	rebind(&BoardKeyMap.CyclePriority, k.BoardPriority, k.BoardPriority, "priority")
+	rebind(&BoardKeyMap.Labels, k.BoardLabel, k.BoardLabel, "labels")
+	rebind(&BoardKeyMap.CycleSort, k.BoardSort, k.BoardSort, "order")
+	rebind(&BoardKeyMap.ReverseSort, k.BoardReverse, k.BoardReverse, "reverse")
+	rebind(&BoardKeyMap.ToggleEmpty, k.BoardEmpty, k.BoardEmpty, "empty cols")
 
-	DetailKeyMap.Back = key.NewBinding(key.WithKeys(k.DetailBack, "backspace"), key.WithHelp(k.DetailBack+"/⌫", "back"))
-	DetailKeyMap.ToBoard = key.NewBinding(key.WithKeys(k.DetailToBoard), key.WithHelp(k.DetailToBoard, "board view"))
-	DetailKeyMap.ToList = key.NewBinding(key.WithKeys(k.DetailToList), key.WithHelp(k.DetailToList, "list view"))
-	DetailKeyMap.CycleStatus = key.NewBinding(key.WithKeys(k.DetailStatus), key.WithHelp(k.DetailStatus, "status"))
-	DetailKeyMap.CyclePriority = key.NewBinding(key.WithKeys(k.DetailPriority), key.WithHelp(k.DetailPriority, "priority"))
-	DetailKeyMap.Labels = key.NewBinding(key.WithKeys(k.DetailLabel), key.WithHelp(k.DetailLabel, "labels"))
-	DetailKeyMap.AddComment = key.NewBinding(key.WithKeys(k.DetailComment), key.WithHelp(k.DetailComment, "comment"))
-	DetailKeyMap.EditIssue = key.NewBinding(key.WithKeys(k.DetailEdit), key.WithHelp(k.DetailEdit, "edit"))
+	rebind(&ListKeyMap.Up, k.ListUp, k.ListUp+"/up", "up", "up")
+	rebind(&ListKeyMap.Down, k.ListDown, k.ListDown+"/down", "down", "down")
+	rebind(&ListKeyMap.Open, k.ListOpen, k.ListOpen, "open")
+	rebind(&ListKeyMap.EditIssue, k.ListEdit, k.ListEdit, "edit")
+	rebind(&ListKeyMap.ToBoard, k.ListToBoard, k.ListToBoard, "board view")
+	rebind(&ListKeyMap.Filter, k.ListSearch, k.ListSearch, "search")
+	rebind(&ListKeyMap.StructuredFilter, k.ListFilter, k.ListFilter, "filter")
+	rebind(&ListKeyMap.CycleStatus, k.ListStatus, k.ListStatus, "status")
+	rebind(&ListKeyMap.CyclePriority, k.ListPriority, k.ListPriority, "priority")
+	rebind(&ListKeyMap.Labels, k.ListLabel, k.ListLabel, "labels")
+	rebind(&ListKeyMap.CycleSort, k.ListSort, k.ListSort, "order")
+	rebind(&ListKeyMap.ReverseSort, k.ListReverse, k.ListReverse, "reverse")
+
+	rebind(&DetailKeyMap.Back, k.DetailBack, k.DetailBack+"/⌫", "back", "backspace")
+	rebind(&DetailKeyMap.ToBoard, k.DetailToBoard, k.DetailToBoard, "board view")
+	rebind(&DetailKeyMap.ToList, k.DetailToList, k.DetailToList, "list view")
+	rebind(&DetailKeyMap.CycleStatus, k.DetailStatus, k.DetailStatus, "status")
+	rebind(&DetailKeyMap.CyclePriority, k.DetailPriority, k.DetailPriority, "priority")
+	rebind(&DetailKeyMap.Labels, k.DetailLabel, k.DetailLabel, "labels")
+	rebind(&DetailKeyMap.AddComment, k.DetailComment, k.DetailComment, "comment")
+	rebind(&DetailKeyMap.EditIssue, k.DetailEdit, k.DetailEdit, "edit")
 }

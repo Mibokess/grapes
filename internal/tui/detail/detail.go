@@ -6,6 +6,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 
 	"charm.land/bubbles/v2/key"
 	"charm.land/bubbles/v2/viewport"
@@ -418,12 +419,13 @@ func renderIssue(issue data.Issue, allIssues []data.Issue, width int, theme comm
 			commentW = 30
 		}
 		for _, c := range issue.Comments {
-			commentBox := theme.StyleCommentBox.Width(commentW).
-				Render(
-					theme.StyleFaint.Render(c.Date) + "\n" +
-						renderMarkdown(c.Body, commentW-4, theme.GlamourStyle),
-				)
-			b.WriteString(commentBox + "\n\n")
+			body := renderMarkdown(c.Body, commentW-4, theme.GlamourStyle)
+			// A comment with no date is text that preceded the first header in
+			// comments.md; it gets no date line rather than an empty one.
+			if c.Date != "" {
+				body = theme.StyleFaint.Render(c.Date) + "\n" + body
+			}
+			b.WriteString(theme.StyleCommentBox.Width(commentW).Render(body) + "\n\n")
 		}
 	}
 
@@ -499,12 +501,37 @@ func blocksForSource(allIssues []data.Issue, blockerID int, worktree string) []i
 	return blocks
 }
 
-func renderMarkdown(content string, width int, glamourStyle string) string {
+// rendererCache holds one glamour renderer per (style, width). Building a
+// renderer compiles a whole syntax-highlighting theme, which is by far the most
+// expensive thing in this file — and renderIssue used to build one per comment,
+// on every reload and every resize.
+var rendererCache sync.Map // rendererKey → *glamour.TermRenderer
+
+type rendererKey struct {
+	style string
+	width int
+}
+
+// markdownRenderer returns the cached renderer for a style and width.
+func markdownRenderer(style string, width int) (*glamour.TermRenderer, error) {
+	key := rendererKey{style: style, width: width}
+	if r, ok := rendererCache.Load(key); ok {
+		return r.(*glamour.TermRenderer), nil
+	}
 	r, err := glamour.NewTermRenderer(
-		glamour.WithStandardStyle(glamourStyle),
+		glamour.WithStandardStyle(style),
 		glamour.WithWordWrap(width),
 		glamour.WithColorProfile(termenv.TrueColor),
 	)
+	if err != nil {
+		return nil, err
+	}
+	rendererCache.Store(key, r)
+	return r, nil
+}
+
+func renderMarkdown(content string, width int, glamourStyle string) string {
+	r, err := markdownRenderer(glamourStyle, width)
 	if err != nil {
 		return content
 	}

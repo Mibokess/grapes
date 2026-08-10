@@ -81,6 +81,21 @@ func (p Priority) Label() string {
 	return string(p)
 }
 
+// AtLeast reports whether p is at least as urgent as other. Priority is a
+// string type, so comparing values directly with <= would order them
+// alphabetically ("urgent" > "high") instead of by urgency.
+func (p Priority) AtLeast(other Priority) bool {
+	pi, ok := PriorityOrder[p]
+	if !ok {
+		return false // unknown priorities rank below every known one
+	}
+	oi, ok := PriorityOrder[other]
+	if !ok {
+		return false
+	}
+	return pi <= oi
+}
+
 // SortMode controls issue ordering in the TUI.
 type SortMode int
 
@@ -121,6 +136,18 @@ func (s SortMode) Label() string {
 
 func (s SortMode) Next() SortMode {
 	return (s + 1) % sortModeCount
+}
+
+// ParseSortMode resolves a configured sort name ("priority", "updated", …).
+// The second result is false for names that do not exist, so callers can report
+// a bad config value instead of silently falling back.
+func ParseSortMode(name string) (SortMode, bool) {
+	for mode, label := range sortModeLabels {
+		if label == name {
+			return mode, true
+		}
+	}
+	return SortByPriority, false
 }
 
 // SortIssues sorts issues in place according to the given mode.

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strconv"
 
 	tea "charm.land/bubbletea/v2"
@@ -51,7 +52,7 @@ func main() {
 		if answer != "y" && answer != "Y" {
 			os.Exit(1)
 		}
-		issuesDir = cwd + "/.grapes"
+		issuesDir = filepath.Join(cwd, ".grapes")
 		if err := os.MkdirAll(issuesDir, 0o755); err != nil {
 			fmt.Fprintf(os.Stderr, "Error creating .grapes/: %v\n", err)
 			os.Exit(1)
@@ -71,16 +72,21 @@ func main() {
 
 	projectRoot := data.ProjectRoot(issuesDir)
 	cfg, cfgErr := config.Load(issuesDir)
-	issues, err := data.LoadAllSources(issuesDir, projectRoot, cfg.Sources.Dirs...)
+	issues, problems, err := data.LoadAllSources(issuesDir, projectRoot, cfg.Sources.Dirs...)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error loading issues: %v\n", err)
 		os.Exit(1)
 	}
 	model := tui.NewModel(issues, issuesDir, cfg, version)
-	if cfgErr != nil {
-		// The TUI owns the screen from here, so a stderr warning would be
-		// wiped by the alt-screen switch. Surface it in the status bar.
+	// The TUI owns the screen from here, so a stderr warning would be wiped by
+	// the alt-screen switch. Surface startup problems in the status bar instead.
+	switch {
+	case cfgErr != nil:
 		model = model.WithStatus("Config error (using defaults): " + cfgErr.Error())
+	case len(problems) == 1:
+		model = model.WithStatus("Skipped " + problems[0].Error())
+	case len(problems) > 1:
+		model = model.WithStatus(fmt.Sprintf("Skipped %s (+%d more)", problems[0].Error(), len(problems)-1))
 	}
 	p := tea.NewProgram(model)
 
@@ -146,13 +152,14 @@ func runIssue(issuesDir string, args []string) int {
 
 	// With ID: stamp timestamps on existing issue
 	id, err := strconv.Atoi(args[0])
-	if err != nil {
+	if err != nil || id <= 0 {
 		fmt.Fprintf(os.Stderr, "Invalid issue ID: %s\n", args[0])
 		return 1
 	}
 
-	// Create directory if it doesn't exist
-	issueDir := issuesDir + "/" + args[0]
+	// Create the directory if it doesn't exist. The path comes from the parsed
+	// ID, not the raw argument, so "007" cannot create a directory beside #7.
+	issueDir := filepath.Join(issuesDir, strconv.Itoa(id))
 	if err := os.MkdirAll(issueDir, 0o755); err != nil {
 		fmt.Fprintf(os.Stderr, "Error creating directory: %v\n", err)
 		return 1

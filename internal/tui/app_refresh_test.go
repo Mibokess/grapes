@@ -43,9 +43,12 @@ func newTestModel(t *testing.T, setup func(grapesDir string)) Model {
 		t.Fatal(err)
 	}
 	setup(grapesDir)
-	issues, err := data.LoadAllIssues(grapesDir)
+	issues, problems, err := data.LoadAllIssues(grapesDir)
 	if err != nil {
 		t.Fatal(err)
+	}
+	if len(problems) > 0 {
+		t.Fatalf("unexpected load problems: %v", problems)
 	}
 	m := NewModel(issues, grapesDir, config.Defaults(), "test")
 	if m.watcher != nil {
