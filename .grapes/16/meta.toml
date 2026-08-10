@@ -1,5 +1,5 @@
 title = "Integrate filters into list view"
-status = 'todo'
+status = 'done'
 priority = 'high'
 labels = ['feature', 'tui', 'list', 'filter']
 parent = 11

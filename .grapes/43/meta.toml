@@ -1,5 +1,5 @@
 title = 'Make worktree scan paths configurable'
-status = 'todo'
+status = 'done'
 priority = 'medium'
 labels = ['feature', 'config']
 created = 2026-03-10T12:05:00Z

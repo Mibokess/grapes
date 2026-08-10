@@ -1,5 +1,5 @@
 title = "User preferences settings page"
-status = 'backlog'
+status = 'cancelled'
 priority = 'high'
 labels = ['frontend', 'ui']
 blocked_by = [19, 20]

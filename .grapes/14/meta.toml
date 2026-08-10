@@ -1,5 +1,5 @@
 title = "Build filter menu overlay"
-status = 'todo'
+status = 'done'
 priority = 'high'
 labels = ['feature', 'tui', 'filter']
 parent = 11

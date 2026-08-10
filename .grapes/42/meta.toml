@@ -1,5 +1,5 @@
 title = 'Toggle empty columns in board view, hidden by default, configurable'
-status = 'in_progress'
+status = 'done'
 priority = 'medium'
 labels = ['feature', 'tui']
 created = 2026-03-10T12:04:00Z
