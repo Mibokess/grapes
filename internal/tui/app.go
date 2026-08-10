@@ -11,6 +11,9 @@ import (
 
 	"sort"
 
+	"charm.land/bubbles/v2/key"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/Mibokess/grapes/internal/config"
 	"github.com/Mibokess/grapes/internal/data"
 	"github.com/Mibokess/grapes/internal/tui/board"
@@ -21,9 +24,6 @@ import (
 	"github.com/Mibokess/grapes/internal/tui/list"
 	"github.com/Mibokess/grapes/internal/tui/picker"
 	"github.com/Mibokess/grapes/internal/tui/settings"
-	"charm.land/bubbles/v2/key"
-	tea "charm.land/bubbletea/v2"
-	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/fsnotify/fsnotify"
 )
@@ -44,25 +44,25 @@ type Model struct {
 	projectRoot string
 	width       int
 	height      int
-	screen     common.Screen
-	navStack   []navEntry
-	watcher    *fsnotify.Watcher
-	sortMode data.SortMode
-	sortAsc  bool // ascending order (reversed from default)
-	theme    common.Theme
-	isDark   bool
+	screen      common.Screen
+	navStack    []navEntry
+	watcher     *fsnotify.Watcher
+	sortMode    data.SortMode
+	sortAsc     bool // ascending order (reversed from default)
+	theme       common.Theme
+	isDark      bool
 
-	cfg    config.Config
-	board  board.Model
-	list   list.Model
-	detail detail.Model
+	cfg      config.Config
+	board    board.Model
+	list     list.Model
+	detail   detail.Model
 	settings settings.Model
 
-	picker       *picker.Model              // non-nil when picker overlay is active
-	labelPicker  *labelpicker.Model         // non-nil when label picker is active
-	filterMenu   *filter.Menu              // non-nil when filter menu is open
-	filterPicker *filter.MultiPicker       // non-nil when filter multi-picker is open
-	filters      filter.FilterSet          // structured filter state
+	picker       *picker.Model       // non-nil when picker overlay is active
+	labelPicker  *labelpicker.Model  // non-nil when label picker is active
+	filterMenu   *filter.Menu        // non-nil when filter menu is open
+	filterPicker *filter.MultiPicker // non-nil when filter multi-picker is open
+	filters      filter.FilterSet    // structured filter state
 
 	worktreeNames []string // sorted worktree names, for consistent color indexing
 
@@ -75,11 +75,18 @@ type Model struct {
 func NewModel(issues []data.Issue, issuesDir string, cfg config.Config, version string) Model {
 	projectRoot := data.ProjectRoot(issuesDir)
 
-	w, _ := fsnotify.NewWatcher()
-	if w != nil {
-		addWatchDirs(w, issuesDir)
+	// Live reload is a headline feature, so a watcher that fails to start is
+	// worth saying out loud rather than degrading to a silently static view.
+	var watchErr error
+	w, err := fsnotify.NewWatcher()
+	if err != nil {
+		watchErr = err
+	} else {
+		watchErr = addWatchDirs(w, issuesDir)
 		for _, dir := range data.FindWorktreeIssuesDirs(projectRoot, cfg.Sources.Dirs...) {
-			addWatchDirs(w, dir)
+			if e := addWatchDirs(w, dir); e != nil && watchErr == nil {
+				watchErr = e
+			}
 		}
 	}
 
@@ -123,8 +130,14 @@ func NewModel(issues []data.Issue, issuesDir string, cfg config.Config, version 
 	// Apply configured keybindings
 	common.ApplyKeys(cfg.Keys)
 
+	statusMsg := ""
+	if watchErr != nil {
+		statusMsg = "Live reload unavailable: " + watchErr.Error()
+	}
+
 	return Model{
 		version:       version,
+		statusMsg:     statusMsg,
 		issues:        issues,
 		issuesDir:     issuesDir,
 		projectRoot:   projectRoot,
@@ -138,6 +151,13 @@ func NewModel(issues []data.Issue, issuesDir string, cfg config.Config, version 
 		list:          l.SetTheme(theme).SetWorktreeNames(wtNames),
 		watcher:       w,
 	}
+}
+
+// WithStatus sets the initial status bar message, for reporting problems the
+// caller hit before the TUI took over the screen.
+func (m Model) WithStatus(msg string) Model {
+	m.statusMsg = msg
+	return m
 }
 
 // issueSourceDir returns the .grapes/ directory for the given issue ID.
@@ -193,11 +213,18 @@ func (m Model) childStatusUpdates(issueID int, newStatus string) []childUpdate {
 }
 
 // addWatchDirs watches the issues directory and all numeric subdirectories.
-func addWatchDirs(w *fsnotify.Watcher, issuesDir string) {
-	w.Add(issuesDir)
+//
+// A failure on issuesDir itself is returned, since that one disables live
+// reload for the whole source. Failures on individual issue subdirectories are
+// deliberately ignored: a directory can legitimately vanish between the ReadDir
+// and the Add, and the parent watch still reports changes underneath it.
+func addWatchDirs(w *fsnotify.Watcher, issuesDir string) error {
+	if err := w.Add(issuesDir); err != nil {
+		return err
+	}
 	entries, err := os.ReadDir(issuesDir)
 	if err != nil {
-		return
+		return err
 	}
 	for _, e := range entries {
 		if !e.IsDir() {
@@ -206,8 +233,9 @@ func addWatchDirs(w *fsnotify.Watcher, issuesDir string) {
 		if _, err := strconv.Atoi(e.Name()); err != nil {
 			continue
 		}
-		w.Add(filepath.Join(issuesDir, e.Name()))
+		_ = w.Add(filepath.Join(issuesDir, e.Name()))
 	}
+	return nil
 }
 
 // watchCmd blocks on the fsnotify watcher and returns a RefreshMsg when files change.
@@ -553,11 +581,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 		}
-		// Re-sync watched dirs (picks up new issue folders) and keep watching
+		// Re-sync watched dirs (picks up new issue folders) and keep watching.
+		// Errors are ignored here, unlike at startup: a source directory may
+		// have been deleted since the last refresh, and reporting that on every
+		// subsequent refresh would bury the status bar under a stale complaint.
 		if m.watcher != nil {
-			addWatchDirs(m.watcher, m.issuesDir)
+			_ = addWatchDirs(m.watcher, m.issuesDir)
 			for _, dir := range data.FindWorktreeIssuesDirs(m.projectRoot, m.cfg.Sources.Dirs...) {
-				addWatchDirs(m.watcher, dir)
+				_ = addWatchDirs(m.watcher, dir)
 			}
 		}
 		return m, m.watchCmd()

@@ -6,10 +6,10 @@ import (
 	"os"
 	"strconv"
 
+	tea "charm.land/bubbletea/v2"
 	"github.com/Mibokess/grapes/internal/config"
 	"github.com/Mibokess/grapes/internal/data"
 	"github.com/Mibokess/grapes/internal/tui"
-	tea "charm.land/bubbletea/v2"
 )
 
 var version = "0.1.9"
@@ -70,13 +70,18 @@ func main() {
 	}
 
 	projectRoot := data.ProjectRoot(issuesDir)
-	cfg := config.Load(issuesDir)
+	cfg, cfgErr := config.Load(issuesDir)
 	issues, err := data.LoadAllSources(issuesDir, projectRoot, cfg.Sources.Dirs...)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error loading issues: %v\n", err)
 		os.Exit(1)
 	}
 	model := tui.NewModel(issues, issuesDir, cfg, version)
+	if cfgErr != nil {
+		// The TUI owns the screen from here, so a stderr warning would be
+		// wiped by the alt-screen switch. Surface it in the status bar.
+		model = model.WithStatus("Config error (using defaults): " + cfgErr.Error())
+	}
 	p := tea.NewProgram(model)
 
 	if _, err := p.Run(); err != nil {
@@ -120,7 +125,10 @@ NOTE:
 }
 
 func runIssue(issuesDir string, args []string) int {
-	cfg := config.Load(issuesDir)
+	cfg, err := config.Load(issuesDir)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Config error (using defaults): %v\n", err)
+	}
 	if len(args) == 0 {
 		// No ID: allocate next ID, stamp timestamps, print ID
 		id, err := data.NextID(issuesDir, cfg.Sources.Dirs...)

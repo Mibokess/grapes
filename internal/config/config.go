@@ -142,18 +142,18 @@ type KeysConfig struct {
 	BoardReverse  string `toml:"board_reverse"`
 	BoardEmpty    string `toml:"board_empty"`
 
-	ListUp        string `toml:"list_up"`
-	ListDown      string `toml:"list_down"`
-	ListOpen      string `toml:"list_open"`
-	ListEdit      string `toml:"list_edit"`
-	ListToBoard   string `toml:"list_to_board"`
-	ListSearch    string `toml:"list_search"`
-	ListFilter    string `toml:"list_filter"`
-	ListStatus    string `toml:"list_status"`
-	ListPriority  string `toml:"list_priority"`
-	ListLabel     string `toml:"list_label"`
-	ListSort      string `toml:"list_sort"`
-	ListReverse   string `toml:"list_reverse"`
+	ListUp       string `toml:"list_up"`
+	ListDown     string `toml:"list_down"`
+	ListOpen     string `toml:"list_open"`
+	ListEdit     string `toml:"list_edit"`
+	ListToBoard  string `toml:"list_to_board"`
+	ListSearch   string `toml:"list_search"`
+	ListFilter   string `toml:"list_filter"`
+	ListStatus   string `toml:"list_status"`
+	ListPriority string `toml:"list_priority"`
+	ListLabel    string `toml:"list_label"`
+	ListSort     string `toml:"list_sort"`
+	ListReverse  string `toml:"list_reverse"`
 
 	DetailBack     string `toml:"detail_back"`
 	DetailToBoard  string `toml:"detail_to_board"`
@@ -233,35 +233,35 @@ func Defaults() Config {
 			},
 		},
 		Keys: KeysConfig{
-			Quit:          "q",
-			Settings:      "C",
-			BoardUp:       "k",
-			BoardDown:     "j",
-			BoardLeft:     "h",
-			BoardRight:    "l",
-			BoardOpen:     "enter",
-			BoardEdit:     "e",
-			BoardToList:   "L",
-			BoardSearch:   "/",
-			BoardFilter:   "f",
-			BoardStatus:   "s",
-			BoardPriority: "p",
-			BoardLabel:    "t",
-			BoardSort:     "o",
-			BoardReverse:  "O",
-			BoardEmpty:    "E",
-			ListUp:        "k",
-			ListDown:      "j",
-			ListOpen:      "enter",
-			ListEdit:      "e",
-			ListToBoard:   "B",
-			ListSearch:    "/",
-			ListFilter:    "f",
-			ListStatus:    "s",
-			ListPriority:  "p",
-			ListLabel:     "t",
-			ListSort:      "o",
-			ListReverse:   "O",
+			Quit:           "q",
+			Settings:       "C",
+			BoardUp:        "k",
+			BoardDown:      "j",
+			BoardLeft:      "h",
+			BoardRight:     "l",
+			BoardOpen:      "enter",
+			BoardEdit:      "e",
+			BoardToList:    "L",
+			BoardSearch:    "/",
+			BoardFilter:    "f",
+			BoardStatus:    "s",
+			BoardPriority:  "p",
+			BoardLabel:     "t",
+			BoardSort:      "o",
+			BoardReverse:   "O",
+			BoardEmpty:     "E",
+			ListUp:         "k",
+			ListDown:       "j",
+			ListOpen:       "enter",
+			ListEdit:       "e",
+			ListToBoard:    "B",
+			ListSearch:     "/",
+			ListFilter:     "f",
+			ListStatus:     "s",
+			ListPriority:   "p",
+			ListLabel:      "t",
+			ListSort:       "o",
+			ListReverse:    "O",
 			DetailBack:     "esc",
 			DetailToBoard:  "B",
 			DetailToList:   "l",
@@ -275,15 +275,26 @@ func Defaults() Config {
 }
 
 // Load reads config from .grapes/config.toml, falling back to defaults.
-func Load(issuesDir string) Config {
-	cfg := Defaults()
+//
+// A missing file yields defaults and no error. A malformed file yields
+// defaults and the parse error, so the caller can report it. The parse
+// targets a scratch copy so a partial parse never leaks into the result:
+// toml.Unmarshal populates fields as it reads, and a config that silently
+// half-applies is harder to diagnose than one that plainly falls back.
+func Load(issuesDir string) (Config, error) {
 	path := filepath.Join(issuesDir, "config.toml")
 	raw, err := os.ReadFile(path)
 	if err != nil {
-		return cfg
+		if os.IsNotExist(err) {
+			return Defaults(), nil
+		}
+		return Defaults(), err
 	}
-	_ = toml.Unmarshal(raw, &cfg)
-	return cfg
+	parsed := Defaults()
+	if err := toml.Unmarshal(raw, &parsed); err != nil {
+		return Defaults(), err
+	}
+	return parsed, nil
 }
 
 // Save writes the config to .grapes/config.toml.
