@@ -527,10 +527,11 @@ func (m Model) buildTable(issues []data.Issue, width, height int) table.Model {
 		prioCell := m.theme.PriorityStyle(iss.Priority).Render(common.PriorityIcon(iss.Priority) + " " + iss.Priority.Label())
 		createdCell := formatDate(iss.Created)
 		updatedCell := formatDate(iss.Updated)
+		// Named only when a worktree is working on this issue ahead of the main
+		// checkout. Every worktree carries a copy of every issue, so listing
+		// mere copies would fill the column without saying anything.
 		var sourceCell string
-		if len(iss.Sources) > 1 {
-			sourceCell = m.theme.RenderSourceIndicators(iss.Sources, m.worktreeNames)
-		} else if iss.Worktree != "" {
+		if iss.Worktree != "" {
 			c := m.theme.WorktreeColorFor(iss.Worktree, m.worktreeNames)
 			sourceCell = lipgloss.NewStyle().Foreground(c).Render(common.WorktreeIcon() + " " + iss.Worktree)
 		}

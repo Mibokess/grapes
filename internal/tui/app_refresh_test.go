@@ -43,14 +43,15 @@ func newTestModel(t *testing.T, setup func(grapesDir string)) Model {
 		t.Fatal(err)
 	}
 	setup(grapesDir)
-	issues, problems, err := data.LoadAllIssues(grapesDir)
+	loader := data.NewWorkspaceLoader()
+	ws, err := loader.Load(grapesDir, data.WorkspaceOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(problems) > 0 {
-		t.Fatalf("unexpected load problems: %v", problems)
+	if len(ws.Problems) > 0 {
+		t.Fatalf("unexpected load problems: %v", ws.Problems)
 	}
-	m := NewModel(issues, grapesDir, config.Defaults(), "test")
+	m := NewModel(ws, loader, grapesDir, config.Defaults(), "test")
 	if m.watcher != nil {
 		t.Cleanup(func() { m.watcher.Close() })
 	}
@@ -67,11 +68,21 @@ func execCmd(cmd tea.Cmd) tea.Msg {
 	return cmd()
 }
 
-// refreshModel sends a RefreshMsg to the model and returns the updated model.
+// refreshModel drives a full reload the way the event loop does: Update only
+// schedules the load, so the command has to be run and its result fed back.
 func refreshModel(t *testing.T, m Model) Model {
 	t.Helper()
 	updated, _ := m.Update(common.RefreshMsg{})
-	return updated.(Model)
+	m = updated.(Model)
+	if !m.loading {
+		t.Fatal("RefreshMsg should have scheduled a load")
+	}
+	updated, _ = m.Update(m.loadWorkspaceCmd()())
+	m = updated.(Model)
+	if m.loading {
+		t.Fatal("the load result should have cleared the in-flight flag")
+	}
+	return m
 }
 
 // findIssue returns the issue with the given ID from the model's issues slice.

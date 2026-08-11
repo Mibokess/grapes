@@ -8,8 +8,9 @@ aid, not a substitute for checking the implementation named in each section.
 `main.go` is the only executable entry point.
 
 1. Help, version, and unknown commands are handled before filesystem discovery.
-2. `data.FindIssuesDir` searches from the current directory into descendants, up to
-   ten levels deep. It does not walk toward parent directories.
+2. `data.FindIssuesDir` walks toward parent directories first, Git-style, so running
+   grapes from a subdirectory finds the project's store. It falls back to searching
+   descendants up to ten levels deep.
 3. If no `.grapes` directory exists, interactive startup offers to create one.
 4. `grapes issue` delegates ID allocation and timestamps to `internal/data`.
 5. `grapes validate` delegates schema and relationship checks to
@@ -29,29 +30,52 @@ and `Blocks` are reverse relationships rebuilt in memory by `RewireRelationships
 Valid statuses, in board order, are `backlog`, `todo`, `in_progress`, `done`, and
 `cancelled`. Valid priorities are `urgent`, `high`, `medium`, and `low`.
 
-## Loading and Source Merging
+## Loading and Worktree Ownership
 
-The primary load path is `data.LoadAllSources`:
+`.grapes` is tracked in Git, so every worktree checkout holds a complete copy of
+every issue. Those copies are not versions anyone chose to make, and treating them
+as such is what made loading cost `O(worktrees × issues)` and put a source badge on
+nearly every card. Git decides which copies mean anything.
 
-1. `LoadAllIssues` reads numeric directories from the selected main `.grapes`.
-2. `FindGitWorktreeGrapesDirs` calls `git worktree list --porcelain` and finds a
-   `.grapes` directory in each worktree.
-3. `FindWorktreeIssuesDirs` expands optional `[sources].dirs` globs relative to the
-   project root, unless a pattern is absolute.
-4. Copies with the same numeric ID become `IssueSource` entries on one `Issue`.
-5. Sources are ordered with main first and named sources alphabetically.
-6. The copy with the newest filesystem modification time becomes active. Calling
-   `Issue.SwitchSource` copies that source's fields onto the top-level issue.
-7. Relationships are rebuilt from the active versions, and results are sorted by ID.
+The primary load path is `data.WorkspaceLoader.Load`, in `internal/data/workspace.go`:
 
-Loading deliberately tolerates some source failures: malformed issue directories
-and unreadable secondary sources can be skipped. Validation is the strict path.
+1. `resolveLayout` finds the canonical `.grapes` through Git's common directory, so
+   launching from a worktree gives the same view as launching from the main checkout.
+2. `Checkouts` lists the main checkout and every worktree.
+3. `GatherClaims` asks each worktree what it changed *relative to its merge-base with
+   the default branch*, concurrently. This is the whole design: a worktree that has
+   merely fallen behind differs from main for a reason that carries no information,
+   while its diff against its own base is exactly the work it has done.
+4. `LoadAllIssues` reads the main checkout once. Worktrees contribute only the issues
+   Git reports them as having changed, so idle worktrees cost no file reads.
+5. `mergeExternal` expands optional `[sources].dirs` globs for stores outside this
+   repository, which get no attribution and are loaded whole.
+6. `resolveOwners` picks the winning copy: the most recent real change, with the main
+   checkout winning ties. `Issue.SwitchSource` copies that source's fields up.
+7. Relationships are rebuilt from the owning versions, and results are sorted by ID.
+
+A "real change" is a commit date, or the mtime of an *uncommitted* edit. It is never
+the mtime of a checked-out file: Git stamps those when it writes the working copy, so
+a freshly created worktree would otherwise own every issue in the project.
+
+`WorkspaceLoader` caches per-worktree claims on `(HEAD, default branch tip)` and the
+repository layout for the process lifetime, so a reload only re-runs `git status`.
+Reuse one loader; do not construct one per refresh.
+
+Loading deliberately tolerates some failures: malformed issue directories and
+unreadable secondary sources can be skipped. Being outside a Git repository is not a
+failure — it is recorded in `Workspace.AttributionErr` and surfaced where a user would
+look for worktrees, not reported as a problem on every load. Validation is the strict
+path.
 
 ## ID Allocation
 
 `data.NextID` finds the main repository through Git's common directory, locks
 `.grapes/.lock`, scans the main source plus all known worktree/configured sources,
-and creates `max ID + 1` in the local source. Platform-specific locking lives in
+and creates `max ID + 1` in the local source. Unlike a normal load it scans every
+copy rather than only the changed ones: an ID already used on some branch must never
+be handed out twice. It runs under the lock and off the render path, so the full scan
+is affordable there. Platform-specific locking lives in
 `flock_unix.go` and `flock_windows.go`.
 
 Keep the scan and directory creation inside the lock. Moving either operation out
@@ -69,8 +93,11 @@ All production write helpers live in `internal/data/writer.go`:
 - `SaveIssueFromText` validates the edited frontmatter, then separates it back into
   metadata, description, and comments.
 
-The root TUI resolves an issue's active source before calling these helpers. Preserve
-that behavior: edits made while viewing a worktree version belong to that worktree.
+The root TUI resolves an issue's owning source before calling these helpers, via
+`issueSourceDir`. Preserve that behavior: writes follow ownership, which means the
+main checkout unless a worktree is genuinely ahead of it. Electing the write target by
+file mtime, as an earlier version did, sends edits into a stale worktree copy where
+they are lost when that branch is deleted.
 
 ## TUI Ownership and Message Flow
 
@@ -93,7 +120,8 @@ keyboard/mouse/fs event
   -> root tui.Model.Update
   -> data write or app-state transition
   -> common.RefreshMsg / filesystem event
-  -> LoadAllSources
+  -> loadWorkspaceCmd (a tea.Cmd, never Update)
+  -> common.WorkspaceLoadedMsg
   -> refreshed child models
 ```
 
@@ -101,8 +129,14 @@ Cross-view behavior belongs in the root model. Screen-specific selection, layout
 and rendering belong in the screen package. Shared message types, key maps, and theme
 primitives belong in `internal/tui/common`.
 
-The filesystem watcher watches each source directory and its numeric issue
-directories. A failed main watch is surfaced in the status bar rather than silently
+Loading runs in a command, not in `Update`. Keep it there: reading the workspace
+synchronously froze the event loop for the whole load, which is what made grapes
+unresponsive once a project had many worktrees.
+
+The filesystem watcher follows `Workspace.WatchDirs` — the canonical store plus the
+worktrees that are actually working on something — and their numeric issue
+directories. Watching every worktree would mean thousands of descriptors following
+copies that never change. A failed main watch is surfaced in the status bar rather than silently
 disabling live reload.
 
 ## Configuration
@@ -111,7 +145,8 @@ disabling live reload.
 loaded from `.grapes/config.toml` and covers:
 
 - startup screen, sort mode, child auto-close, and empty board columns;
-- extra source directory globs;
+- extra source directory globs, and the default branch worktrees are compared
+  against (`[sources].default_branch`, empty means detect);
 - dark/light theme mode, preset, and color overrides;
 - global and screen-specific keybindings.
 

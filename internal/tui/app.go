@@ -65,6 +65,11 @@ type Model struct {
 	filterPicker *filter.MultiPicker // non-nil when filter multi-picker is open
 	filters      filter.FilterSet    // structured filter state
 
+	loader         *data.WorkspaceLoader // reused so its per-worktree cache survives reloads
+	worktrees      []data.WorktreeInfo   // only worktrees that are working on something
+	attributionErr error                 // why worktree attribution is off, when it is
+	loading        bool                  // a reload is in flight
+
 	worktreeNames []string // sorted worktree names, for consistent color indexing
 
 	statusMsg      string // transient error/info message for status bar
@@ -73,20 +78,24 @@ type Model struct {
 	editingMode    string // "comment" or "edit"
 }
 
-func NewModel(issues []data.Issue, issuesDir string, cfg config.Config, version string) Model {
+func NewModel(ws data.Workspace, loader *data.WorkspaceLoader, issuesDir string, cfg config.Config, version string) Model {
 	projectRoot := data.ProjectRoot(issuesDir)
+	issues := ws.Issues
 
 	// Live reload is a headline feature, so a watcher that fails to start is
 	// worth saying out loud rather than degrading to a silently static view.
+	//
+	// Only the canonical store and the worktrees that are actually working on
+	// something are watched. Watching every worktree would cost thousands of
+	// descriptors to follow copies that never change.
 	var watchErr error
 	w, err := fsnotify.NewWatcher()
 	if err != nil {
 		watchErr = err
 	} else {
-		watchErr = addWatchDirs(w, issuesDir)
-		for _, dir := range data.FindWorktreeIssuesDirs(projectRoot, cfg.Sources.Dirs...) {
-			if e := addWatchDirs(w, dir); e != nil && watchErr == nil {
-				watchErr = e
+		for i, dir := range ws.WatchDirs {
+			if e := addWatchDirs(w, dir); e != nil && watchErr == nil && i == 0 {
+				watchErr = e // only the canonical store failing disables reload
 			}
 		}
 	}
@@ -112,7 +121,7 @@ func NewModel(issues []data.Issue, issuesDir string, cfg config.Config, version 
 		}
 	}
 
-	wtNames := worktreeNames(issues)
+	wtNames := ws.WorktreeNames()
 
 	l := list.New(filtered)
 	l = l.SetSortState(sortMode, false)
@@ -134,21 +143,28 @@ func NewModel(issues []data.Issue, issuesDir string, cfg config.Config, version 
 		statusMsg = "Live reload unavailable: " + watchErr.Error()
 	}
 
+	if loader == nil {
+		loader = data.NewWorkspaceLoader()
+	}
+
 	return Model{
-		version:       version,
-		statusMsg:     statusMsg,
-		issues:        issues,
-		issuesDir:     issuesDir,
-		projectRoot:   projectRoot,
-		screen:        screen,
-		sortMode:      sortMode,
-		filters:       filters,
-		cfg:           cfg,
-		theme:         theme,
-		worktreeNames: wtNames,
-		board:         board.New(filtered).SetHideEmpty(cfg.View.HideEmpty()).SetTheme(theme).SetWorktreeNames(wtNames),
-		list:          l.SetTheme(theme).SetWorktreeNames(wtNames),
-		watcher:       w,
+		loader:         loader,
+		worktrees:      ws.Worktrees,
+		attributionErr: ws.AttributionErr,
+		version:        version,
+		statusMsg:      statusMsg,
+		issues:         issues,
+		issuesDir:      issuesDir,
+		projectRoot:    projectRoot,
+		screen:         screen,
+		sortMode:       sortMode,
+		filters:        filters,
+		cfg:            cfg,
+		theme:          theme,
+		worktreeNames:  wtNames,
+		board:          board.New(filtered).SetHideEmpty(cfg.View.HideEmpty()).SetTheme(theme).SetWorktreeNames(wtNames),
+		list:           l.SetTheme(theme).SetWorktreeNames(wtNames),
+		watcher:        w,
 	}
 }
 
@@ -211,21 +227,14 @@ func (m Model) childStatusUpdates(issueID int, newStatus string) []childUpdate {
 	return updates
 }
 
-// worktreeNames returns the sorted worktree names across all issue sources.
-// The order fixes each worktree's color, so it must be stable between reloads.
-func worktreeNames(issues []data.Issue) []string {
-	seen := make(map[string]bool)
-	var names []string
-	for _, iss := range issues {
-		for _, s := range iss.Sources {
-			if s.Name != "" && !seen[s.Name] {
-				seen[s.Name] = true
-				names = append(names, s.Name)
-			}
-		}
+// sourcePickerTitle names the source filter, and says why there are no
+// worktrees to choose from when attribution could not run. Without this, a
+// project outside git looks identical to one where every worktree is idle.
+func (m Model) sourcePickerTitle() string {
+	if len(m.worktrees) == 0 && m.attributionErr != nil {
+		return "Source — worktrees unavailable: " + m.attributionErr.Error()
 	}
-	sort.Strings(names)
-	return names
+	return "Source"
 }
 
 // loadProblemSummary turns skipped issues into one status-bar line, naming the
@@ -242,11 +251,34 @@ func loadProblemSummary(problems []data.LoadProblem) string {
 	}
 }
 
-// pruneWatchDirs drops watches on directories that no longer exist, so a long
-// session does not accumulate descriptors for deleted issues and worktrees.
-func pruneWatchDirs(w *fsnotify.Watcher) {
+// loadWorkspaceCmd reads the workspace off the event loop.
+func (m Model) loadWorkspaceCmd() tea.Cmd {
+	loader, dir, cfg := m.loader, m.issuesDir, m.cfg
+	return func() tea.Msg {
+		ws, err := loader.Load(dir, data.WorkspaceOptions{
+			DefaultBranch: cfg.Sources.DefaultBranch,
+			ExtraDirs:     cfg.Sources.Dirs,
+		})
+		return common.WorkspaceLoadedMsg{Workspace: ws, Err: err}
+	}
+}
+
+// pruneWatchDirs drops watches that are no longer wanted: directories that have
+// been deleted, and the issue directories of worktrees that have stopped
+// working on anything. keep lists the roots still in scope; anything outside
+// them is released so a long session does not accumulate descriptors.
+func pruneWatchDirs(w *fsnotify.Watcher, keep []string) {
+	inScope := func(dir string) bool {
+		for _, root := range keep {
+			if dir == root || strings.HasPrefix(dir, root+string(filepath.Separator)) {
+				return true
+			}
+		}
+		return false
+	}
 	for _, dir := range w.WatchList() {
-		if info, err := os.Stat(dir); err != nil || !info.IsDir() {
+		info, err := os.Stat(dir)
+		if err != nil || !info.IsDir() || !inScope(dir) {
 			_ = w.Remove(dir)
 		}
 	}
@@ -593,19 +625,35 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case common.RefreshMsg:
-		issues, problems, err := data.LoadAllSources(m.issuesDir, m.projectRoot, m.cfg.Sources.Dirs...)
-		if err != nil {
-			m.statusMsg = "Reload failed: " + err.Error()
-			return m, tea.Batch(m.watchCmd(), m.clearStatusAfter(5*time.Second))
+		// Loading reads the canonical store and queries git for every worktree,
+		// so it runs as a command. Doing it here would freeze the UI for the
+		// whole load, which is what made grapes feel unresponsive with many
+		// worktrees.
+		if m.loading {
+			return m, m.watchCmd() // a load is already in flight; it will pick this up
 		}
+		m.loading = true
+		return m, tea.Batch(m.watchCmd(), m.loadWorkspaceCmd())
+
+	case common.WorkspaceLoadedMsg:
+		m.loading = false
+		if msg.Err != nil {
+			m.statusMsg = "Reload failed: " + msg.Err.Error()
+			return m, m.clearStatusAfter(5 * time.Second)
+		}
+		ws := msg.Workspace
+
 		var problemCmd tea.Cmd
-		if msg := loadProblemSummary(problems); msg != "" {
-			m.statusMsg = msg
+		if s := loadProblemSummary(ws.Problems); s != "" {
+			m.statusMsg = s
 			problemCmd = m.clearStatusAfter(5 * time.Second)
 		}
-		wtNames := worktreeNames(issues)
+		wtNames := ws.WorktreeNames()
 		m.worktreeNames = wtNames
+		m.worktrees = ws.Worktrees
+		m.attributionErr = ws.AttributionErr
 
+		issues := ws.Issues
 		data.SortIssues(issues, m.sortMode, m.sortAsc)
 		m.issues = issues
 		filtered := m.filteredIssues()
@@ -620,18 +668,17 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 		}
-		// Re-sync watched dirs (picks up new issue folders) and keep watching.
-		// Errors are ignored here, unlike at startup: a source directory may
-		// have been deleted since the last refresh, and reporting that on every
-		// subsequent refresh would bury the status bar under a stale complaint.
+		// Follow the directories this load says matter, which changes as
+		// worktrees start and stop working on issues. Errors are ignored here,
+		// unlike at startup: a directory may have been deleted since the last
+		// refresh, and repeating that on every reload would bury the status bar.
 		if m.watcher != nil {
-			_ = addWatchDirs(m.watcher, m.issuesDir)
-			for _, dir := range data.FindWorktreeIssuesDirs(m.projectRoot, m.cfg.Sources.Dirs...) {
+			for _, dir := range ws.WatchDirs {
 				_ = addWatchDirs(m.watcher, dir)
 			}
-			pruneWatchDirs(m.watcher)
+			pruneWatchDirs(m.watcher, ws.WatchDirs)
 		}
-		return m, tea.Batch(m.watchCmd(), problemCmd)
+		return m, problemCmd
 
 	case common.ShowPickerMsg:
 		p := m.buildPicker(msg.IssueID, msg.Field)
@@ -1408,36 +1455,32 @@ func (m Model) buildFilterPicker(field string) filter.MultiPicker {
 		return filter.NewMultiPicker("Label", "labels", opts, m.filters.Labels, m.theme)
 
 	case "source":
-		sourceSet := make(map[string]bool)
+		// Only worktrees that are working on something get listed. Every
+		// checkout holds a copy of every issue, so listing all of them would
+		// mean thirty or forty identical entries that say nothing.
+		var opts []filter.PickerOption
+		mainCount := 0
 		for _, iss := range m.issues {
-			for _, s := range iss.Sources {
-				if s.Name == "" {
-					sourceSet["main"] = true
-				} else {
-					sourceSet[s.Name] = true
-				}
+			if iss.Worktree == "" {
+				mainCount++
 			}
 		}
-		var opts []filter.PickerOption
-		if sourceSet["main"] {
+		if mainCount > 0 {
 			opts = append(opts, filter.PickerOption{
 				Value: "main",
-				Label: common.MainIcon() + " main",
+				Label: fmt.Sprintf("%s main (%d)", common.MainIcon(), mainCount),
 				Style: m.theme.StyleSubtitle,
 			})
 		}
-		// Add worktrees in sorted order for consistent colors
-		for _, name := range m.worktreeNames {
-			if sourceSet[name] {
-				c := m.theme.WorktreeColorFor(name, m.worktreeNames)
-				opts = append(opts, filter.PickerOption{
-					Value: name,
-					Label: common.WorktreeIcon() + " " + name,
-					Style: lipgloss.NewStyle().Foreground(c),
-				})
-			}
+		for _, wt := range m.worktrees {
+			c := m.theme.WorktreeColorFor(wt.Name, m.worktreeNames)
+			opts = append(opts, filter.PickerOption{
+				Value: wt.Name,
+				Label: fmt.Sprintf("%s %s (%d)", common.WorktreeIcon(), wt.Name, len(wt.Touched)),
+				Style: lipgloss.NewStyle().Foreground(c),
+			})
 		}
-		return filter.NewMultiPicker("Source", "source", opts, m.filters.Sources, m.theme)
+		return filter.NewMultiPicker(m.sourcePickerTitle(), "source", opts, m.filters.Sources, m.theme)
 	}
 
 	return filter.NewMultiPicker(field, field, nil, nil, m.theme)

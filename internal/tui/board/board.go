@@ -708,23 +708,22 @@ func (m Model) modeFor(issue data.Issue, active bool) cardMode {
 	}
 }
 
-// renderSourceSuffix renders the "where does this issue live" markers that
-// follow the ID: one icon per source, or a single worktree icon.
+// renderSourceSuffix marks the issues a worktree is working on ahead of the
+// main checkout, which is the question a board is asked: who has this one?
+//
+// It deliberately says nothing about issues the main checkout owns, even when a
+// worktree also has a version of them. Every worktree holds a copy of every
+// issue, so marking those would put a badge on almost every card and tell the
+// reader nothing. Divergence is still inspectable in the detail view.
 func (m Model) renderSourceSuffix(issue data.Issue, faint bool) string {
-	switch {
-	case len(issue.Sources) > 1:
-		if faint {
-			return " " + m.theme.StyleFaint.Render(fmt.Sprintf("(%d)", len(issue.Sources)))
-		}
-		return " " + m.theme.RenderSourceIndicators(issue.Sources, m.worktreeNames)
-	case issue.Worktree != "":
-		if faint {
-			return " " + m.theme.StyleFaint.Render(common.WorktreeIcon())
-		}
-		c := m.theme.WorktreeColorFor(issue.Worktree, m.worktreeNames)
-		return " " + lipgloss.NewStyle().Foreground(c).Render(common.WorktreeIcon())
+	if issue.Worktree == "" {
+		return ""
 	}
-	return ""
+	if faint {
+		return " " + m.theme.StyleFaint.Render(common.WorktreeIcon())
+	}
+	c := m.theme.WorktreeColorFor(issue.Worktree, m.worktreeNames)
+	return " " + lipgloss.NewStyle().Foreground(c).Render(common.WorktreeIcon())
 }
 
 // wrapTitle splits a title across the two lines a card gives it, breaking on a

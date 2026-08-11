@@ -88,3 +88,33 @@ func TestBoard_UrgentCardShowsPriorityIcon(t *testing.T) {
 		})
 	}
 }
+
+// Every worktree holds a copy of every issue, so a badge that merely meant "a
+// copy exists elsewhere" would appear on nearly every card. It marks ownership:
+// a worktree working on this issue ahead of the main checkout.
+func TestBoard_SourceBadgeMarksOwnershipOnly(t *testing.T) {
+	// Owned: a worktree has the newest version of this issue.
+	owned := data.Issue{
+		ID: 1, Title: "Owned by a worktree", Status: data.StatusTodo,
+		Priority: data.PriorityMedium, Worktree: "worker",
+		Sources: []data.IssueSource{{Name: ""}, {Name: "worker"}},
+	}
+	// Diverged: a worktree also has a version, but the main checkout's is newer.
+	diverged := data.Issue{
+		ID: 2, Title: "Main is newer", Status: data.StatusTodo,
+		Priority: data.PriorityMedium, Worktree: "",
+		Sources: []data.IssueSource{{Name: ""}, {Name: "worker"}},
+	}
+
+	render := func(issues ...data.Issue) string {
+		m := board.New(issues).SetWorktreeNames([]string{"worker"}).SetSize(120, 40)
+		return testutil.StripANSI(m.View())
+	}
+
+	if got := render(owned); !strings.Contains(got, common.WorktreeIcon()) {
+		t.Errorf("an issue owned by a worktree should be marked, got:\n%s", got)
+	}
+	if got := render(diverged); strings.Contains(got, common.WorktreeIcon()) {
+		t.Errorf("an issue the main checkout owns should carry no badge, got:\n%s", got)
+	}
+}

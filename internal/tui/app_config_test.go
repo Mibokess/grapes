@@ -26,7 +26,7 @@ func TestNewModel_AppliesConfiguredDefaultSort(t *testing.T) {
 	cfg := config.Defaults()
 	cfg.View.DefaultSort = "title"
 
-	m := NewModel(testutil.SampleIssues(), t.TempDir(), cfg, "test")
+	m := NewModel(data.Workspace{Issues: testutil.SampleIssues()}, nil, t.TempDir(), cfg, "test")
 	t.Cleanup(func() {
 		if m.watcher != nil {
 			m.watcher.Close()
@@ -45,7 +45,7 @@ func TestNewModel_UnknownDefaultSortIsReported(t *testing.T) {
 	cfg := config.Defaults()
 	cfg.View.DefaultSort = "nonsense"
 
-	m := NewModel(testutil.SampleIssues(), t.TempDir(), cfg, "test")
+	m := NewModel(data.Workspace{Issues: testutil.SampleIssues()}, nil, t.TempDir(), cfg, "test")
 	t.Cleanup(func() {
 		if m.watcher != nil {
 			m.watcher.Close()
@@ -69,7 +69,7 @@ func TestView_HelpHintsFollowConfiguredKeys(t *testing.T) {
 	cfg.Keys.BoardEdit = "x"
 	cfg.Keys.Quit = "Q"
 
-	m := NewModel(testutil.SampleIssues(), t.TempDir(), cfg, "test")
+	m := NewModel(data.Workspace{Issues: testutil.SampleIssues()}, nil, t.TempDir(), cfg, "test")
 	t.Cleanup(func() {
 		if m.watcher != nil {
 			m.watcher.Close()
@@ -110,7 +110,7 @@ func TestRefresh_ReportsSkippedIssues(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	m := NewModel(nil, dir, config.Defaults(), "test")
+	m := NewModel(data.Workspace{}, nil, dir, config.Defaults(), "test")
 	t.Cleanup(func() {
 		if m.watcher != nil {
 			m.watcher.Close()
@@ -125,7 +125,10 @@ func TestRefresh_ReportsSkippedIssues(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// Update only schedules the load; the command carries it out.
 	updated, _ := m.Update(common.RefreshMsg{})
+	m = updated.(Model)
+	updated, _ = m.Update(m.loadWorkspaceCmd()())
 	got := updated.(Model)
 
 	if len(got.issues) != 1 {

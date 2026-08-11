@@ -36,7 +36,23 @@ Grapes ships with a [Claude Code](https://docs.anthropic.com/en/docs/claude-code
 /plugin install grapes@grapes
 ```
 
-**Worktree support** — The TUI also picks up issues from git worktrees, so you can see agent progress across parallel work streams.
+**Worktree support** — The TUI shows which worktree is working on which issue, so you can see agent progress across parallel work streams.
+
+Because `.grapes/` is tracked in git, every worktree checkout holds a full copy of every issue. Grapes therefore does not treat those copies as separate versions. It asks git what each branch has actually changed since it branched off, and shows only that:
+
+- A worktree appears in the source filter only once it has changed an issue. Idle worktrees — however many you have — stay out of the way.
+- An issue is marked on the board only when a worktree has a **newer** version than the main checkout, which is what "someone is working on this over there" means.
+- A worktree that has merely fallen behind main is not "different". The comparison is against the point the branch started from, not against main as it is now.
+- Edits are written to whichever checkout owns the issue — the main one, unless a worktree is ahead of it.
+
+Attribution needs a branch to compare against. Grapes uses the remote's default branch, falling back to `main` and then `master`. Override it if that guesses wrong:
+
+```toml
+[sources]
+default_branch = "develop"
+```
+
+Outside a git repository grapes works as usual on the local `.grapes/`, with worktree features simply absent.
 
 ## Skills
 
@@ -59,4 +75,4 @@ The `.agents/` directory contains workflow skills that can be copied into any pr
 | `grapes help`        | Show usage help (`--help`, `-h`)                     |
 | `grapes version`     | Show the version (`--version`, `-v`)                 |
 
-`grapes issue` scans the main project and all worktrees, using file locking to prevent ID collisions.
+`grapes issue` scans the main project and every worktree, using file locking to prevent ID collisions. Unlike the TUI, it looks at all copies rather than only the ones git reports as changed: an ID already used on some branch must never be handed out twice.

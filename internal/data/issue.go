@@ -202,9 +202,14 @@ type Comment struct {
 
 // IssueSource represents one copy of an issue from a specific location.
 type IssueSource struct {
-	Name      string    // "" for main, worktree name otherwise
-	Dir       string    // .grapes/ directory path
-	Mtime     time.Time // max mtime of meta.toml, content.md, comments.md
+	Name string // "" for main, worktree name otherwise
+	Dir  string // .grapes/ directory path
+	// Changed is when this copy last really changed: the date of the commit
+	// that changed it, or the file mtime when the change is still uncommitted.
+	// It is deliberately not the file mtime of a checked-out file, which records
+	// when git wrote the working copy rather than when anyone edited the issue.
+	Changed   time.Time
+	Dirty     bool // the change here is uncommitted
 	Title     string
 	Status    Status
 	Priority  Priority
