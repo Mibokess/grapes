@@ -70,14 +70,20 @@ func main() {
 		}
 	}
 
-	projectRoot := data.ProjectRoot(issuesDir)
 	cfg, cfgErr := config.Load(issuesDir)
-	issues, problems, err := data.LoadAllSources(issuesDir, projectRoot, cfg.Sources.Dirs...)
+	// The loader is handed to the TUI rather than rebuilt per reload: it caches
+	// what each worktree has changed, keyed on that worktree's HEAD.
+	loader := data.NewWorkspaceLoader()
+	ws, err := loader.Load(issuesDir, data.WorkspaceOptions{
+		DefaultBranch: cfg.Sources.DefaultBranch,
+		ExtraDirs:     cfg.Sources.Dirs,
+	})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error loading issues: %v\n", err)
 		os.Exit(1)
 	}
-	model := tui.NewModel(issues, issuesDir, cfg, version)
+	problems := ws.Problems
+	model := tui.NewModel(ws, loader, issuesDir, cfg, version)
 	// The TUI owns the screen from here, so a stderr warning would be wiped by
 	// the alt-screen switch. Surface startup problems in the status bar instead.
 	switch {

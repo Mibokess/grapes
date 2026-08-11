@@ -147,22 +147,7 @@ func TestNextIDGitWorktree(t *testing.T) {
 	}
 }
 
-func TestFindGitWorktreeGrapesDirs(t *testing.T) {
-	mainRoot, wtPath := setupGitRepoWithWorktree(t)
-	os.MkdirAll(filepath.Join(wtPath, ".grapes", "3"), 0o755)
-
-	dirs := FindGitWorktreeGrapesDirs(mainRoot)
-	if _, ok := dirs[filepath.Base(wtPath)]; !ok {
-		t.Errorf("expected worktree %q in %v", filepath.Base(wtPath), dirs)
-	}
-
-	// Non-git directory degrades to an empty map, no error.
-	if got := FindGitWorktreeGrapesDirs(t.TempDir()); len(got) != 0 {
-		t.Errorf("non-git dir: got %v, want empty", got)
-	}
-}
-
-func TestLoadAllSourcesGitWorktree(t *testing.T) {
+func TestLoadWorkspace_DiscoversGitWorktreeIssue(t *testing.T) {
 	mainRoot, wtPath := setupGitRepoWithWorktree(t)
 
 	writeIssue := func(grapes string, id int, title string) {
@@ -179,14 +164,16 @@ func TestLoadAllSourcesGitWorktree(t *testing.T) {
 	wtGrapes := filepath.Join(wtPath, ".grapes")
 	writeIssue(wtGrapes, 7, "worktree issue")
 
-	// From main, with NO glob patterns, the worktree issue must be discovered.
-	issues, problems, err := LoadAllSources(mainGrapes, mainRoot)
+	// From main, with NO glob patterns, the worktree issue must be discovered:
+	// it is untracked there, so git reports the branch as having changed it.
+	ws, err := NewWorkspaceLoader().Load(mainGrapes, WorkspaceOptions{})
 	if err != nil {
-		t.Fatalf("LoadAllSources: %v", err)
+		t.Fatalf("Load: %v", err)
 	}
-	if len(problems) > 0 {
-		t.Fatalf("unexpected load problems: %v", problems)
+	if len(ws.Problems) > 0 {
+		t.Fatalf("unexpected load problems: %v", ws.Problems)
 	}
+	issues := ws.Issues
 	byID := make(map[int]Issue)
 	for _, iss := range issues {
 		byID[iss.ID] = iss
@@ -203,7 +190,7 @@ func TestLoadAllSourcesGitWorktree(t *testing.T) {
 	}
 }
 
-func TestFindWorktreeIssuesDirsGlobPatterns(t *testing.T) {
+func TestFindExternalIssuesDirsGlobPatterns(t *testing.T) {
 	root := t.TempDir()
 
 	// Create default worktree location
@@ -216,13 +203,13 @@ func TestFindWorktreeIssuesDirsGlobPatterns(t *testing.T) {
 	os.MkdirAll(extraWT, 0o755)
 
 	// Without any patterns, nothing is found
-	result := FindWorktreeIssuesDirs(root)
+	result := FindExternalIssuesDirs(root)
 	if len(result) != 0 {
 		t.Errorf("without patterns: got %d, want 0", len(result))
 	}
 
 	// Relative glob pattern
-	result = FindWorktreeIssuesDirs(root, ".claude/worktrees/*/.grapes")
+	result = FindExternalIssuesDirs(root, ".claude/worktrees/*/.grapes")
 	if len(result) != 1 {
 		t.Errorf("relative glob: got %d, want 1", len(result))
 	}
@@ -232,7 +219,7 @@ func TestFindWorktreeIssuesDirsGlobPatterns(t *testing.T) {
 
 	// Absolute glob pattern
 	absPattern := filepath.Join(extraDir, "*", ".grapes")
-	result = FindWorktreeIssuesDirs(root, absPattern)
+	result = FindExternalIssuesDirs(root, absPattern)
 	if len(result) != 1 {
 		t.Errorf("absolute glob: got %d, want 1", len(result))
 	}
@@ -241,19 +228,19 @@ func TestFindWorktreeIssuesDirsGlobPatterns(t *testing.T) {
 	}
 
 	// Multiple patterns
-	result = FindWorktreeIssuesDirs(root, ".claude/worktrees/*/.grapes", absPattern)
+	result = FindExternalIssuesDirs(root, ".claude/worktrees/*/.grapes", absPattern)
 	if len(result) != 2 {
 		t.Errorf("multiple patterns: got %d, want 2", len(result))
 	}
 }
 
-func TestFindWorktreeIssuesDirsCustomName(t *testing.T) {
+func TestFindExternalIssuesDirsCustomName(t *testing.T) {
 	root := t.TempDir()
 
 	// Create a non-.grapes issue dir
 	os.MkdirAll(filepath.Join(root, "worktrees", "proj1", ".potatoes"), 0o755)
 
-	result := FindWorktreeIssuesDirs(root, "worktrees/*/.potatoes")
+	result := FindExternalIssuesDirs(root, "worktrees/*/.potatoes")
 	if len(result) != 1 {
 		t.Errorf("custom name: got %d, want 1", len(result))
 	}
@@ -262,13 +249,13 @@ func TestFindWorktreeIssuesDirsCustomName(t *testing.T) {
 	}
 }
 
-func TestFindWorktreeIssuesDirsExactPath(t *testing.T) {
+func TestFindExternalIssuesDirsExactPath(t *testing.T) {
 	root := t.TempDir()
 
 	// Create an exact path (no glob)
 	os.MkdirAll(filepath.Join(root, "other", ".grapes"), 0o755)
 
-	result := FindWorktreeIssuesDirs(root, "other/.grapes")
+	result := FindExternalIssuesDirs(root, "other/.grapes")
 	if len(result) != 1 {
 		t.Errorf("exact path: got %d, want 1", len(result))
 	}

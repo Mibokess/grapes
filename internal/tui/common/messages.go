@@ -21,6 +21,14 @@ type GoBackMsg struct{}
 type SwitchScreenMsg struct{ Screen Screen }
 type RefreshMsg struct{}
 
+// WorkspaceLoadedMsg carries the result of a reload. Loading happens in a
+// command rather than in Update, so a workspace with many worktrees cannot
+// freeze the event loop while it is read.
+type WorkspaceLoadedMsg struct {
+	Workspace data.Workspace
+	Err       error
+}
+
 // Messages for write operations.
 type ShowPickerMsg struct {
 	IssueID int

@@ -176,6 +176,13 @@ type SourcesConfig struct {
 	// for additional non-worktree sources, such as a separate repository with a
 	// custom issue-folder name, e.g. "../other-project/.potatoes".
 	Dirs []string `toml:"dirs"`
+
+	// DefaultBranch is the ref that worktree branches are compared against to
+	// work out which issues each one is actually working on. Empty means
+	// "detect it" — origin's published HEAD, then main, then master. Set it when
+	// detection picks the wrong branch; a value that does not resolve is
+	// reported rather than quietly falling back to a guess.
+	DefaultBranch string `toml:"default_branch"`
 }
 
 // Config is the full application configuration.

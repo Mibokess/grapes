@@ -2,7 +2,6 @@ package common
 
 import (
 	"image/color"
-	"strings"
 
 	"charm.land/lipgloss/v2"
 	"github.com/Mibokess/grapes/internal/config"
@@ -568,19 +567,4 @@ func (t Theme) WorktreeColorFor(name string, allWorktrees []string) color.Color 
 		}
 	}
 	return t.ColorWorktree // fallback
-}
-
-// RenderSourceIndicators returns a compact string showing where an issue exists.
-// Example: "◆ ⑂⑂" with main diamond and colored fork icons.
-func (t Theme) RenderSourceIndicators(sources []data.IssueSource, wtNames []string) string {
-	var parts []string
-	for _, s := range sources {
-		if s.Name == "" {
-			parts = append(parts, lipgloss.NewStyle().Foreground(t.ColorMuted).Render(MainIcon()))
-		} else {
-			c := t.WorktreeColorFor(s.Name, wtNames)
-			parts = append(parts, lipgloss.NewStyle().Foreground(c).Render(WorktreeIcon()))
-		}
-	}
-	return strings.Join(parts, "")
 }

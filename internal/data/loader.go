@@ -148,16 +148,11 @@ func LoadAllIssues(dir string) ([]Issue, []LoadProblem, error) {
 		if err != nil {
 			continue // skip non-numeric directories
 		}
-		issue, err := loadIssueMeta(dir, id)
+		issue, err := LoadIssue(dir, id)
 		if err != nil {
 			problems = append(problems, LoadProblem{Dir: dir, ID: id, Err: err})
 			continue
 		}
-		// Load content and comments
-		issue.Content = readFileOr(filepath.Join(dir, e.Name(), "content.md"), "")
-		issue.Comments = ParseComments(readFileOr(filepath.Join(dir, e.Name(), "comments.md"), ""))
-
-		issue.SourceDir = dir
 		issues = append(issues, issue)
 		if issue.Parent != nil {
 			childrenMap[*issue.Parent] = append(childrenMap[*issue.Parent], id)
@@ -184,6 +179,21 @@ func LoadAllIssues(dir string) ([]Issue, []LoadProblem, error) {
 	})
 
 	return issues, problems, nil
+}
+
+// LoadIssue reads one issue — metadata, content, and comments — from an issue
+// directory. Loading a named issue is what lets a worktree contribute only the
+// issues git says it changed, instead of its whole copy of the store.
+func LoadIssue(dir string, id int) (Issue, error) {
+	issue, err := loadIssueMeta(dir, id)
+	if err != nil {
+		return Issue{}, err
+	}
+	name := strconv.Itoa(id)
+	issue.Content = readFileOr(filepath.Join(dir, name, "content.md"), "")
+	issue.Comments = ParseComments(readFileOr(filepath.Join(dir, name, "comments.md"), ""))
+	issue.SourceDir = dir
+	return issue, nil
 }
 
 func loadIssueMeta(dir string, id int) (Issue, error) {
@@ -287,14 +297,17 @@ func NextID(issuesDir string, extraDirs ...string) (int, error) {
 	}
 	defer flockUnlock(lockFile.Fd())
 
-	// Collect every .grapes/ to scan: this repo's git worktrees (auto-discovered),
-	// plus any configured glob patterns. Keyed by directory path to de-duplicate a
-	// worktree that both git and a glob report.
+	// Every copy has to be scanned, unlike a normal load: an ID already used on
+	// some branch must not be handed out again, even when that branch has done
+	// nothing this workspace considers interesting. This runs under the lock and
+	// off the render path, so the full scan is affordable here.
 	scanDirs := make(map[string]bool)
-	for _, dir := range FindGitWorktreeGrapesDirs(mainRoot) {
-		scanDirs[filepath.Clean(dir)] = true
+	if checkouts, err := Checkouts(mainRoot, ".grapes"); err == nil {
+		for _, co := range checkouts {
+			scanDirs[filepath.Clean(co.Dir)] = true
+		}
 	}
-	for _, dir := range FindWorktreeIssuesDirs(mainRoot, extraDirs...) {
+	for _, dir := range FindExternalIssuesDirs(mainRoot, extraDirs...) {
 		scanDirs[filepath.Clean(dir)] = true
 	}
 
@@ -316,10 +329,13 @@ func NextID(issuesDir string, extraDirs ...string) (int, error) {
 	return next, nil
 }
 
-// FindWorktreeIssuesDirs resolves glob patterns to issue directories and returns
+// FindExternalIssuesDirs resolves glob patterns to issue directories and returns
 // a map of display name → directory path. Relative patterns are resolved against
 // projectRoot. The display name is the parent directory of each matched path.
-func FindWorktreeIssuesDirs(projectRoot string, patterns ...string) map[string]string {
+//
+// These are stores outside this repository's history. Worktrees of this
+// repository are discovered through git instead, by Checkouts.
+func FindExternalIssuesDirs(projectRoot string, patterns ...string) map[string]string {
 	result := make(map[string]string)
 	for _, pattern := range patterns {
 		if !filepath.IsAbs(pattern) {
@@ -341,170 +357,6 @@ func FindWorktreeIssuesDirs(projectRoot string, patterns ...string) map[string]s
 		}
 	}
 	return result
-}
-
-// FindGitWorktreeGrapesDirs enumerates this repository's worktrees via
-// git worktree list --porcelain and returns a map of display name → .grapes/
-// directory for each worktree that has one. The display name is the base name of
-// the worktree path. Returns an empty map when git is unavailable or mainRoot is
-// not a git repository, so callers degrade to glob-based discovery.
-func FindGitWorktreeGrapesDirs(mainRoot string) map[string]string {
-	result := make(map[string]string)
-	cmd := exec.Command("git", "worktree", "list", "--porcelain")
-	cmd.Dir = mainRoot
-	out, err := cmd.Output()
-	if err != nil {
-		return result
-	}
-	for _, line := range strings.Split(string(out), "\n") {
-		path, ok := strings.CutPrefix(line, "worktree ")
-		if !ok {
-			continue
-		}
-		grapesDir := filepath.Join(path, ".grapes")
-		if info, err := os.Stat(grapesDir); err != nil || !info.IsDir() {
-			continue
-		}
-		result[filepath.Base(path)] = grapesDir
-	}
-	return result
-}
-
-// computeIssueMtime returns the most recent mtime across meta.toml, content.md,
-// and comments.md for the given issue.
-func computeIssueMtime(dir string, id int) time.Time {
-	idStr := strconv.Itoa(id)
-	files := []string{"meta.toml", "content.md", "comments.md"}
-	var latest time.Time
-	for _, f := range files {
-		info, err := os.Stat(filepath.Join(dir, idStr, f))
-		if err == nil && info.ModTime().After(latest) {
-			latest = info.ModTime()
-		}
-	}
-	return latest
-}
-
-// issueToSource creates an IssueSource from an Issue and its source metadata.
-func issueToSource(iss Issue, name string, dir string, mtime time.Time) IssueSource {
-	return IssueSource{
-		Name:      name,
-		Dir:       dir,
-		Mtime:     mtime,
-		Title:     iss.Title,
-		Status:    iss.Status,
-		Priority:  iss.Priority,
-		Labels:    iss.Labels,
-		Parent:    iss.Parent,
-		BlockedBy: iss.BlockedBy,
-		Created:   iss.Created,
-		Updated:   iss.Updated,
-		Content:   iss.Content,
-		Comments:  iss.Comments,
-	}
-}
-
-// LoadAllSources loads issues from main and all worktree .grapes/ directories,
-// merging copies of the same issue ID into Sources. The active source is set to
-// the one with the most recent file mtime. Extra worktree directories can be
-// passed to scan beyond .claude/worktrees.
-//
-// Issues that fail to load are reported as problems; only a main directory that
-// cannot be read at all is returned as an error.
-func LoadAllSources(mainDir string, projectRoot string, extraDirs ...string) ([]Issue, []LoadProblem, error) {
-	mainIssues, problems, err := LoadAllIssues(mainDir)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	// Build map: issueID → *Issue with Sources populated
-	issueMap := make(map[int]*Issue)
-	for _, iss := range mainIssues {
-		mtime := computeIssueMtime(mainDir, iss.ID)
-		src := issueToSource(iss, "", mainDir, mtime)
-		issCopy := iss
-		issCopy.Sources = []IssueSource{src}
-		issCopy.SourceDir = mainDir
-		issueMap[iss.ID] = &issCopy
-	}
-
-	// Load all worktree issues: this repo's git worktrees (auto-discovered), plus
-	// any configured glob patterns.
-	worktrees := FindWorktreeIssuesDirs(projectRoot, extraDirs...)
-	seenDirs := make(map[string]bool)
-	for _, dir := range worktrees {
-		seenDirs[filepath.Clean(dir)] = true
-	}
-	currentDir := filepath.Clean(mainDir)
-	for name, dir := range FindGitWorktreeGrapesDirs(FindMainProjectRoot(mainDir)) {
-		clean := filepath.Clean(dir)
-		if clean == currentDir || seenDirs[clean] {
-			continue // already loaded as main, or already found via glob
-		}
-		if _, ok := worktrees[name]; ok {
-			continue // name already used (mirrors FindWorktreeIssuesDirs de-dup)
-		}
-		seenDirs[clean] = true
-		worktrees[name] = dir
-	}
-	var wtNames []string
-	for name := range worktrees {
-		wtNames = append(wtNames, name)
-	}
-	sort.Strings(wtNames)
-
-	for _, name := range wtNames {
-		dir := worktrees[name]
-		wtIssues, wtProblems, err := LoadAllIssues(dir)
-		problems = append(problems, wtProblems...)
-		if err != nil {
-			problems = append(problems, LoadProblem{Dir: dir, Err: err})
-			continue
-		}
-		for _, iss := range wtIssues {
-			mtime := computeIssueMtime(dir, iss.ID)
-			src := issueToSource(iss, name, dir, mtime)
-
-			if existing, ok := issueMap[iss.ID]; ok {
-				existing.Sources = append(existing.Sources, src)
-			} else {
-				issCopy := iss
-				issCopy.Worktree = name
-				issCopy.SourceDir = dir
-				issCopy.Sources = []IssueSource{src}
-				issueMap[iss.ID] = &issCopy
-			}
-		}
-	}
-
-	// For each issue, sort sources and pick the most recent as active
-	var result []Issue
-	for _, iss := range issueMap {
-		// Sort sources: main first, then alphabetical by worktree name
-		sort.SliceStable(iss.Sources, func(i, j int) bool {
-			if iss.Sources[i].Name == "" {
-				return true
-			}
-			if iss.Sources[j].Name == "" {
-				return false
-			}
-			return iss.Sources[i].Name < iss.Sources[j].Name
-		})
-
-		// Find most recent mtime and switch to it
-		bestIdx := 0
-		for i, s := range iss.Sources {
-			if s.Mtime.After(iss.Sources[bestIdx].Mtime) {
-				bestIdx = i
-			}
-		}
-		iss.SwitchSource(bestIdx)
-		result = append(result, *iss)
-	}
-
-	sort.Slice(result, func(i, j int) bool { return result[i].ID < result[j].ID })
-	RewireRelationships(result)
-	return result, problems, nil
 }
 
 // RewireRelationships rebuilds Children and Blocks slices from all issues'

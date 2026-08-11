@@ -18,9 +18,11 @@ An issue is a numeric directory:
   comments.md     append-only Markdown comments
 ```
 
-The application can combine issues from the main checkout, Git worktrees, and
-configured source directories. If an ID exists in multiple sources, the UI presents
-one issue with switchable source versions.
+The application combines issues from the main checkout, Git worktrees, and configured
+source directories. Because `.grapes` is tracked, every worktree holds a copy of every
+issue, so a worktree only counts as a source once Git says its branch actually changed
+that issue since branching off. Where a branch and the main checkout genuinely
+disagree, the UI presents one issue with switchable source versions.
 
 ## Runtime Mental Model
 
@@ -43,7 +45,8 @@ The CLI subcommands (`issue`, `validate`, `help`, and `version`) also enter thro
 | --- | --- | --- |
 | CLI behavior or startup | `main.go` | `internal/data/loader.go`, `internal/config/config.go` |
 | Issue schema or relationships | `internal/data/issue.go` | `internal/data/loader.go`, `internal/data/validate.go` |
-| File loading or worktrees | `internal/data/loader.go` | `internal/data/flock_*.go`, `internal/data/nextid_test.go` |
+| File loading | `internal/data/loader.go` | `internal/data/flock_*.go`, `internal/data/nextid_test.go` |
+| Worktree attribution or ownership | `internal/data/workspace.go` | `internal/data/worktree.go`, `internal/data/workspace_test.go` |
 | File writes or editor round-trip | `internal/data/writer.go` | write cases in `internal/tui/app.go` |
 | App-wide navigation or refresh | `internal/tui/app.go` | `internal/tui/common/messages.go` |
 | Board behavior | `internal/tui/board/board.go` | board interaction and golden tests |
