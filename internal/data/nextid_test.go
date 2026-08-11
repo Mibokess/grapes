@@ -147,6 +147,37 @@ func TestNextIDGitWorktree(t *testing.T) {
 	}
 }
 
+func TestNextIDRelativeNestedStoreAcrossWorktrees(t *testing.T) {
+	mainRoot, wtPath := setupGitRepoWithWorktree(t)
+	mainStore := filepath.Join(mainRoot, "nested", ".grapes")
+	worktreeStore := filepath.Join(wtPath, "nested", ".grapes")
+	if err := os.MkdirAll(filepath.Join(mainStore, "1"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(worktreeStore, "8"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	cwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	relativeStore, err := filepath.Rel(cwd, worktreeStore)
+	if err != nil {
+		t.Fatal(err)
+	}
+	id, err := NextID(relativeStore)
+	if err != nil {
+		t.Fatalf("NextID relative nested store: %v", err)
+	}
+	if id != 9 {
+		t.Fatalf("relative nested store ID = %d, want 9", id)
+	}
+	if _, err := os.Stat(filepath.Join(worktreeStore, "9")); err != nil {
+		t.Fatalf("new issue directory was not created in local nested store: %v", err)
+	}
+}
+
 func TestLoadWorkspace_DiscoversGitWorktreeIssue(t *testing.T) {
 	mainRoot, wtPath := setupGitRepoWithWorktree(t)
 
@@ -154,7 +185,7 @@ func TestLoadWorkspace_DiscoversGitWorktreeIssue(t *testing.T) {
 		t.Helper()
 		dir := filepath.Join(grapes, strconv.Itoa(id))
 		os.MkdirAll(dir, 0o755)
-		os.WriteFile(filepath.Join(dir, "meta.toml"), []byte("title = \""+title+"\"\n"), 0o644)
+		os.WriteFile(filepath.Join(dir, "meta.toml"), []byte("title = \""+title+"\"\nstatus = \"todo\"\npriority = \"medium\"\n"), 0o644)
 	}
 
 	mainGrapes := filepath.Join(mainRoot, ".grapes")
@@ -284,5 +315,41 @@ func TestNextIDWithGlobPattern(t *testing.T) {
 	}
 	if id != 11 {
 		t.Errorf("got %d, want 11 (should see extra dir ID 10)", id)
+	}
+}
+
+func TestNextID_NestedStore(t *testing.T) {
+	root := t.TempDir()
+	store := filepath.Join(root, "nested", "store", ".grapes")
+	if err := os.MkdirAll(filepath.Join(store, "12"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	id, err := NextID(store)
+	if err != nil {
+		t.Fatalf("NextID nested store: %v", err)
+	}
+	if id != 13 {
+		t.Fatalf("got %d, want 13", id)
+	}
+}
+
+func TestNextID_NestedGitStoreAcrossWorktree(t *testing.T) {
+	r := newTestRepo(t)
+	store := filepath.Join(r.Root, "nested", "store")
+	if err := os.MkdirAll(filepath.Join(store, "12"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(store, "12", "meta.toml"), []byte(""), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	r.commit(r.Root, "seed nested store")
+	r.addWorktree("nested-worker")
+
+	id, err := NextID(store)
+	if err != nil {
+		t.Fatalf("NextID nested Git store: %v", err)
+	}
+	if id != 13 {
+		t.Fatalf("got %d, want 13", id)
 	}
 }

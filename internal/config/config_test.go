@@ -4,6 +4,8 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strconv"
+	"sync"
 	"testing"
 )
 
@@ -110,5 +112,25 @@ func TestHideEmpty(t *testing.T) {
 	}
 	if !(ViewConfig{HideEmptyColumns: &yes}).HideEmpty() {
 		t.Error("HideEmpty should honour an explicit true")
+	}
+}
+
+func TestSave_ConcurrentWritesRemainParseable(t *testing.T) {
+	dir := t.TempDir()
+	var wg sync.WaitGroup
+	for i := range 20 {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			cfg := Defaults()
+			cfg.View.DefaultScreen = "screen-" + strconv.Itoa(i)
+			if err := Save(dir, cfg); err != nil {
+				t.Errorf("Save: %v", err)
+			}
+		}(i)
+	}
+	wg.Wait()
+	if _, err := Load(dir); err != nil {
+		t.Fatalf("final config is not parseable: %v", err)
 	}
 }

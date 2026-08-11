@@ -323,3 +323,17 @@ func TestIssueIDInPath(t *testing.T) {
 		}
 	}
 }
+
+func TestIssueIDsInPath_IncludesBothRenameSides(t *testing.T) {
+	got := issueIDsInPath(".grapes", "R  .grapes/1/meta.toml -> .grapes/2/meta.toml")
+	if len(got) != 2 || got[0] != 1 || got[1] != 2 {
+		t.Fatalf("issueIDsInPath rename = %v, want [1 2]", got)
+	}
+}
+
+func TestGatherClaims_PropagatesMainError(t *testing.T) {
+	claims := GatherClaims([]Checkout{{Path: t.TempDir()}}, ".grapes", "main", newClaimCache())
+	if len(claims) != 1 || claims[0].Err == nil {
+		t.Fatalf("main claim error was not propagated: %+v", claims)
+	}
+}

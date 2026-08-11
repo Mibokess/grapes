@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"sync"
 
 	"github.com/Mibokess/grapes/internal/fsutil"
 	toml "github.com/pelletier/go-toml/v2"
@@ -193,6 +194,17 @@ type Config struct {
 	Keys    KeysConfig    `toml:"keys"`
 }
 
+var saveLocks sync.Map // map[string]*sync.Mutex
+
+func configSaveLock(issuesDir string) *sync.Mutex {
+	path, err := filepath.Abs(filepath.Join(issuesDir, "config.toml"))
+	if err != nil {
+		path = filepath.Join(issuesDir, "config.toml")
+	}
+	lock, _ := saveLocks.LoadOrStore(path, &sync.Mutex{})
+	return lock.(*sync.Mutex)
+}
+
 // Defaults returns the default configuration.
 //
 // Theme colors are deliberately empty: they are *overrides*, and the built-in
@@ -278,10 +290,27 @@ func Load(issuesDir string) (Config, error) {
 
 // Save writes the config to .grapes/config.toml.
 func Save(issuesDir string, cfg Config) error {
+	lock := configSaveLock(issuesDir)
+	lock.Lock()
+	defer lock.Unlock()
+
 	path := filepath.Join(issuesDir, "config.toml")
+	fileLock, err := fsutil.OpenFileLock(path+".lock", 0o644)
+	if err != nil {
+		return err
+	}
+	defer fileLock.Close()
+	if err := fileLock.Lock(); err != nil {
+		return err
+	}
+	defer fileLock.Unlock()
+
 	raw, err := toml.Marshal(cfg)
 	if err != nil {
 		return err
 	}
-	return fsutil.WriteFile(path, raw, 0o644)
+	if err := fsutil.WriteFile(path, raw, 0o644); err != nil {
+		return err
+	}
+	return nil
 }

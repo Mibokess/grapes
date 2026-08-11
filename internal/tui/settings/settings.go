@@ -702,7 +702,12 @@ func (m Model) activateField(f field) (Model, tea.Cmd) {
 		return m.applyEnum(f.cfgKey, next)
 
 	default:
-		// Start inline editing
+		// Branch refs and source patterns may be longer than key bindings.
+		if f.cfgKey == "default_branch" {
+			m.input.CharLimit = 256
+		} else {
+			m.input.CharLimit = 32
+		}
 		m.editing = true
 		m.input.SetValue(m.getFieldValue(f.cfgKey))
 		m.input.Focus()
@@ -779,6 +784,9 @@ func (m Model) View() string {
 	for i := scrollOffset; i < len(fields) && i < scrollOffset+visibleH; i++ {
 		f := fields[i]
 		val := m.getFieldValue(f.cfgKey)
+		if f.cfgKey == "default_branch" && val == "" && !(m.editing && m.focus == paneFields && i == m.fieldIdx) {
+			val = "(auto)"
+		}
 		label := fmt.Sprintf(" %-*s", labelW+2, f.label)
 		isOverridden := f.kind == fieldColor && m.isColorOverridden(f.cfgKey)
 
@@ -923,9 +931,13 @@ func (m Model) effectiveFields() []field {
 		})
 		return result
 	}
-
 	if catName == "Sources" {
 		result := []field{
+			{
+				label:  "Default branch",
+				cfgKey: "default_branch",
+				kind:   fieldKey,
+			},
 			{
 				label:  ".grapes",
 				cfgKey: "default_source_dir",
@@ -998,6 +1010,8 @@ func (m Model) activateAction(f field) (Model, tea.Cmd) {
 // is on screen.
 func (m Model) getFieldValue(cfgKey string) string {
 	switch cfgKey {
+	case "default_branch":
+		return m.cfg.Sources.DefaultBranch
 	case "default_screen":
 		return m.cfg.View.DefaultScreen
 	case "default_sort":
@@ -1039,6 +1053,9 @@ func (m Model) getFieldValue(cfgKey string) string {
 // setFieldValue writes a value to the config for a given key.
 func (m *Model) setFieldValue(cfgKey, val string) {
 	switch cfgKey {
+	case "default_branch":
+		m.cfg.Sources.DefaultBranch = strings.TrimSpace(val)
+		return
 	case "default_screen":
 		m.cfg.View.DefaultScreen = val
 		return

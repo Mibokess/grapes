@@ -41,6 +41,18 @@ func TestBoard_NoColumns_MouseDoesNotPanic(t *testing.T) {
 	_ = m.View()
 }
 
+// A filtered-empty board can become non-empty on refresh. Its previous
+// SetSize call may have computed zero visible columns, so rebuilding must
+// restore a usable column count before rendering.
+func TestBoard_EmptyThenNonEmpty_Renders(t *testing.T) {
+	m := emptyBoard()
+	m = m.SetIssues([]data.Issue{{ID: 7, Title: "appeared", Status: data.StatusTodo, Priority: data.PriorityLow}})
+	view := testutil.StripANSI(m.View())
+	if !strings.Contains(view, "appeared") {
+		t.Fatalf("refreshed board did not render issue:\n%s", view)
+	}
+}
+
 // SetHideEmpty has to regroup: otherwise the board keeps showing the columns it
 // built before the option was applied.
 func TestBoard_SetHideEmpty_RegroupsColumns(t *testing.T) {

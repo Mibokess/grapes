@@ -92,6 +92,9 @@ func (m Model) SetHideEmpty(hide bool) Model {
 // contain goes through it, so the view can never disagree with the options.
 func (m Model) regroup() Model {
 	m.columns = groupByStatus(m.filteredIssues(), m.statusFilter, m.hideEmpty)
+	if len(m.columns) > 0 && m.visCols == 0 {
+		m.visCols = 1
+	}
 	if m.curCol >= len(m.columns) {
 		m.curCol = max(0, len(m.columns)-1)
 	}
@@ -99,6 +102,20 @@ func (m Model) regroup() Model {
 	m.ensureRowVisible()
 	m.ensureColVisible()
 	return m
+}
+
+// SetIssuesAndStatusFilter updates both inputs before regrouping once.
+func (m Model) SetIssuesAndStatusFilter(issues []data.Issue, statuses []data.Status) Model {
+	m.allIssues = issues
+	m.statusFilter = statuses
+	return m.regroup()
+}
+
+// SetIssuesAndHideEmpty updates both inputs before regrouping once.
+func (m Model) SetIssuesAndHideEmpty(issues []data.Issue, hide bool) Model {
+	m.allIssues = issues
+	m.hideEmpty = hide
+	return m.regroup()
 }
 
 // currentIssue returns the issue under the cursor, if there is one.
@@ -149,7 +166,10 @@ func (m Model) SetSize(w, h int) Model {
 	} else {
 		m.visCols = min(3, len(m.columns))
 	}
-	m.ensureRowVisible()
+	if len(m.columns) > 0 && m.visCols == 0 {
+		m.visCols = 1
+	}
+	m.ensureColVisible()
 	return m
 }
 
@@ -751,6 +771,9 @@ func (m Model) visibleColWidth() (visible, colWidth int) {
 	visible = m.visCols
 	if visible > len(m.columns)-m.scrollCol {
 		visible = len(m.columns) - m.scrollCol
+	}
+	if visible <= 0 || m.width <= 0 {
+		return 0, 0
 	}
 	totalGaps := visible - 1
 	for visible > 1 && (m.width-totalGaps)/visible < minColWidth {

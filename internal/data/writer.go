@@ -6,14 +6,61 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Mibokess/grapes/internal/fsutil"
 	toml "github.com/pelletier/go-toml/v2"
 )
 
-// metaFileMode is the permission used for every file grapes writes.
+// metaFileMode is the default permission used for newly created issue files.
 const metaFileMode = 0o644
+
+// serializedCommentsMarker identifies the generated comments section in an
+// editor document. It must not be confused with ordinary Markdown content.
+const serializedCommentsMarker = "<!-- grapes:comments -->\n## Comments\n"
+
+func filePerm(path string) os.FileMode {
+	if info, err := os.Stat(path); err == nil && info.Mode().IsRegular() {
+		return info.Mode().Perm()
+	}
+	return metaFileMode
+}
+
+var issueWriteLocks sync.Map // map[string]*sync.Mutex
+
+func issueWriteLock(issuesDir string, issueID int) *sync.Mutex {
+	key, err := filepath.Abs(filepath.Join(issuesDir, strconv.Itoa(issueID)))
+	if err != nil {
+		key = filepath.Join(issuesDir, strconv.Itoa(issueID))
+	}
+	lock, _ := issueWriteLocks.LoadOrStore(key, &sync.Mutex{})
+	return lock.(*sync.Mutex)
+}
+
+func withIssueWriteLock(issuesDir string, issueID int, fn func() error) error {
+	lock := issueWriteLock(issuesDir, issueID)
+	lock.Lock()
+	defer lock.Unlock()
+
+	issueDir := filepath.Join(issuesDir, strconv.Itoa(issueID))
+	fileLock, err := fsutil.OpenFileLock(filepath.Join(issueDir, ".lock"), 0o644)
+	if err != nil {
+		if !os.IsNotExist(err) {
+			return fmt.Errorf("opening issue lock: %w", err)
+		}
+		// Preserve the normal missing-issue error from fn. StampTimestamps is
+		// called after the CLI creates the directory, while update operations
+		// should not create a missing issue as a side effect.
+		return fn()
+	}
+	defer fileLock.Close()
+	if err := fileLock.Lock(); err != nil {
+		return fmt.Errorf("acquiring issue lock: %w", err)
+	}
+	defer fileLock.Unlock()
+	return fn()
+}
 
 // metaPath returns the meta.toml path for an issue.
 func metaPath(issuesDir string, issueID int) string {
@@ -39,7 +86,7 @@ func writeMeta(path string, m meta) error {
 	if err != nil {
 		return fmt.Errorf("marshal meta.toml: %w", err)
 	}
-	return fsutil.WriteFile(path, out, metaFileMode)
+	return fsutil.WriteFile(path, out, filePerm(path))
 }
 
 // stamp sets `updated` to now, and `created` too when it is missing.
@@ -56,46 +103,50 @@ func stamp(m *meta, now time.Time) {
 // does not know, or a status/priority outside the accepted set, is an error
 // rather than a write that appears to succeed and changes nothing.
 func UpdateField(issuesDir string, issueID int, field, newValue string) error {
-	path := metaPath(issuesDir, issueID)
-	m, err := readMeta(path)
-	if err != nil {
-		return err
-	}
+	return withIssueWriteLock(issuesDir, issueID, func() error {
+		path := metaPath(issuesDir, issueID)
+		m, err := readMeta(path)
+		if err != nil {
+			return err
+		}
 
-	switch field {
-	case "title":
-		if strings.TrimSpace(newValue) == "" {
-			return fmt.Errorf("title must not be empty")
+		switch field {
+		case "title":
+			if strings.TrimSpace(newValue) == "" {
+				return fmt.Errorf("title must not be empty")
+			}
+			m.Title = newValue
+		case "status":
+			if !validStatuses[newValue] {
+				return fmt.Errorf("%q is not a valid status", newValue)
+			}
+			m.Status = newValue
+		case "priority":
+			if !validPriorities[newValue] {
+				return fmt.Errorf("%q is not a valid priority", newValue)
+			}
+			m.Priority = newValue
+		default:
+			return fmt.Errorf("unknown meta.toml field %q", field)
 		}
-		m.Title = newValue
-	case "status":
-		if !validStatuses[newValue] {
-			return fmt.Errorf("%q is not a valid status", newValue)
-		}
-		m.Status = newValue
-	case "priority":
-		if !validPriorities[newValue] {
-			return fmt.Errorf("%q is not a valid priority", newValue)
-		}
-		m.Priority = newValue
-	default:
-		return fmt.Errorf("unknown meta.toml field %q", field)
-	}
 
-	stamp(&m, time.Now().UTC().Truncate(time.Minute))
-	return writeMeta(path, m)
+		stamp(&m, time.Now().UTC().Truncate(time.Minute))
+		return writeMeta(path, m)
+	})
 }
 
 // UpdateLabels replaces the labels array in meta.toml.
 func UpdateLabels(issuesDir string, issueID int, labels []string) error {
-	path := metaPath(issuesDir, issueID)
-	m, err := readMeta(path)
-	if err != nil {
-		return err
-	}
-	m.Labels = labels
-	stamp(&m, time.Now().UTC().Truncate(time.Minute))
-	return writeMeta(path, m)
+	return withIssueWriteLock(issuesDir, issueID, func() error {
+		path := metaPath(issuesDir, issueID)
+		m, err := readMeta(path)
+		if err != nil {
+			return err
+		}
+		m.Labels = append([]string(nil), labels...)
+		stamp(&m, time.Now().UTC().Truncate(time.Minute))
+		return writeMeta(path, m)
+	})
 }
 
 // StampTimestamps reads meta.toml and sets `updated` to now. If `created` is
@@ -105,19 +156,20 @@ func UpdateLabels(issuesDir string, issueID int, labels []string) error {
 // A missing meta.toml is not an error: `grapes issue` stamps a directory it
 // has just created, and the file is written from scratch.
 func StampTimestamps(issuesDir string, issueID int) error {
-	path := metaPath(issuesDir, issueID)
-
-	var m meta
-	if _, err := os.Stat(path); err == nil {
-		if m, err = readMeta(path); err != nil {
-			return err
+	return withIssueWriteLock(issuesDir, issueID, func() error {
+		path := metaPath(issuesDir, issueID)
+		var m meta
+		if _, err := os.Stat(path); err == nil {
+			if m, err = readMeta(path); err != nil {
+				return err
+			}
+		} else if !os.IsNotExist(err) {
+			return fmt.Errorf("read meta.toml: %w", err)
 		}
-	} else if !os.IsNotExist(err) {
-		return fmt.Errorf("read meta.toml: %w", err)
-	}
 
-	stamp(&m, time.Now().UTC().Truncate(time.Minute))
-	return writeMeta(path, m)
+		stamp(&m, time.Now().UTC().Truncate(time.Minute))
+		return writeMeta(path, m)
+	})
 }
 
 // AppendComment appends a comment to an issue's comments.md using the standard
@@ -129,31 +181,46 @@ func StampTimestamps(issuesDir string, issueID int) error {
 // A blank line is prepended if the file already has content. Timestamps are
 // UTC, matching the `created`/`updated` fields in meta.toml.
 func AppendComment(issuesDir string, issueID int, body string) error {
-	path := filepath.Join(issuesDir, strconv.Itoa(issueID), "comments.md")
+	return withIssueWriteLock(issuesDir, issueID, func() error {
+		issueDir := filepath.Join(issuesDir, strconv.Itoa(issueID))
+		metaFile := filepath.Join(issueDir, "meta.toml")
+		m, err := readMeta(metaFile)
+		if err != nil {
+			return fmt.Errorf("read meta.toml before appending comment: %w", err)
+		}
+		path := filepath.Join(issueDir, "comments.md")
+		existing, err := os.ReadFile(path)
+		if err != nil && !os.IsNotExist(err) {
+			return fmt.Errorf("read comments: %w", err)
+		}
 
-	existing, err := os.ReadFile(path)
-	if err != nil && !os.IsNotExist(err) {
-		return fmt.Errorf("read comments: %w", err)
-	}
-
-	now := time.Now().UTC().Format("2006-01-02T15:04")
-
-	var sb strings.Builder
-	if len(existing) > 0 {
-		sb.Write(existing)
-		// Ensure existing content ends with newline
-		if existing[len(existing)-1] != '\n' {
+		now := time.Now().UTC().Truncate(time.Minute)
+		var sb strings.Builder
+		if len(existing) > 0 {
+			sb.Write(existing)
+			if existing[len(existing)-1] != '\n' {
+				sb.WriteByte('\n')
+			}
 			sb.WriteByte('\n')
 		}
-		// Blank line separator before new comment
+		sb.WriteString("### " + now.Format("2006-01-02T15:04"))
 		sb.WriteByte('\n')
-	}
-	sb.WriteString("### " + now)
-	sb.WriteByte('\n')
-	sb.WriteString(body)
-	sb.WriteByte('\n')
+		sb.WriteString(escapeCommentHeaders(body))
+		sb.WriteByte('\n')
 
-	return fsutil.WriteFile(path, []byte(sb.String()), metaFileMode)
+		stamp(&m, now)
+		metaRaw, err := toml.Marshal(&m)
+		if err != nil {
+			return fmt.Errorf("marshal meta.toml: %w", err)
+		}
+		if err := fsutil.WriteFiles([]fsutil.AtomicFile{
+			{Path: metaFile, Data: metaRaw, Perm: filePerm(metaFile)},
+			{Path: path, Data: []byte(sb.String()), Perm: filePerm(path)},
+		}); err != nil {
+			return fmt.Errorf("appending comment: %w", err)
+		}
+		return nil
+	})
 }
 
 // SerializeIssue renders a complete issue as an editable text document with
@@ -198,22 +265,41 @@ func SerializeIssue(issue Issue) string {
 	// Comments section. A comment with no date is text that preceded the first
 	// "### " header in comments.md; it is written back without a header so the
 	// edit round-trip preserves it.
+	// The sentinel makes the generated comments section distinguishable from a
+	// user-authored Markdown heading in the description.
 	if len(issue.Comments) > 0 {
-		sb.WriteString("\n## Comments\n")
+		sb.WriteString("\n" + serializedCommentsMarker)
 		for _, c := range issue.Comments {
 			if c.Date == "" {
 				sb.WriteString("\n")
 			} else {
 				sb.WriteString(fmt.Sprintf("\n### %s\n", c.Date))
 			}
-			sb.WriteString(c.Body)
-			if !strings.HasSuffix(c.Body, "\n") {
-				sb.WriteByte('\n')
-			}
+			escapedBody := escapeCommentHeaders(c.Body)
+			sb.WriteString(escapedBody)
+			// Keep one structural newline after every body; ParseComments
+			// removes that delimiter and preserves body whitespace.
+			sb.WriteByte('\n')
 		}
 	}
 
 	return sb.String()
+}
+
+func escapeCommentHeaders(body string) string {
+	lines := strings.Split(body, "\n")
+	for i, line := range lines {
+		slashes := 0
+		for slashes < len(line) && line[slashes] == '\\' {
+			slashes++
+		}
+		if commentHeader.MatchString(line[slashes:]) {
+			// Prefix one escape marker. ParseComments removes exactly one,
+			// preserving any literal backslashes already in the body.
+			lines[i] = `\` + line
+		}
+	}
+	return strings.Join(lines, "\n")
 }
 
 // EditValidationError is returned when the edited issue fails validation.
@@ -239,89 +325,103 @@ type editMeta struct {
 // SaveIssueFromText parses an edited issue document and writes the changes
 // back to meta.toml, content.md, and comments.md.
 func SaveIssueFromText(issuesDir string, issueID int, text string) error {
-	// Split frontmatter from body
-	parts := strings.SplitN(text, "+++\n", 3)
-	if len(parts) < 3 {
-		return fmt.Errorf("invalid format: missing TOML frontmatter delimiters")
-	}
-	if strings.TrimSpace(parts[0]) != "" {
-		return fmt.Errorf("invalid format: text before the opening +++ delimiter")
-	}
-	frontmatter := parts[1]
-	body := parts[2]
-
-	// Parse frontmatter
-	var em editMeta
-	if err := toml.Unmarshal([]byte(frontmatter), &em); err != nil {
-		return fmt.Errorf("parsing frontmatter: %w", err)
-	}
-
-	// Validate before writing anything
-	if verrs := ValidateMeta(issueID, em.Title, em.Status, em.Priority); len(verrs) > 0 {
-		msgs := make([]string, len(verrs))
-		for i, v := range verrs {
-			msgs[i] = v.Field + ": " + v.Message
+	return withIssueWriteLock(issuesDir, issueID, func() error {
+		frontmatter, body, err := splitEditorDocument(text)
+		if err != nil {
+			return err
 		}
-		return &EditValidationError{Message: strings.Join(msgs, "; ")}
-	}
-
-	// Split body into content and comments at "## Comments" marker
-	content := body
-	var commentsRaw string
-	if idx := strings.Index(body, "\n## Comments\n"); idx >= 0 {
-		content = body[:idx]
-		commentsRaw = body[idx+len("\n## Comments\n"):]
-	} else if strings.HasPrefix(body, "## Comments\n") {
-		content = ""
-		commentsRaw = body[len("## Comments\n"):]
-	}
-	content = strings.TrimSpace(content)
-	commentsRaw = strings.TrimSpace(commentsRaw)
-
-	issueDir := filepath.Join(issuesDir, strconv.Itoa(issueID))
-
-	// Read existing meta to preserve fields the editable document does not
-	// carry: the created date, and any legacy comments stored in meta.toml.
-	existing, err := readMeta(filepath.Join(issueDir, "meta.toml"))
-	if err != nil {
-		return err
-	}
-
-	newMeta := meta{
-		Title:     em.Title,
-		Status:    em.Status,
-		Priority:  em.Priority,
-		Labels:    em.Labels,
-		Parent:    em.Parent,
-		BlockedBy: em.BlockedBy,
-		Comments:  existing.Comments,
-		Created:   existing.Created,
-	}
-	stamp(&newMeta, time.Now().UTC().Truncate(time.Minute))
-	if err := writeMeta(filepath.Join(issueDir, "meta.toml"), newMeta); err != nil {
-		return err
-	}
-
-	// Write content.md
-	if content != "" {
-		content += "\n"
-	}
-	if err := fsutil.WriteFile(filepath.Join(issueDir, "content.md"), []byte(content), metaFileMode); err != nil {
-		return fmt.Errorf("writing content.md: %w", err)
-	}
-
-	// Write comments.md only when there are comments; remove the file otherwise.
-	commentsPath := filepath.Join(issueDir, "comments.md")
-	if commentsRaw != "" {
-		if err := fsutil.WriteFile(commentsPath, []byte(commentsRaw+"\n"), metaFileMode); err != nil {
-			return fmt.Errorf("writing comments.md: %w", err)
+		var em editMeta
+		if err := toml.Unmarshal([]byte(frontmatter), &em); err != nil {
+			return fmt.Errorf("parsing frontmatter: %w", err)
 		}
-	} else {
-		// Remove stale comments.md; ignore error if it doesn't exist.
-		if err := os.Remove(commentsPath); err != nil && !os.IsNotExist(err) {
-			return fmt.Errorf("removing comments.md: %w", err)
+		if verrs := ValidateMeta(issueID, em.Title, em.Status, em.Priority); len(verrs) > 0 {
+			return editValidationError(verrs)
+		}
+
+		content, commentsRaw := splitEditorBody(body)
+		issueDir := filepath.Join(issuesDir, strconv.Itoa(issueID))
+		metaFile := filepath.Join(issueDir, "meta.toml")
+		contentPath := filepath.Join(issueDir, "content.md")
+		commentsPath := filepath.Join(issueDir, "comments.md")
+		existing, err := readMeta(metaFile)
+		if err != nil {
+			return err
+		}
+		relationships := readRelationshipGraph(issuesDir)
+		relationships[issueID] = RelationshipMeta{Parent: em.Parent, BlockedBy: em.BlockedBy}
+		if verrs := validateRelationshipsForEdit(relationships); len(verrs) > 0 {
+			return editValidationError(verrs)
+		}
+
+		now := time.Now().UTC().Truncate(time.Minute)
+		newMeta := meta{
+			Title: em.Title, Status: em.Status, Priority: em.Priority,
+			Labels: append([]string(nil), em.Labels...),
+			Parent: em.Parent, BlockedBy: append([]int(nil), em.BlockedBy...),
+			Comments: existing.Comments, Created: existing.Created,
+		}
+		stamp(&newMeta, now)
+		metaRaw, err := toml.Marshal(&newMeta)
+		if err != nil {
+			return fmt.Errorf("marshal meta.toml: %w", err)
+		}
+		// Commit all three files from fully prepared temporary files. Keeping an
+		// empty comments file is intentional: it avoids a non-atomic remove.
+		if err := fsutil.WriteFiles([]fsutil.AtomicFile{
+			{Path: metaFile, Data: metaRaw, Perm: filePerm(metaFile)},
+			{Path: contentPath, Data: []byte(content), Perm: filePerm(contentPath)},
+			{Path: commentsPath, Data: []byte(commentsRaw), Perm: filePerm(commentsPath)},
+		}); err != nil {
+			return fmt.Errorf("saving issue files: %w", err)
+		}
+		return nil
+	})
+}
+
+func editValidationError(verrs []ValidationError) error {
+	msgs := make([]string, len(verrs))
+	for i, v := range verrs {
+		msgs[i] = v.Field + ": " + v.Message
+	}
+	return &EditValidationError{Message: strings.Join(msgs, "; ")}
+}
+
+func splitEditorDocument(text string) (frontmatter, body string, err error) {
+	text = strings.TrimPrefix(text, "\ufeff")
+	text = strings.ReplaceAll(text, "\r\n", "\n")
+	const opening = "+++\n"
+	openAt := 0
+	if !strings.HasPrefix(text, opening) {
+		openAt = strings.Index(text, opening)
+		if openAt < 0 || strings.TrimSpace(text[:openAt]) != "" {
+			return "", "", fmt.Errorf("invalid format: missing TOML frontmatter delimiters")
 		}
 	}
+	rest := text[openAt+len(opening):]
+	closeAt := strings.Index(rest, "\n+++\n")
+	if closeAt < 0 {
+		return "", "", fmt.Errorf("invalid format: missing TOML frontmatter delimiters")
+	}
+	return rest[:closeAt], rest[closeAt+len("\n+++\n"):], nil
+}
 
-	return nil
+func splitEditorBody(body string) (content, comments string) {
+	const generatedMarker = "\n\n" + serializedCommentsMarker
+	if start := strings.Index(body, generatedMarker); start >= 0 {
+		content = body[:start+1]
+		comments = body[start+len(generatedMarker):]
+		if strings.HasPrefix(comments, "\n") {
+			comments = comments[1:]
+		}
+		return content, comments
+	}
+	const leadingGeneratedMarker = "\n" + serializedCommentsMarker
+	if strings.HasPrefix(body, leadingGeneratedMarker) {
+		comments = body[len(leadingGeneratedMarker):]
+		if strings.HasPrefix(comments, "\n") {
+			comments = comments[1:]
+		}
+		return "", comments
+	}
+	return body, ""
 }

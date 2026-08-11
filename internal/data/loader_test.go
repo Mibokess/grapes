@@ -191,3 +191,62 @@ func writeIssueMeta(t *testing.T, grapesDir string, id int, metaTOML string) {
 		t.Fatal(err)
 	}
 }
+
+func TestLoadIssue_OptionalFilesAndMetadataValidation(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), ".grapes")
+	writeIssueMeta(t, dir, 1, "title = \"valid\"\nstatus = \"todo\"\npriority = \"low\"\n")
+	issue, err := LoadIssue(dir, 1)
+	if err != nil {
+		t.Fatalf("missing optional files should load: %v", err)
+	}
+	if issue.Content != "" || issue.Comments != nil {
+		t.Fatalf("missing optional files should be empty: %+v", issue)
+	}
+
+	writeIssueMeta(t, dir, 2, "title = \"bad\"\nstatus = \"invalid\"\npriority = \"low\"\n")
+	if _, err := LoadIssue(dir, 2); err == nil {
+		t.Fatal("invalid metadata should be rejected")
+	}
+	if _, err := LoadIssue(dir, 0); err == nil {
+		t.Fatal("nonpositive issue ID should be rejected")
+	}
+}
+
+func TestLoadIssue_SecondaryReadFailureIsReported(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), ".grapes")
+	writeIssueMeta(t, dir, 1, "title = \"valid\"\nstatus = \"todo\"\npriority = \"low\"\n")
+	if err := os.Mkdir(filepath.Join(dir, "1", "content.md"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := LoadIssue(dir, 1); err == nil {
+		t.Fatal("unreadable secondary file should be reported")
+	}
+}
+
+func TestFindExternalIssuesDirs_PreservesCollidingNames(t *testing.T) {
+	root := t.TempDir()
+	first := filepath.Join(root, "one", ".grapes")
+	second := filepath.Join(root, "two", ".grapes")
+	if err := os.MkdirAll(first, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(second, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// Both stores have the same parent display name.
+	dupA := filepath.Join(root, "a", "shared", ".grapes")
+	dupB := filepath.Join(root, "b", "shared", ".grapes")
+	if err := os.MkdirAll(dupA, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(dupB, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	got := FindExternalIssuesDirs(root, filepath.Join(root, "*", "*", ".grapes"))
+	if len(got) != 2 {
+		t.Fatalf("got %d sources, want 2: %#v", len(got), got)
+	}
+	if got["shared"] == "" || got["shared#2"] == "" {
+		t.Fatalf("colliding sources were not uniquely named: %#v", got)
+	}
+}

@@ -7,7 +7,8 @@ aid, not a substitute for checking the implementation named in each section.
 
 `main.go` is the only executable entry point.
 
-1. Help, version, and unknown commands are handled before filesystem discovery.
+1. Help, version, unknown commands, and invalid command arguments are handled
+   before filesystem discovery.
 2. `data.FindIssuesDir` walks toward parent directories first, Git-style, so running
    grapes from a subdirectory finds the project's store. It falls back to searching
    descendants up to ten levels deep.
@@ -54,6 +55,10 @@ The primary load path is `data.WorkspaceLoader.Load`, in `internal/data/workspac
    checkout winning ties. `Issue.SwitchSource` copies that source's fields up.
 7. Relationships are rebuilt from the owning versions, and results are sorted by ID.
 
+If the main checkout's attribution claim fails, loading records the error and
+falls back to the un-attributed baseline rather than combining partial ownership
+claims with missing main-checkout timestamps.
+
 A "real change" is a commit date, or the mtime of an *uncommitted* edit. It is never
 the mtime of a checked-out file: Git stamps those when it writes the working copy, so
 a freshly created worktree would otherwise own every issue in the project.
@@ -70,13 +75,17 @@ path.
 
 ## ID Allocation
 
-`data.NextID` finds the main repository through Git's common directory, locks
-`.grapes/.lock`, scans the main source plus all known worktree/configured sources,
-and creates `max ID + 1` in the local source. Unlike a normal load it scans every
-copy rather than only the changed ones: an ID already used on some branch must never
-be handed out twice. It runs under the lock and off the render path, so the full scan
-is affordable there. Platform-specific locking lives in
-`flock_unix.go` and `flock_windows.go`.
+`data.NextID` finds the main repository through Git's common directory, locks the
+canonical issue store's `.lock`, scans the main source plus all known
+worktree/configured sources, and creates `max ID + 1` in the local source.
+Unlike a normal load it scans every copy rather than only the changed ones: an ID
+already used on some branch must never be handed out twice. It runs under the
+lock and off the render path, so the full scan is affordable there.
+
+Nested issue stores and relative invocation paths are resolved against the
+repository root before worktree discovery, so every checkout is scanned at the
+same relative store path.
+Platform-specific locking lives in `flock_unix.go` and `flock_windows.go`.
 
 Keep the scan and directory creation inside the lock. Moving either operation out
 of the critical section reintroduces collisions between parallel agents.
@@ -92,6 +101,16 @@ All production write helpers live in `internal/data/writer.go`:
 - `SerializeIssue` creates the combined document passed to an external editor.
 - `SaveIssueFromText` validates the edited frontmatter, then separates it back into
   metadata, description, and comments.
+
+Metadata replacements use the shared atomic-write helper and preserve the
+existing file mode. Per-issue writes also take a persistent advisory lock, so
+separate grapes processes cannot overwrite each other's read-modify-write
+updates. Editor saves validate the complete metadata before any component file is
+replaced; a failed validation leaves the issue unchanged.
+
+Multi-file editor and comment writes stage all replacements before renaming and
+roll back replacements when a later rename or directory sync fails.
+Comments are append-only and receive UTC timestamps.
 
 The root TUI resolves an issue's owning source before calling these helpers, via
 `issueSourceDir`. Preserve that behavior: writes follow ownership, which means the
@@ -133,11 +152,19 @@ Loading runs in a command, not in `Update`. Keep it there: reading the workspace
 synchronously froze the event loop for the whole load, which is what made grapes
 unresponsive once a project had many worktrees.
 
-The filesystem watcher follows `Workspace.WatchDirs` — the canonical store plus the
-worktrees that are actually working on something — and their numeric issue
-directories. Watching every worktree would mean thousands of descriptors following
-copies that never change. A failed main watch is surfaced in the status bar rather than silently
-disabling live reload.
+The filesystem watcher follows `Workspace.WatchDirs` and `Workspace.WatchRoots`.
+`WatchDirs` contains the canonical store, configured external stores, and the
+numeric issue directories of worktrees that are actually working on something.
+`WatchRoots` contains one non-recursive checkout-root watch per repository
+worktree, so idle worktrees can become active without an issue-directory watcher
+for every copy. A successful load seeds the activity baseline, so the first poll
+compares against the startup snapshot instead of discarding edits made during
+startup. The poll runs the cheap attribution check and triggers a full reload only
+when checkout activity changes; it also expands or prunes the bounded set of
+directory watches. Watching every worktree
+recursively would mean thousands of descriptors following copies that never
+change. A failed canonical watch is surfaced in the status bar rather than
+silently disabling live reload.
 
 ## Configuration
 
@@ -153,6 +180,8 @@ loaded from `.grapes/config.toml` and covers:
 A missing file returns defaults. A malformed file returns clean defaults plus an
 error; the TUI displays that error in its status bar. Settings writes use
 `config.Save`, then send `common.ConfigSavedMsg` so the root can apply the result.
+Changes to source globs or the default branch also schedule a workspace reload so
+new sources and attribution rules take effect without restarting the TUI.
 
 ## Package Dependency Direction
 

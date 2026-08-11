@@ -44,6 +44,47 @@ func TestSettingsView_ThemeCategory(t *testing.T) {
 	testutil.RequireGolden(t, m.View())
 }
 
+func TestSources_DefaultBranchIsVisible(t *testing.T) {
+	cfg := config.Defaults()
+	cfg.Sources.DefaultBranch = "develop"
+	theme := common.NewThemeFromConfig(cfg.Theme, true)
+	m := settings.New(cfg, t.TempDir(), 100, 30, theme).SetDark(true)
+
+	for range 3 {
+		m, _ = m.Update(keyMsg("j"))
+	}
+	view := testutil.StripANSI(m.View())
+	if !containsStr(view, "Default branch") || !containsStr(view, "develop") {
+		t.Fatalf("Sources view should expose configured default branch:\n%s", view)
+	}
+}
+
+func TestSources_DefaultBranchSaveRoundTrip(t *testing.T) {
+	cfg := config.Defaults()
+	theme := common.NewThemeFromConfig(cfg.Theme, true)
+	m := settings.New(cfg, t.TempDir(), 100, 30, theme).SetDark(true)
+
+	for range 3 {
+		m, _ = m.Update(keyMsg("j"))
+	}
+	m, _ = m.Update(tea.KeyPressMsg(tea.Key{Code: 9}))
+	m, _ = m.Update(tea.KeyPressMsg(tea.Key{Code: 13}))
+	m = typeText(m, "develop")
+	m, _ = m.Update(tea.KeyPressMsg(tea.Key{Code: 13}))
+	m, cmd := m.Update(keyMsg("ctrl+s"))
+	if cmd == nil {
+		t.Fatal("saving settings should emit ConfigSavedMsg")
+	}
+	msg := cmd()
+	saved, ok := msg.(common.ConfigSavedMsg)
+	if !ok {
+		t.Fatalf("save command returned %T, want common.ConfigSavedMsg", msg)
+	}
+	if got := saved.Config.Sources.DefaultBranch; got != "develop" {
+		t.Fatalf("saved default branch = %q, want develop", got)
+	}
+}
+
 func TestClickCategory_SelectsTheme(t *testing.T) {
 	m := newTestModel()
 

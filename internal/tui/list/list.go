@@ -261,8 +261,8 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 					}
 				}
 			} else if mouse.Y >= tableTopY {
-				clickedRow := m.visibleStart + (mouse.Y - tableTopY)
 				issues := m.filteredIssues()
+				clickedRow := m.rowAtY(mouse.Y-tableTopY, issues, strings.TrimSpace(m.filter.Value()))
 				if clickedRow >= 0 && clickedRow < len(issues) {
 					m.table.SetCursor(clickedRow)
 					m.updateVisibleStart()
@@ -308,6 +308,28 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 	m.table, cmd = m.table.Update(msg)
 	m.updateVisibleStart()
 	return m, cmd
+}
+
+// rowAtY maps a rendered data-line offset to an issue row. Search snippets add
+// a second visual line to matching rows, so a simple one-line-per-row formula
+// would select the following issue when a snippet is clicked.
+func (m Model) rowAtY(offset int, issues []data.Issue, query string) int {
+	if offset < 0 {
+		return -1
+	}
+	for idx := m.visibleStart; idx < len(issues); idx++ {
+		if offset == 0 {
+			return idx
+		}
+		offset--
+		if query != "" && data.MatchSnippet(issues[idx], query) != "" {
+			if offset == 0 {
+				return idx
+			}
+			offset--
+		}
+	}
+	return -1
 }
 
 func (m Model) View() string {

@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -34,26 +35,44 @@ type Touch struct {
 	Dirty   bool
 }
 
-// issueIDInPath returns the issue ID a git path refers to. Scanning for the
-// issue directory anywhere in the line means the same helper handles
-// `diff --name-only`, `log --name-only`, and the status-porcelain forms that
-// carry a two-letter code, a quoted path, or a rename arrow.
-func issueIDInPath(grapesRel, line string) (int, bool) {
+// issueIDsInPath returns every issue ID referenced by a git path line. Rename
+// records contain both old and new paths; both sides must contribute claims.
+func issueIDsInPath(grapesRel, line string) []int {
 	prefix := grapesRel + "/"
-	idx := strings.Index(line, prefix)
-	if idx < 0 {
+	var ids []int
+	for start := 0; start < len(line); {
+		idx := strings.Index(line[start:], prefix)
+		if idx < 0 {
+			break
+		}
+		idx += start
+		rest := line[idx+len(prefix):]
+		slash := strings.Index(rest, "/")
+		if slash > 0 {
+			if id, err := strconv.Atoi(rest[:slash]); err == nil && id > 0 {
+				found := false
+				for _, existing := range ids {
+					if existing == id {
+						found = true
+						break
+					}
+				}
+				if !found {
+					ids = append(ids, id)
+				}
+			}
+		}
+		start = idx + len(prefix)
+	}
+	return ids
+}
+
+func issueIDInPath(grapesRel, line string) (int, bool) {
+	ids := issueIDsInPath(grapesRel, line)
+	if len(ids) == 0 {
 		return 0, false
 	}
-	rest := line[idx+len(prefix):]
-	slash := strings.Index(rest, "/")
-	if slash <= 0 {
-		return 0, false
-	}
-	id, err := strconv.Atoi(rest[:slash])
-	if err != nil || id <= 0 {
-		return 0, false
-	}
-	return id, true
+	return ids[0], true
 }
 
 // git runs a git command in dir and returns its stdout. Stderr is folded into
@@ -175,20 +194,17 @@ func Checkouts(mainRoot, grapesRel string) ([]Checkout, error) {
 }
 
 func sortCheckouts(cs []Checkout) {
-	for i := 1; i < len(cs); i++ {
-		for j := i; j > 0 && cs[j].Name < cs[j-1].Name; j-- {
-			cs[j], cs[j-1] = cs[j-1], cs[j]
-		}
-	}
+	sort.SliceStable(cs, func(i, j int) bool {
+		return cs[i].Name < cs[j].Name
+	})
 }
 
 // dirtyIssues returns the issues with uncommitted changes in a checkout, mapped
 // to the mtime of the newest changed file. An uncommitted change is a real local
 // write, so unlike a checked-out file its mtime is meaningful.
 func dirtyIssues(dir, grapesRel string) (map[int]time.Time, error) {
-	// --no-optional-locks keeps this a pure read: without it `git status` may
-	// refresh and rewrite the index, so merely displaying issues would mutate
-	// git state, and forty concurrent calls would contend on the index lock.
+	// --no-optional-locks keeps this a pure read: without it git status may
+	// refresh and rewrite the index.
 	out, err := git(dir, "--no-optional-locks", "status", "--porcelain", "--untracked-files=all", "--", grapesRel)
 	if err != nil {
 		return nil, err
@@ -198,12 +214,10 @@ func dirtyIssues(dir, grapesRel string) (map[int]time.Time, error) {
 		if strings.TrimSpace(line) == "" {
 			continue
 		}
-		id, ok := issueIDInPath(grapesRel, line)
-		if !ok {
-			continue
-		}
-		if t := newestFileIn(filepath.Join(dir, grapesRel, strconv.Itoa(id))); t.After(result[id]) {
-			result[id] = t
+		for _, id := range issueIDsInPath(grapesRel, line) {
+			if t := newestFileIn(filepath.Join(dir, grapesRel, strconv.Itoa(id))); t.After(result[id]) {
+				result[id] = t
+			}
 		}
 	}
 	return result, nil
@@ -221,8 +235,7 @@ func newestFileIn(issueDir string) time.Time {
 }
 
 // changedSince returns, for every issue changed in the commit range, the date of
-// the most recent commit that changed it. One `git log --name-only` walk covers
-// every issue in the range, which is what keeps attribution off a per-issue path.
+// the most recent commit that changed it. One git log walk covers every issue.
 func changedSince(dir, grapesRel, rang string) (map[int]time.Time, error) {
 	out, err := git(dir, "log", "--format=C%cI", "--name-only", rang, "--", grapesRel)
 	if err != nil {
@@ -234,17 +247,13 @@ func changedSince(dir, grapesRel, rang string) (map[int]time.Time, error) {
 		if strings.HasPrefix(line, "C") {
 			if t, err := time.Parse(time.RFC3339, line[1:]); err == nil {
 				when = t
+				continue
 			}
-			continue
 		}
-		id, ok := issueIDInPath(grapesRel, line)
-		if !ok {
-			continue
-		}
-		// Commits arrive newest first, so the first date seen for an issue is
-		// its most recent change; later, older commits must not overwrite it.
-		if _, seen := result[id]; !seen && !when.IsZero() {
-			result[id] = when
+		for _, id := range issueIDsInPath(grapesRel, line) {
+			if _, seen := result[id]; !seen && !when.IsZero() {
+				result[id] = when
+			}
 		}
 	}
 	return result, nil
@@ -379,12 +388,65 @@ func mainClaim(co Checkout, grapesRel, floor string) Claim {
 	for id, when := range committed {
 		cl.Touched[id] = Touch{Changed: when}
 	}
-	if dirty, err := dirtyIssues(co.Path, grapesRel); err == nil {
-		for id, when := range dirty {
-			cl.Touched[id] = Touch{Changed: when, Dirty: true}
-		}
+	dirty, err := dirtyIssues(co.Path, grapesRel)
+	if err != nil {
+		cl.Err = err
+		return cl
+	}
+	for id, when := range dirty {
+		cl.Touched[id] = Touch{Changed: when, Dirty: true}
 	}
 	return cl
+}
+
+func commitDates(dir string, bases []string) (map[string]time.Time, error) {
+	result := make(map[string]time.Time, len(bases))
+	unique := make([]string, 0, len(bases))
+	seen := make(map[string]bool, len(bases))
+	for _, base := range bases {
+		if base != "" && !seen[base] {
+			seen[base] = true
+			unique = append(unique, base)
+		}
+	}
+	if len(unique) == 0 {
+		return result, nil
+	}
+
+	// Keep each invocation comfortably below platform command-line limits.
+	// Count bytes rather than refs: this remains safe if a Git implementation
+	// returns an unexpectedly long ref name.
+	const maxArgsBytes = 32 * 1024
+	const fixedArgsBytes = len("show") + 1 + len("-s") + 1 + len("--format=%H %cI") + 1
+	for start := 0; start < len(unique); {
+		args := []string{"show", "-s", "--format=%H %cI"}
+		argBytes := fixedArgsBytes
+		end := start
+		for end < len(unique) {
+			refBytes := len(unique[end]) + 1
+			if end > start && argBytes+refBytes > maxArgsBytes {
+				break
+			}
+			args = append(args, unique[end])
+			argBytes += refBytes
+			end++
+		}
+		out, err := git(dir, args...)
+		if err != nil {
+			return nil, err
+		}
+		for _, line := range strings.Split(out, "\n") {
+			fields := strings.Fields(line)
+			if len(fields) != 2 {
+				continue
+			}
+			if t, err := time.Parse(time.RFC3339, fields[1]); err == nil {
+				result[fields[0]] = t
+			}
+		}
+		start = end
+	}
+	return result, nil
 }
 
 // GatherClaims asks every checkout what it has changed, running the worktrees
@@ -404,10 +466,15 @@ func GatherClaims(checkouts []Checkout, grapesRel, defaultBranch string, cache *
 		worktrees = append(worktrees, co)
 	}
 
-	// Resolved once and passed down: it is part of every worktree's cache key.
+	// Resolve the branch once. A failure must remain visible to the caller;
+	// an empty cache key would otherwise make attribution appear successful.
 	branchSha := ""
+	var branchErr error
 	if main != nil {
-		if out, err := git(main.Path, "rev-parse", defaultBranch); err == nil {
+		out, err := git(main.Path, "rev-parse", defaultBranch)
+		if err != nil {
+			branchErr = err
+		} else {
 			branchSha = strings.TrimSpace(out)
 		}
 	}
@@ -417,43 +484,58 @@ func GatherClaims(checkouts []Checkout, grapesRel, defaultBranch string, cache *
 	if limit < 1 {
 		limit = 1
 	}
-	sem := make(chan struct{}, limit)
-	var wg sync.WaitGroup
-	for i, co := range worktrees {
-		wg.Add(1)
-		go func(i int, co Checkout) {
-			defer wg.Done()
-			sem <- struct{}{}
-			defer func() { <-sem }()
-			claims[i] = claimFor(co, grapesRel, defaultBranch, branchSha, cache)
-		}(i, co)
+	if limit > len(worktrees) {
+		limit = len(worktrees)
 	}
-	wg.Wait()
+	if limit > 0 {
+		jobs := make(chan int)
+		var wg sync.WaitGroup
+		wg.Add(limit)
+		for range limit {
+			go func() {
+				defer wg.Done()
+				for i := range jobs {
+					claims[i] = claimFor(worktrees[i], grapesRel, defaultBranch, branchSha, cache)
+				}
+			}()
+		}
+		for i := range worktrees {
+			jobs <- i
+		}
+		close(jobs)
+		wg.Wait()
+	}
 
 	if main == nil {
 		return claims
 	}
 
 	// The floor is the oldest base among worktrees that actually claimed
-	// something; main's changes before that are common ancestry.
-	floor := ""
-	oldest := time.Time{}
+	// something; main's changes before that are common ancestry. Resolve all
+	// base commit dates in one Git subprocess rather than one per worktree.
+	bases := make([]string, 0, len(claims))
 	for _, cl := range claims {
-		if cl.Err != nil || len(cl.Touched) == 0 || cl.Base == "" {
-			continue
-		}
-		out, err := git(main.Path, "show", "-s", "--format=%cI", cl.Base)
-		if err != nil {
-			continue
-		}
-		t, err := time.Parse(time.RFC3339, strings.TrimSpace(out))
-		if err != nil {
-			continue
-		}
-		if oldest.IsZero() || t.Before(oldest) {
-			oldest = t
-			floor = cl.Base
+		if cl.Err == nil && len(cl.Touched) != 0 && cl.Base != "" {
+			bases = append(bases, cl.Base)
 		}
 	}
-	return append([]Claim{mainClaim(*main, grapesRel, floor)}, claims...)
+	dates, dateErr := commitDates(main.Path, bases)
+	floor := ""
+	oldest := time.Time{}
+	for _, base := range bases {
+		if t, ok := dates[base]; ok && (oldest.IsZero() || t.Before(oldest)) {
+			oldest = t
+			floor = base
+		}
+	}
+	mainClaimResult := mainClaim(*main, grapesRel, floor)
+	if mainClaimResult.Err == nil && branchErr != nil {
+		mainClaimResult.Err = fmt.Errorf("resolving default branch: %w", branchErr)
+	}
+	if mainClaimResult.Err == nil && dateErr != nil {
+		// A failed date lookup prevents selecting a bounded floor; surface it
+		// rather than silently changing attribution.
+		mainClaimResult.Err = dateErr
+	}
+	return append([]Claim{mainClaimResult}, claims...)
 }

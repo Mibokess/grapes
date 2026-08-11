@@ -1,16 +1,17 @@
 package tui
 
 import (
-	"os"
-	"path/filepath"
-	"strings"
-	"testing"
-
 	tea "charm.land/bubbletea/v2"
 	"github.com/Mibokess/grapes/internal/config"
 	"github.com/Mibokess/grapes/internal/data"
 	"github.com/Mibokess/grapes/internal/tui/common"
 	"github.com/Mibokess/grapes/internal/tui/testutil"
+	"image/color"
+	"os"
+	"path/filepath"
+	"reflect"
+	"strings"
+	"testing"
 )
 
 // view renders the model at a fixed size, with ANSI stripped.
@@ -38,6 +39,41 @@ func TestNewModel_AppliesConfiguredDefaultSort(t *testing.T) {
 	}
 	if !strings.Contains(view(t, m), "title ▼") {
 		t.Error("status bar should show the configured sort")
+	}
+}
+
+func TestBackgroundColor_UpdatesSettingsTheme(t *testing.T) {
+	m := NewModel(data.Workspace{}, nil, t.TempDir(), config.Defaults(), "test")
+	t.Cleanup(func() {
+		if m.watcher != nil {
+			m.watcher.Close()
+		}
+	})
+	resized, _ := m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+	m = resized.(Model)
+
+	opened, _ := m.Update(tea.KeyPressMsg(tea.Key{Code: -2, Text: "C"}))
+	m = opened.(Model)
+	updated, _ := m.Update(tea.BackgroundColorMsg{Color: color.RGBA{R: 255, G: 255, B: 255, A: 255}})
+	got := updated.(Model)
+	changed, _ := got.Update(tea.KeyPressMsg(tea.Key{Code: -2, Text: "j"}))
+	got = changed.(Model)
+	changed, _ = got.Update(tea.KeyPressMsg(tea.Key{Code: -2, Text: "tab"}))
+	got = changed.(Model)
+	settingsView := testutil.StripANSI(got.settings.View())
+	if !strings.Contains(settingsView, "#8250df") {
+		t.Fatalf("settings theme did not update to light palette:\n%s", settingsView)
+	}
+}
+
+func TestSplitWindowsCommandLinePreservesBackslashes(t *testing.T) {
+	got, err := splitWindowsCommandLine(`"C:\Program Files\Vim\vim.exe" -u NONE`)
+	if err != nil {
+		t.Fatalf("splitWindowsCommandLine: %v", err)
+	}
+	want := []string{`C:\Program Files\Vim\vim.exe`, "-u", "NONE"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("splitWindowsCommandLine = %#v, want %#v", got, want)
 	}
 }
 
@@ -136,5 +172,38 @@ func TestRefresh_ReportsSkippedIssues(t *testing.T) {
 	}
 	if !strings.Contains(got.statusMsg, "#2") {
 		t.Errorf("status bar should name the skipped issue, got %q", got.statusMsg)
+	}
+}
+
+func TestConfigSaved_SourceChangesTriggerReload(t *testing.T) {
+	m := newTestModel(t, func(dir string) {
+		createTestIssue(t, dir, 1, "Test issue", "todo", "medium", "")
+	})
+
+	cfg := m.cfg
+	cfg.Sources.DefaultBranch = "develop"
+	updated, cmd := m.Update(common.ConfigSavedMsg{Config: cfg})
+	got := updated.(Model)
+	if !got.loading {
+		t.Fatal("changing source configuration should start a reload")
+	}
+	if cmd == nil {
+		t.Fatal("changing source configuration returned no reload command")
+	}
+	raw := cmd()
+	if _, ok := raw.(common.WorkspaceLoadedMsg); !ok {
+		t.Fatalf("reload command returned %T, want WorkspaceLoadedMsg", raw)
+	}
+}
+
+func TestStripErrorBannerPreservesMarkdownHeadings(t *testing.T) {
+	original := "# Heading\nbody\n"
+	if got := stripErrorBanner(original); got != original {
+		t.Fatalf("plain Markdown was stripped: %q", got)
+	}
+
+	banner := "# ERROR: invalid\n# Fix the issue above, then save and quit. Empty file to cancel.\n\n" + original
+	if got := stripErrorBanner(banner); got != original {
+		t.Fatalf("banner stripping changed document: %q", got)
 	}
 }

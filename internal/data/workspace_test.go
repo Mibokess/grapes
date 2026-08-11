@@ -54,6 +54,68 @@ func TestWorkspace_IdleWorktreesAreInvisible(t *testing.T) {
 	}
 }
 
+func TestWorkspaceLoader_ActivityChangedDetectsWorktreeEdits(t *testing.T) {
+	r := baseRepo(t)
+	loader := NewWorkspaceLoader()
+	issuesDir := filepath.Join(r.Root, ".grapes")
+	if _, err := loader.Load(issuesDir, WorkspaceOptions{}); err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if changed, err := loader.ActivityChanged(issuesDir, WorkspaceOptions{}); err != nil || changed {
+		t.Fatalf("initial activity baseline = %v, %v; want false, nil", changed, err)
+	}
+
+	wt := r.addWorktree("poll-worker")
+	r.writeIssue(wt, 2, "poll edit")
+	changed, err := loader.ActivityChanged(issuesDir, WorkspaceOptions{})
+	if err != nil {
+		t.Fatalf("ActivityChanged after edit: %v", err)
+	}
+	if !changed {
+		t.Fatal("ActivityChanged missed a newly active worktree")
+	}
+	if changed, err := loader.ActivityChanged(issuesDir, WorkspaceOptions{}); err != nil || changed {
+		t.Fatalf("activity baseline not updated = %v, %v; want false, nil", changed, err)
+	}
+}
+
+func TestWorkspaceLoader_ActivityChangedSeesEditBeforeFirstPoll(t *testing.T) {
+	r := baseRepo(t)
+	loader := NewWorkspaceLoader()
+	issuesDir := filepath.Join(r.Root, ".grapes")
+	if _, err := loader.Load(issuesDir, WorkspaceOptions{}); err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+
+	wt := r.addWorktree("poll-worker")
+	r.writeIssue(wt, 2, "poll edit before baseline")
+	changed, err := loader.ActivityChanged(issuesDir, WorkspaceOptions{})
+	if err != nil {
+		t.Fatalf("ActivityChanged after edit: %v", err)
+	}
+	if !changed {
+		t.Fatal("first activity poll missed an edit made after Load")
+	}
+}
+
+func TestWorkspaceLoader_ActivityChangedSeesMainEdit(t *testing.T) {
+	r := baseRepo(t)
+	loader := NewWorkspaceLoader()
+	issuesDir := filepath.Join(r.Root, ".grapes")
+	if _, err := loader.Load(issuesDir, WorkspaceOptions{}); err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+
+	r.writeIssue(r.Root, 1, "main edit")
+	changed, err := loader.ActivityChanged(issuesDir, WorkspaceOptions{})
+	if err != nil {
+		t.Fatalf("ActivityChanged after main edit: %v", err)
+	}
+	if !changed {
+		t.Fatal("activity poll missed a main checkout edit")
+	}
+}
+
 // This is the bug that silently lost edits: git stamps a worktree's files at
 // checkout time, so a freshly created worktree holds the newest mtimes for every
 // issue despite never touching one. Ownership must ignore that, and writes must
@@ -193,6 +255,24 @@ func TestWorkspace_UncommittedEditWins(t *testing.T) {
 	}
 	if !three.Sources[three.ActiveSource].Dirty {
 		t.Error("the winning source should be marked dirty")
+	}
+}
+
+func TestResolveOwners_DirtySourceBeatsLaterCommit(t *testing.T) {
+	now := time.Now()
+	issues := map[int]*Issue{
+		1: {
+			ID: 1,
+			Sources: []IssueSource{
+				{Name: "", Changed: now, Title: "committed"},
+				{Name: "worker", Changed: now.Add(-time.Hour), Dirty: true, Title: "dirty"},
+			},
+		},
+	}
+
+	got := resolveOwners(issues)
+	if len(got) != 1 || got[0].Title != "dirty" || got[0].Worktree != "worker" {
+		t.Fatalf("dirty source did not win: %+v", got)
 	}
 }
 

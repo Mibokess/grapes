@@ -16,19 +16,34 @@ import (
 var version = "0.1.9"
 
 func main() {
-	// Handle help/version and reject unknown commands before touching the
-	// filesystem, so they work anywhere without triggering the .grapes/
-	// creation prompt below. issue/validate need issuesDir and are
+	// Handle help/version, validate command arguments, and reject unknown
+	// commands before touching the filesystem, so they work anywhere without
+	// triggering the .grapes/ creation prompt below. issue/validate are
 	// dispatched further down.
 	if len(os.Args) > 1 {
 		switch os.Args[1] {
 		case "help", "--help", "-h":
+			if len(os.Args) != 2 {
+				fmt.Fprintf(os.Stderr, "%s does not accept arguments\n\n", os.Args[1])
+				writeHelp(os.Stderr)
+				os.Exit(2)
+			}
 			writeHelp(os.Stdout)
 			os.Exit(0)
 		case "version", "--version", "-v":
+			if len(os.Args) != 2 {
+				fmt.Fprintf(os.Stderr, "%s does not accept arguments\n\n", os.Args[1])
+				writeHelp(os.Stderr)
+				os.Exit(2)
+			}
 			fmt.Println(version)
 			os.Exit(0)
 		case "issue", "validate":
+			if err := validateCommandArgs(os.Args[1], os.Args[2:]); err != nil {
+				fmt.Fprintf(os.Stderr, "Invalid arguments for %s: %v\n\n", os.Args[1], err)
+				writeHelp(os.Stderr)
+				os.Exit(2)
+			}
 			// handled after issuesDir is resolved below
 		default:
 			fmt.Fprintf(os.Stderr, "Unknown command: %s\n\n", os.Args[1])
@@ -102,6 +117,29 @@ func main() {
 	}
 }
 
+func validateCommandArgs(command string, args []string) error {
+	switch command {
+	case "issue":
+		if len(args) > 1 {
+			return fmt.Errorf("issue accepts at most one ID")
+		}
+		if len(args) == 1 {
+			id, err := strconv.Atoi(args[0])
+			if err != nil || id <= 0 {
+				return fmt.Errorf("invalid issue ID %q", args[0])
+			}
+		}
+	case "validate":
+		for _, arg := range args {
+			id, err := strconv.Atoi(arg)
+			if err != nil || id <= 0 {
+				return fmt.Errorf("invalid issue ID %q", arg)
+			}
+		}
+	}
+	return nil
+}
+
 func writeHelp(w io.Writer) {
 	fmt.Fprint(w, `grapes — file-based issue tracker (TUI + CLI)
 
@@ -111,10 +149,10 @@ USAGE:
 
 COMMANDS:
   issue                     Allocate the next ID, create .grapes/<id>/, print the ID
-  issue <id>                Bump the 'updated' timestamp on issue <id>
-  validate [<id>...]        Validate all issues, or only the given IDs
-  help, --help, -h          Show this help
-  version, --version, -v    Show the version
+  issue <id>                Bump timestamps on issue <id> (one positive ID only)
+  validate [<id>...]        Validate all issues, or only the given positive IDs
+  help, --help, -h          Show this help (no trailing arguments)
+  version, --version, -v    Show the version (no trailing arguments)
 
 ISSUE FILES (.grapes/<id>/):
   meta.toml                 title, status, priority, labels, dates
@@ -137,6 +175,10 @@ NOTE:
 }
 
 func runIssue(issuesDir string, args []string) int {
+	if err := validateCommandArgs("issue", args); err != nil {
+		fmt.Fprintf(os.Stderr, "Invalid arguments for issue: %v\n", err)
+		return 2
+	}
 	cfg, err := config.Load(issuesDir)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Config error (using defaults): %v\n", err)
@@ -156,11 +198,11 @@ func runIssue(issuesDir string, args []string) int {
 		return 0
 	}
 
-	// With ID: stamp timestamps on existing issue
+	// With ID: stamp timestamps on existing issue.
 	id, err := strconv.Atoi(args[0])
 	if err != nil || id <= 0 {
 		fmt.Fprintf(os.Stderr, "Invalid issue ID: %s\n", args[0])
-		return 1
+		return 2
 	}
 
 	// Create the directory if it doesn't exist. The path comes from the parsed
@@ -179,16 +221,16 @@ func runIssue(issuesDir string, args []string) int {
 }
 
 func runValidate(issuesDir string, args []string) int {
-	var errs []data.ValidationError
+	if err := validateCommandArgs("validate", args); err != nil {
+		fmt.Fprintf(os.Stderr, "Invalid arguments for validate: %v\n", err)
+		return 2
+	}
 
+	var errs []data.ValidationError
 	if len(args) > 0 {
 		// Validate specific issue(s)
 		for _, arg := range args {
-			id, err := strconv.Atoi(arg)
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "Invalid issue ID: %s\n", arg)
-				return 1
-			}
+			id, _ := strconv.Atoi(arg) // validateCommandArgs checked this
 			errs = append(errs, data.ValidateIssue(issuesDir, id)...)
 		}
 	} else {

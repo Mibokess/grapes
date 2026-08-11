@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -31,6 +32,117 @@ import (
 
 // clearStatusMsg is sent after a delay to clear transient status bar messages.
 type clearStatusMsg struct{}
+type workspacePollMsg struct {
+	Changed bool
+	Err     error
+}
+
+const workspacePollInterval = 5 * time.Second
+
+func editorCommand(editor, path string) (*exec.Cmd, error) {
+	parts, err := splitCommandLine(editor)
+	if err != nil {
+		return nil, err
+	}
+	if len(parts) == 0 || parts[0] == "" {
+		return nil, errors.New("EDITOR is empty")
+	}
+	args := append(parts[1:], path)
+	return exec.Command(parts[0], args...), nil
+}
+
+func splitCommandLine(s string) ([]string, error) {
+	if runtime.GOOS == "windows" {
+		return splitWindowsCommandLine(s)
+	}
+	return splitPosixCommandLine(s)
+}
+
+func splitPosixCommandLine(s string) ([]string, error) {
+	var out []string
+	var current strings.Builder
+	var quote rune
+	escaped := false
+	flush := func() {
+		if current.Len() > 0 {
+			out = append(out, current.String())
+			current.Reset()
+		}
+	}
+	for _, r := range s {
+		if escaped {
+			current.WriteRune(r)
+			escaped = false
+			continue
+		}
+		if r == '\\' && quote != '\'' {
+			escaped = true
+			continue
+		}
+		if quote != 0 {
+			if r == quote {
+				quote = 0
+			} else {
+				current.WriteRune(r)
+			}
+			continue
+		}
+		switch r {
+		case '\'', '"':
+			quote = r
+		case ' ', '\t', '\n', '\r':
+			flush()
+		default:
+			current.WriteRune(r)
+		}
+	}
+	if escaped {
+		current.WriteRune('\\')
+	}
+	if quote != 0 {
+		return nil, errors.New("unterminated quote in EDITOR")
+	}
+	flush()
+	return out, nil
+}
+
+// splitWindowsCommandLine preserves backslashes because they are path
+// separators on Windows. Quoting still groups paths with spaces; escaped
+// quotes are not needed for the usual EDITOR executable-plus-arguments form.
+func splitWindowsCommandLine(s string) ([]string, error) {
+	var out []string
+	var current strings.Builder
+	var quote rune
+	flush := func() {
+		if current.Len() > 0 {
+			out = append(out, current.String())
+			current.Reset()
+		}
+	}
+	for _, r := range s {
+		if quote != 0 {
+			if r == quote {
+				quote = 0
+			} else {
+				current.WriteRune(r)
+			}
+			continue
+		}
+		switch r {
+		case '\'', '"':
+			quote = r
+		case ' ', '\t', '\n', '\r':
+			flush()
+		default:
+			current.WriteRune(r)
+		}
+	}
+	if quote != 0 {
+		return nil, errors.New("unterminated quote in EDITOR")
+	}
+	flush()
+	return out, nil
+}
 
 // navEntry captures one frame in the navigation history.
 type navEntry struct {
@@ -54,21 +166,22 @@ type Model struct {
 	isDark      bool
 
 	cfg      config.Config
+	filters  filter.FilterSet
 	board    board.Model
 	list     list.Model
 	detail   detail.Model
 	settings settings.Model
 
-	picker       *picker.Model       // non-nil when picker overlay is active
-	labelPicker  *labelpicker.Model  // non-nil when label picker is active
-	filterMenu   *filter.Menu        // non-nil when filter menu is open
-	filterPicker *filter.MultiPicker // non-nil when filter multi-picker is open
-	filters      filter.FilterSet    // structured filter state
-
+	filterPicker   *filter.MultiPicker   // non-nil when a filter value overlay is active
+	filterMenu     *filter.Menu          // non-nil when the filter category menu is active
+	picker         *picker.Model         // non-nil when picker overlay is active
+	labelPicker    *labelpicker.Model    // non-nil when label picker is active
 	loader         *data.WorkspaceLoader // reused so its per-worktree cache survives reloads
 	worktrees      []data.WorktreeInfo   // only worktrees that are working on something
 	attributionErr error                 // why worktree attribution is off, when it is
 	loading        bool                  // a reload is in flight
+	refreshPending bool                  // a filesystem event arrived during a load
+	pollScheduled  bool                  // one periodic activity probe is outstanding
 
 	worktreeNames []string // sorted worktree names, for consistent color indexing
 
@@ -78,6 +191,18 @@ type Model struct {
 	editingMode    string // "comment" or "edit"
 }
 
+func sourceConfigChanged(a, b config.SourcesConfig) bool {
+	if a.DefaultBranch != b.DefaultBranch || len(a.Dirs) != len(b.Dirs) {
+		return true
+	}
+	for i := range a.Dirs {
+		if a.Dirs[i] != b.Dirs[i] {
+			return true
+		}
+	}
+	return false
+}
+
 func NewModel(ws data.Workspace, loader *data.WorkspaceLoader, issuesDir string, cfg config.Config, version string) Model {
 	projectRoot := data.ProjectRoot(issuesDir)
 	issues := ws.Issues
@@ -85,9 +210,9 @@ func NewModel(ws data.Workspace, loader *data.WorkspaceLoader, issuesDir string,
 	// Live reload is a headline feature, so a watcher that fails to start is
 	// worth saying out loud rather than degrading to a silently static view.
 	//
-	// Only the canonical store and the worktrees that are actually working on
-	// something are watched. Watching every worktree would cost thousands of
-	// descriptors to follow copies that never change.
+	// Watch active stores recursively only to their numeric issue directories.
+	// Idle worktrees are represented by one root watch and discovered by the
+	// periodic activity probe below.
 	var watchErr error
 	w, err := fsnotify.NewWatcher()
 	if err != nil {
@@ -97,6 +222,9 @@ func NewModel(ws data.Workspace, loader *data.WorkspaceLoader, issuesDir string,
 			if e := addWatchDirs(w, dir); e != nil && watchErr == nil && i == 0 {
 				watchErr = e // only the canonical store failing disables reload
 			}
+		}
+		for _, root := range ws.WatchRoots {
+			_ = addWatchRoot(w, root)
 		}
 	}
 
@@ -162,7 +290,8 @@ func NewModel(ws data.Workspace, loader *data.WorkspaceLoader, issuesDir string,
 		cfg:            cfg,
 		theme:          theme,
 		worktreeNames:  wtNames,
-		board:          board.New(filtered).SetHideEmpty(cfg.View.HideEmpty()).SetTheme(theme).SetWorktreeNames(wtNames),
+		pollScheduled:  true,
+		board:          board.New(filtered).SetSortMode(sortMode).SetHideEmpty(cfg.View.HideEmpty()).SetTheme(theme).SetWorktreeNames(wtNames),
 		list:           l.SetTheme(theme).SetWorktreeNames(wtNames),
 		watcher:        w,
 	}
@@ -265,12 +394,20 @@ func (m Model) loadWorkspaceCmd() tea.Cmd {
 
 // pruneWatchDirs drops watches that are no longer wanted: directories that have
 // been deleted, and the issue directories of worktrees that have stopped
-// working on anything. keep lists the roots still in scope; anything outside
-// them is released so a long session does not accumulate descriptors.
-func pruneWatchDirs(w *fsnotify.Watcher, keep []string) {
-	inScope := func(dir string) bool {
-		for _, root := range keep {
+// working on anything. Store roots keep their numeric descendants; checkout
+// roots are sentinel watches and must not keep every child directory alive.
+func pruneWatchDirs(w *fsnotify.Watcher, storeRoots, checkoutRoots []string) {
+	inStore := func(dir string) bool {
+		for _, root := range storeRoots {
 			if dir == root || strings.HasPrefix(dir, root+string(filepath.Separator)) {
+				return true
+			}
+		}
+		return false
+	}
+	isCheckoutRoot := func(dir string) bool {
+		for _, root := range checkoutRoots {
+			if dir == root {
 				return true
 			}
 		}
@@ -278,7 +415,7 @@ func pruneWatchDirs(w *fsnotify.Watcher, keep []string) {
 	}
 	for _, dir := range w.WatchList() {
 		info, err := os.Stat(dir)
-		if err != nil || !info.IsDir() || !inScope(dir) {
+		if err != nil || !info.IsDir() || (!inStore(dir) && !isCheckoutRoot(dir)) {
 			_ = w.Remove(dir)
 		}
 	}
@@ -308,6 +445,16 @@ func addWatchDirs(w *fsnotify.Watcher, issuesDir string) error {
 		_ = w.Add(filepath.Join(issuesDir, e.Name()))
 	}
 	return nil
+}
+
+func addWatchRoot(w *fsnotify.Watcher, root string) error {
+	if info, err := os.Stat(root); err != nil || !info.IsDir() {
+		if err != nil {
+			return err
+		}
+		return fmt.Errorf("%s is not a directory", root)
+	}
+	return w.Add(root)
 }
 
 // watchCmd blocks on the fsnotify watcher and returns a RefreshMsg when files change.
@@ -350,9 +497,19 @@ func (m Model) watchCmd() tea.Cmd {
 		}
 	}
 }
+func (m Model) pollCmd() tea.Cmd {
+	loader, dir, cfg := m.loader, m.issuesDir, m.cfg
+	return tea.Tick(workspacePollInterval, func(time.Time) tea.Msg {
+		changed, err := loader.ActivityChanged(dir, data.WorkspaceOptions{
+			DefaultBranch: cfg.Sources.DefaultBranch,
+			ExtraDirs:     cfg.Sources.Dirs,
+		})
+		return workspacePollMsg{Changed: changed, Err: err}
+	})
+}
 
 func (m Model) Init() tea.Cmd {
-	return tea.Batch(m.board.Init(), m.list.Init(), m.watchCmd(), tea.RequestBackgroundColor)
+	return tea.Batch(m.board.Init(), m.list.Init(), m.watchCmd(), m.pollCmd(), tea.RequestBackgroundColor)
 }
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -374,7 +531,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.board = m.board.SetTheme(m.theme)
 		m.list = m.list.SetTheme(m.theme)
 		m.detail = m.detail.SetTheme(m.theme)
-		m.settings = m.settings.SetDark(m.isDark)
+		m.settings = m.settings.SetTheme(m.theme).SetDark(m.isDark)
 		return m, nil
 
 	case tea.KeyPressMsg:
@@ -534,6 +691,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.issues[i].ID == msg.IssueID {
 				m.issues[i].SwitchSource(msg.SourceIdx)
 				data.RewireRelationships(m.issues)
+				filtered := m.filteredIssues()
+				m.board = m.board.SetIssues(filtered)
+				m.list = m.list.SetIssues(filtered)
 				if m.screen == common.ScreenDetail {
 					m.detail = detail.New(m.issues[i], m.issues, m.width, m.contentHeight(), m.theme).SetTopOffset(m.topOffset()).SetWorktreeNames(m.worktreeNames)
 				}
@@ -551,7 +711,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.navStack = m.navStack[:len(m.navStack)-1]
 		m.screen = top.screen
 		if top.screen == common.ScreenDetail {
-			m.detail = top.detail
 			m.detail = m.detail.SetTopOffset(m.topOffset()).SetSize(m.width, m.contentHeight())
 		}
 		return m, nil
@@ -562,14 +721,23 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case common.ConfigSavedMsg:
+		sourcesChanged := sourceConfigChanged(m.cfg.Sources, msg.Config.Sources)
 		m.cfg = msg.Config
 		m.theme = common.NewThemeFromConfig(msg.Config.Theme, m.isDark)
 		m.board = m.board.SetHideEmpty(msg.Config.View.HideEmpty()).SetTheme(m.theme)
 		m.list = m.list.SetTheme(m.theme)
 		m.detail = m.detail.SetTheme(m.theme)
 		common.ApplyKeys(msg.Config.Keys)
+		if mode, ok := data.ParseSortMode(msg.Config.View.DefaultSort); ok {
+			m.sortMode = mode
+			m.sortAsc = false
+			data.SortIssues(m.issues, m.sortMode, m.sortAsc)
+			m.board = m.board.SetSortMode(m.sortMode)
+			m.list = m.list.SetSortState(m.sortMode, m.sortAsc)
+		}
 		filtered := m.filteredIssues()
 		m.board = m.board.SetIssues(filtered)
+		m.list = m.list.SetIssues(filtered)
 		// Go back to previous screen
 		if len(m.navStack) > 0 {
 			top := m.navStack[len(m.navStack)-1]
@@ -577,6 +745,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.screen = top.screen
 		} else {
 			m.screen = common.ScreenBoard
+		}
+		if sourcesChanged {
+			if m.loading {
+				m.refreshPending = true
+			} else {
+				m.loading = true
+				return m, m.loadWorkspaceCmd()
+			}
 		}
 		return m, nil
 
@@ -587,7 +763,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.detail = m.detail.SetTheme(m.theme)
 		m.settings = m.settings.SetTheme(m.theme)
 		return m, nil
-
 	case common.CycleSortMsg:
 		m.sortMode = m.sortMode.Next()
 		m.sortAsc = false // reset direction when changing sort field
@@ -598,9 +773,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case common.ToggleEmptyColumnsMsg:
-		m.board = m.board.SetHideEmpty(!m.board.HideEmpty())
 		filtered := m.filteredIssues()
-		m.board = m.board.SetIssues(filtered)
+		m.board = m.board.SetIssuesAndHideEmpty(filtered, !m.board.HideEmpty())
 		return m, nil
 
 	case common.ReverseSortMsg:
@@ -624,13 +798,35 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.list = m.list.SetSortState(m.sortMode, m.sortAsc).SetIssues(filtered)
 		return m, nil
 
-	case common.RefreshMsg:
-		// Loading reads the canonical store and queries git for every worktree,
-		// so it runs as a command. Doing it here would freeze the UI for the
-		// whole load, which is what made grapes feel unresponsive with many
-		// worktrees.
+	case workspacePollMsg:
+		m.pollScheduled = false
+		if msg.Err != nil {
+			m.statusMsg = "Workspace poll failed: " + msg.Err.Error()
+			if m.loading {
+				return m, nil
+			}
+			m.pollScheduled = true
+			return m, tea.Batch(m.clearStatusAfter(5*time.Second), m.pollCmd())
+		}
+		if !msg.Changed {
+			m.pollScheduled = true
+			return m, m.pollCmd()
+		}
 		if m.loading {
-			return m, m.watchCmd() // a load is already in flight; it will pick this up
+			m.refreshPending = true
+			return m, nil
+		}
+		m.loading = true
+		m.pollScheduled = true
+		return m, tea.Batch(m.loadWorkspaceCmd(), m.pollCmd())
+
+	case common.RefreshMsg:
+		// A second event while loading is coalesced into one follow-up load.
+		// The watcher command is restarted because the command that delivered
+		// this event has completed.
+		if m.loading {
+			m.refreshPending = true
+			return m, m.watchCmd()
 		}
 		m.loading = true
 		return m, tea.Batch(m.watchCmd(), m.loadWorkspaceCmd())
@@ -638,47 +834,77 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case common.WorkspaceLoadedMsg:
 		m.loading = false
 		if msg.Err != nil {
+			m.loader.InvalidateActivity()
 			m.statusMsg = "Reload failed: " + msg.Err.Error()
-			return m, m.clearStatusAfter(5 * time.Second)
-		}
-		ws := msg.Workspace
-
-		var problemCmd tea.Cmd
-		if s := loadProblemSummary(ws.Problems); s != "" {
-			m.statusMsg = s
-			problemCmd = m.clearStatusAfter(5 * time.Second)
-		}
-		wtNames := ws.WorktreeNames()
-		m.worktreeNames = wtNames
-		m.worktrees = ws.Worktrees
-		m.attributionErr = ws.AttributionErr
-
-		issues := ws.Issues
-		data.SortIssues(issues, m.sortMode, m.sortAsc)
-		m.issues = issues
-		filtered := m.filteredIssues()
-		m.board = m.board.SetWorktreeNames(wtNames).SetIssues(filtered)
-		m.list = m.list.SetWorktreeNames(wtNames).SetIssues(filtered)
-		// Update detail view content if it's showing, preserving scroll position
-		if m.screen == common.ScreenDetail {
-			for _, iss := range issues {
-				if iss.ID == m.detail.IssueID() {
-					m.detail = m.detail.UpdateIssue(iss, m.issues).SetWorktreeNames(wtNames)
-					break
+		} else {
+			ws := msg.Workspace
+			var problemCmd tea.Cmd
+			if s := loadProblemSummary(ws.Problems); s != "" {
+				m.statusMsg = s
+				problemCmd = m.clearStatusAfter(5 * time.Second)
+			}
+			wtNames := ws.WorktreeNames()
+			m.worktreeNames = wtNames
+			m.worktrees = ws.Worktrees
+			m.attributionErr = ws.AttributionErr
+			issues := ws.Issues
+			data.SortIssues(issues, m.sortMode, m.sortAsc)
+			m.issues = issues
+			filtered := m.filteredIssues()
+			m.board = m.board.SetWorktreeNames(wtNames).SetIssues(filtered)
+			m.list = m.list.SetWorktreeNames(wtNames).SetIssues(filtered)
+			// Update detail view content if it's showing, preserving scroll position.
+			if m.screen == common.ScreenDetail {
+				found := false
+				for _, iss := range issues {
+					if iss.ID == m.detail.IssueID() {
+						m.detail = m.detail.UpdateIssue(iss, m.issues).SetWorktreeNames(wtNames)
+						found = true
+						break
+					}
+				}
+				if !found {
+					// The active issue was deleted or became invalid. Do not
+					// leave a dead editor/navigation target on screen.
+					m.navStack = nil
+					m.screen = common.ScreenBoard
+					m.statusMsg = fmt.Sprintf("Issue #%d is no longer available", m.detail.IssueID())
 				}
 			}
-		}
-		// Follow the directories this load says matter, which changes as
-		// worktrees start and stop working on issues. Errors are ignored here,
-		// unlike at startup: a directory may have been deleted since the last
-		// refresh, and repeating that on every reload would bury the status bar.
-		if m.watcher != nil {
-			for _, dir := range ws.WatchDirs {
-				_ = addWatchDirs(m.watcher, dir)
+			if m.watcher != nil {
+				for _, dir := range ws.WatchDirs {
+					_ = addWatchDirs(m.watcher, dir)
+				}
+				for _, root := range ws.WatchRoots {
+					_ = addWatchRoot(m.watcher, root)
+				}
+				pruneWatchDirs(m.watcher, ws.WatchDirs, ws.WatchRoots)
 			}
-			pruneWatchDirs(m.watcher, ws.WatchDirs)
+			if m.refreshPending {
+				m.refreshPending = false
+				m.loading = true
+				if !m.pollScheduled {
+					m.pollScheduled = true
+					problemCmd = tea.Batch(problemCmd, m.pollCmd())
+				}
+				return m, tea.Batch(problemCmd, m.loadWorkspaceCmd())
+			}
+			if !m.pollScheduled {
+				m.pollScheduled = true
+				problemCmd = tea.Batch(problemCmd, m.pollCmd())
+			}
+			return m, problemCmd
 		}
-		return m, problemCmd
+		if m.refreshPending {
+			m.refreshPending = false
+			m.loading = true
+			return m, m.loadWorkspaceCmd()
+		}
+		if !m.pollScheduled {
+			m.pollScheduled = true
+			return m, tea.Batch(m.clearStatusAfter(5*time.Second), m.pollCmd())
+		}
+		return m, m.clearStatusAfter(5 * time.Second)
 
 	case common.ShowPickerMsg:
 		p := m.buildPicker(msg.IssueID, msg.Field)
@@ -765,6 +991,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.statusMsg = "Error: " + err.Error()
 			return m, m.clearStatusAfter(3 * time.Second)
 		}
+		if err := tmpFile.Chmod(0600); err != nil {
+			tmpFile.Close()
+			os.Remove(tmpFile.Name())
+			m.statusMsg = "Error: " + err.Error()
+			return m, m.clearStatusAfter(3 * time.Second)
+		}
 		tmpFile.Close()
 		m.editingIssueID = msg.ID
 		m.editingTmpPath = tmpFile.Name()
@@ -774,7 +1006,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if editor == "" {
 			editor = "vi"
 		}
-		c := exec.Command(editor, m.editingTmpPath)
+		c, err := editorCommand(editor, m.editingTmpPath)
+		if err != nil {
+			os.Remove(m.editingTmpPath)
+			m.statusMsg = "Editor error: " + err.Error()
+			return m, m.clearStatusAfter(3 * time.Second)
+		}
 		return m, tea.ExecProcess(c, func(err error) tea.Msg {
 			return common.EditorFinishedMsg{Err: err}
 		})
@@ -803,9 +1040,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.statusMsg = "Error: " + err.Error()
 			return m, m.clearStatusAfter(3 * time.Second)
 		}
+		if err := tmpFile.Chmod(0600); err != nil {
+			tmpFile.Close()
+			os.Remove(tmpFile.Name())
+			m.statusMsg = "Error: " + err.Error()
+			return m, m.clearStatusAfter(3 * time.Second)
+		}
 		tmpFile.Close()
-
-		m.editingIssueID = msg.ID
 		m.editingTmpPath = tmpFile.Name()
 		m.editingMode = "edit"
 
@@ -813,7 +1054,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if editor == "" {
 			editor = "vi"
 		}
-		c := exec.Command(editor, m.editingTmpPath)
+		c, err := editorCommand(editor, m.editingTmpPath)
+		if err != nil {
+			os.Remove(m.editingTmpPath)
+			m.statusMsg = "Editor error: " + err.Error()
+			return m, m.clearStatusAfter(3 * time.Second)
+		}
 		return m, tea.ExecProcess(c, func(err error) tea.Msg {
 			return common.EditFinishedMsg{Err: err}
 		})
@@ -855,13 +1101,21 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// Strip any previous error banner before prepending a fresh one
 			cleaned := stripErrorBanner(text)
 			banner := "# ERROR: " + valErr.Message + "\n# Fix the issue above, then save and quit. Empty file to cancel.\n\n"
-			os.WriteFile(tmpPath, []byte(banner+cleaned), 0644)
-
+			if err := os.WriteFile(tmpPath, []byte(banner+cleaned), 0600); err != nil {
+				os.Remove(tmpPath)
+				m.statusMsg = "Editor error: " + err.Error()
+				return m, m.clearStatusAfter(3 * time.Second)
+			}
 			editor := os.Getenv("EDITOR")
 			if editor == "" {
 				editor = "vi"
 			}
-			c := exec.Command(editor, tmpPath)
+			c, err := editorCommand(editor, tmpPath)
+			if err != nil {
+				os.Remove(tmpPath)
+				m.statusMsg = "Editor error: " + err.Error()
+				return m, m.clearStatusAfter(3 * time.Second)
+			}
 			return m, tea.ExecProcess(c, func(err error) tea.Msg {
 				return common.EditFinishedMsg{Err: err}
 			})
@@ -1453,30 +1707,61 @@ func (m Model) buildFilterPicker(field string) filter.MultiPicker {
 			})
 		}
 		return filter.NewMultiPicker("Label", "labels", opts, m.filters.Labels, m.theme)
-
 	case "source":
-		// Only worktrees that are working on something get listed. Every
-		// checkout holds a copy of every issue, so listing all of them would
-		// mean thirty or forty identical entries that say nothing.
-		var opts []filter.PickerOption
-		mainCount := 0
+		// FilterSet.Matches accepts any loaded source on an issue, not only
+		// the winning owner. Count each issue once per source so picker
+		// counts describe the same set the filter will match.
+		sourceCounts := make(map[string]int)
 		for _, iss := range m.issues {
-			if iss.Worktree == "" {
-				mainCount++
+			seen := make(map[string]bool)
+			if len(iss.Sources) == 0 {
+				name := iss.Worktree
+				if name == "" {
+					name = "main"
+				}
+				seen[name] = true
+			} else {
+				for _, src := range iss.Sources {
+					name := src.Name
+					if name == "" {
+						name = "main"
+					}
+					seen[name] = true
+				}
+			}
+			for name := range seen {
+				sourceCounts[name]++
 			}
 		}
-		if mainCount > 0 {
+		// A hand-built workspace may provide worktree activity without
+		// per-issue source copies. Keep those active sources selectable too.
+		for _, wt := range m.worktrees {
+			if wt.Name != "" {
+				if _, ok := sourceCounts[wt.Name]; !ok {
+					sourceCounts[wt.Name] = len(wt.Touched)
+				}
+			}
+		}
+		names := make([]string, 0, len(sourceCounts))
+		for name := range sourceCounts {
+			if name != "main" {
+				names = append(names, name)
+			}
+		}
+		sort.Strings(names)
+		var opts []filter.PickerOption
+		if n := sourceCounts["main"]; n > 0 {
 			opts = append(opts, filter.PickerOption{
 				Value: "main",
-				Label: fmt.Sprintf("%s main (%d)", common.MainIcon(), mainCount),
+				Label: fmt.Sprintf("%s main (%d)", common.MainIcon(), n),
 				Style: m.theme.StyleSubtitle,
 			})
 		}
-		for _, wt := range m.worktrees {
-			c := m.theme.WorktreeColorFor(wt.Name, m.worktreeNames)
+		for _, name := range names {
+			c := m.theme.WorktreeColorFor(name, names)
 			opts = append(opts, filter.PickerOption{
-				Value: wt.Name,
-				Label: fmt.Sprintf("%s %s (%d)", common.WorktreeIcon(), wt.Name, len(wt.Touched)),
+				Value: name,
+				Label: fmt.Sprintf("%s %s (%d)", common.WorktreeIcon(), name, sourceCounts[name]),
 				Style: lipgloss.NewStyle().Foreground(c),
 			})
 		}
@@ -1503,7 +1788,7 @@ func (m *Model) applyFilterSelection(field string, selected []string) {
 // propagateFilters sends filtered issues to both views and adjusts sizes.
 func (m *Model) propagateFilters() {
 	filtered := m.filteredIssues()
-	m.board = m.board.SetStatusFilter(m.filters.Statuses).SetIssues(filtered)
+	m.board = m.board.SetIssuesAndStatusFilter(filtered, m.filters.Statuses)
 	m.list = m.list.SetIssues(filtered)
 	contentHeight := m.contentHeight()
 	off := m.topOffset()
@@ -1514,17 +1799,18 @@ func (m *Model) propagateFilters() {
 // stripErrorBanner removes a leading "# ERROR: ..." banner that was prepended by
 // a previous validation failure, so it doesn't accumulate on repeated retries.
 func stripErrorBanner(text string) string {
-	lines := strings.Split(text, "\n")
-	i := 0
-	for i < len(lines) && strings.HasPrefix(lines[i], "# ") {
-		i++
+	const prefix = "# ERROR: "
+	const instruction = "# Fix the issue above, then save and quit. Empty file to cancel."
+	if !strings.HasPrefix(text, prefix) {
+		return text
 	}
-	// Skip blank lines after the banner
+	lines := strings.Split(text, "\n")
+	if len(lines) < 2 || lines[1] != instruction {
+		return text
+	}
+	i := 2
 	for i < len(lines) && lines[i] == "" {
 		i++
-	}
-	if i == 0 {
-		return text
 	}
 	return strings.Join(lines[i:], "\n")
 }

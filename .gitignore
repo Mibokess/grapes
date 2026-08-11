@@ -30,6 +30,8 @@ dist/
 
 # Grapes ID-allocation lock (kept on disk between runs; see data.NextID)
 .grapes/.lock
+.grapes/*/.lock
+.grapes/config.toml.lock
 
 # Grapes atomic-write temp files (only present if a write was interrupted)
 .grapes/.*.tmp-*

@@ -153,13 +153,41 @@ func ParseSortMode(name string) (SortMode, bool) {
 // SortIssues sorts issues in place according to the given mode.
 // When asc is true the natural order is reversed (e.g. oldest first, lowest priority first).
 func SortIssues(issues []Issue, mode SortMode, asc bool) {
+	if mode == SortByTitle {
+		keys := make(map[int]string, len(issues))
+		for i := range issues {
+			if _, exists := keys[issues[i].ID]; !exists {
+				keys[issues[i].ID] = strings.ToLower(issues[i].Title)
+			}
+		}
+		sort.SliceStable(issues, func(i, j int) bool {
+			left, right := i, j
+			if asc {
+				left, right = right, left
+			}
+			leftTitle, rightTitle := keys[issues[left].ID], keys[issues[right].ID]
+			if leftTitle != rightTitle {
+				return leftTitle < rightTitle
+			}
+			return issues[left].ID < issues[right].ID
+		})
+		return
+	}
+
 	sort.SliceStable(issues, func(i, j int) bool {
 		if asc {
 			i, j = j, i // flip comparison
 		}
 		switch mode {
 		case SortByPriority:
-			pi, pj := PriorityOrder[issues[i].Priority], PriorityOrder[issues[j].Priority]
+			pi, ok := PriorityOrder[issues[i].Priority]
+			if !ok {
+				pi = len(PriorityOrder)
+			}
+			pj, ok := PriorityOrder[issues[j].Priority]
+			if !ok {
+				pj = len(PriorityOrder)
+			}
 			if pi != pj {
 				return pi < pj
 			}
@@ -176,15 +204,15 @@ func SortIssues(issues []Issue, mode SortMode, asc bool) {
 			return issues[i].ID < issues[j].ID
 		case SortByID:
 			return issues[i].ID < issues[j].ID
-		case SortByTitle:
-			ti := strings.ToLower(issues[i].Title)
-			tj := strings.ToLower(issues[j].Title)
-			if ti != tj {
-				return ti < tj
-			}
-			return issues[i].ID < issues[j].ID
 		case SortByStatus:
-			si, sj := StatusOrder[issues[i].Status], StatusOrder[issues[j].Status]
+			si, ok := StatusOrder[issues[i].Status]
+			if !ok {
+				si = len(StatusOrder)
+			}
+			sj, ok := StatusOrder[issues[j].Status]
+			if !ok {
+				sj = len(StatusOrder)
+			}
 			if si != sj {
 				return si < sj
 			}

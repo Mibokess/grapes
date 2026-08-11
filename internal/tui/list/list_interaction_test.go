@@ -223,6 +223,26 @@ func TestList_ClickPriorityColumn_ShowsPicker(t *testing.T) {
 	}
 }
 
+func TestList_ClickSearchSnippet_SelectsOwningIssue(t *testing.T) {
+	m := newListModel()
+	m, _ = m.Update(keyMsg("/"))
+	for _, r := range "seconds" {
+		m, _ = m.Update(keyMsg(string(r)))
+	}
+	m, _ = m.Update(tea.KeyPressMsg(tea.Key{Code: 13}))
+
+	// topOffset=1 plus the active search line puts the first data row at y=4;
+	// its context snippet is the next visual line.
+	_, cmd := m.Update(tea.MouseClickMsg{X: 10, Y: 5, Button: tea.MouseLeft})
+	msg, ok := extractMsg(cmd).(common.OpenDetailMsg)
+	if !ok {
+		t.Fatalf("clicking a search snippet should open its issue, got %T", extractMsg(cmd))
+	}
+	if msg.ID != 2 {
+		t.Fatalf("clicked snippet opened issue #%d, want #2", msg.ID)
+	}
+}
+
 func TestList_BackwardButton_SwitchesToBoard(t *testing.T) {
 	m := newListModel()
 	_, cmd := m.Update(tea.MouseClickMsg{X: 5, Y: 5, Button: tea.MouseBackward})

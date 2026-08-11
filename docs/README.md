@@ -19,10 +19,12 @@ An issue is a numeric directory:
 ```
 
 The application combines issues from the main checkout, Git worktrees, and configured
-source directories. Because `.grapes` is tracked, every worktree holds a copy of every
-issue, so a worktree only counts as a source once Git says its branch actually changed
-that issue since branching off. Where a branch and the main checkout genuinely
-disagree, the UI presents one issue with switchable source versions.
+external source directories. Because `.grapes` is tracked, every worktree holds a copy
+of every issue. A worktree is attributed only when Git reports that its branch changed
+the issue relative to its branch base; idle copies do not become source versions. Where
+a branch and the main checkout genuinely disagree, the UI presents one issue with
+switchable source versions. External sources are loaded without Git worktree
+attribution.
 
 ## Runtime Mental Model
 
@@ -87,8 +89,9 @@ docs/                    contributor and agent documentation
 - `Children` and `Blocks` are derived reverse relationships. Do not persist them.
 - The root TUI model owns cross-screen state, writes, overlays, source switching,
   and reloads. Child views emit messages instead of writing files directly.
-- Invalid issues may be skipped by normal loading; use `grapes validate` when
-  correctness matters.
+- Normal loading may skip malformed or unreadable issue sources; use
+  `grapes validate` when correctness matters. Validation is the strict path and
+  accepts either all issues or explicit positive IDs.
 
 ## Verify a Change
 

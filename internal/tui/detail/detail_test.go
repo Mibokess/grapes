@@ -37,6 +37,16 @@ func TestDetailView_Narrow(t *testing.T) {
 	testutil.RequireGolden(t, m.View())
 }
 
+func TestDetail_SetThemeRerendersContent(t *testing.T) {
+	issues := testutil.SampleIssues()
+	m := detail.New(issues[0], issues, 80, 30, common.NewTheme(true))
+	before := m.View()
+	after := m.SetTheme(common.NewTheme(false)).View()
+	if before == after {
+		t.Fatal("SetTheme left rendered detail content unchanged")
+	}
+}
+
 func TestDetailView_MultiSource_ChildrenUseViewingSource(t *testing.T) {
 	parentID := 10
 	child := data.Issue{

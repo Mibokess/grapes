@@ -21,6 +21,10 @@ go test ./internal/tui -run TestApp_Refresh
 ```
 
 Bare `grapes` needs an interactive terminal. Use CLI subcommands in automation.
+CLI usage errors (unknown commands, extra arguments, non-positive or malformed
+IDs) are rejected before filesystem discovery with exit status 2. `issue`
+accepts zero or one positive ID; `validate` accepts zero or more positive IDs.
+Help and version also reject trailing arguments.
 
 ## Common Change Paths
 
@@ -104,6 +108,11 @@ Keybindings have three representations that must stay aligned: fields in
 `config.KeysConfig`, defaults in `config.Defaults`, and runtime bindings in
 `internal/tui/common/keys.go`. Settings adds a fourth representation when the key is
 editable in the UI.
+
+`Config.Sources.DefaultBranch` is an optional comparison ref for worktree
+attribution and is editable from the Sources settings category. Empty means
+automatic repository detection; configured external directory globs remain
+separate from Git attribution.
 
 ## Releases
 

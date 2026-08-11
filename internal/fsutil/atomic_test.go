@@ -61,3 +61,29 @@ func TestWriteFile_MissingDirectoryIsAnError(t *testing.T) {
 		t.Error("writing into a nonexistent directory should fail")
 	}
 }
+
+func TestWriteFiles_PreflightsAllDestinations(t *testing.T) {
+	dir := t.TempDir()
+	first := filepath.Join(dir, "first")
+	second := filepath.Join(dir, "second")
+	if err := os.WriteFile(first, []byte("old"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(second, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	err := WriteFiles([]AtomicFile{
+		{Path: first, Data: []byte("new"), Perm: 0o644},
+		{Path: second, Data: []byte("new"), Perm: 0o644},
+	})
+	if err == nil {
+		t.Fatal("expected non-regular destination error")
+	}
+	got, readErr := os.ReadFile(first)
+	if readErr != nil {
+		t.Fatal(readErr)
+	}
+	if string(got) != "old" {
+		t.Fatalf("first destination changed despite preflight failure: %q", got)
+	}
+}

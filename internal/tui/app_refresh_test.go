@@ -97,6 +97,26 @@ func findIssue(m Model, id int) *data.Issue {
 
 // --- Tests ---
 
+func TestApp_PollRefreshDoesNotStartSecondWatcher(t *testing.T) {
+	m := newTestModel(t, func(dir string) {
+		createTestIssue(t, dir, 1, "Test issue", "todo", "medium", "")
+	})
+
+	updated, cmd := m.Update(workspacePollMsg{Changed: true})
+	m = updated.(Model)
+	if !m.loading {
+		t.Fatal("changed workspace poll should start a reload")
+	}
+	raw := cmd()
+	msg, ok := raw.(tea.BatchMsg)
+	if !ok {
+		t.Fatalf("poll reload command = %T, want tea.BatchMsg", raw)
+	}
+	if len(msg) != 2 {
+		t.Fatalf("poll reload started %d commands, want load plus one poll", len(msg))
+	}
+}
+
 func TestApp_Refresh_MoveIssueMsg_ChangesStatus(t *testing.T) {
 	m := newTestModel(t, func(dir string) {
 		createTestIssue(t, dir, 1, "Test issue", "todo", "medium", "")

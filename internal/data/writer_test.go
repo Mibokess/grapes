@@ -3,8 +3,10 @@ package data
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -135,14 +137,14 @@ func TestStampTimestamps_CreatesMissingMeta(t *testing.T) {
 	if err := StampTimestamps(dir, 1); err != nil {
 		t.Fatalf("StampTimestamps: %v", err)
 	}
-	iss, err := loadIssueMeta(dir, 1)
+	m, err := readMeta(metaPath(dir, 1))
 	if err != nil {
-		t.Fatalf("loadIssueMeta: %v", err)
+		t.Fatalf("readMeta: %v", err)
 	}
-	if iss.Created.IsZero() || iss.Updated.IsZero() {
-		t.Errorf("timestamps not set: %+v", iss)
+	if m.Created.IsZero() || m.Updated.IsZero() {
+		t.Errorf("timestamps not set: %+v", m)
 	}
-	if !iss.Created.Equal(iss.Updated) {
+	if !m.Created.Equal(m.Updated) {
 		t.Error("a fresh issue should have created == updated")
 	}
 }
@@ -269,6 +271,73 @@ func TestSaveIssueFromText_PreservesCommentPreamble(t *testing.T) {
 	}
 }
 
+func TestCommentHeadersInBodiesSurviveRoundTrip(t *testing.T) {
+	dir := newIssueDir(t, 1, validMeta)
+	body := "  first line  \n### 2027-03-04T05:06\n  last line  "
+	if err := AppendComment(dir, 1, body); err != nil {
+		t.Fatalf("AppendComment: %v", err)
+	}
+
+	issue, err := LoadIssue(dir, 1)
+	if err != nil {
+		t.Fatalf("LoadIssue: %v", err)
+	}
+	if len(issue.Comments) != 1 || issue.Comments[0].Body != body {
+		t.Fatalf("comment body was split:\n%+v", issue.Comments)
+	}
+
+	if err := SaveIssueFromText(dir, 1, SerializeIssue(issue)); err != nil {
+		t.Fatalf("SaveIssueFromText: %v", err)
+	}
+	issue, err = LoadIssue(dir, 1)
+	if err != nil {
+		t.Fatalf("LoadIssue after save: %v", err)
+	}
+	if len(issue.Comments) != 1 || issue.Comments[0].Body != body {
+		t.Fatalf("comment body changed after editor round-trip:\n%+v", issue.Comments)
+	}
+}
+
+func TestCommentTrailingWhitespaceAndEscapedSlashesSurviveRoundTrip(t *testing.T) {
+	dir := newIssueDir(t, 1, validMeta)
+	body := "\\### 2027-03-04T05:06\ntrailing\n"
+	if err := AppendComment(dir, 1, body); err != nil {
+		t.Fatalf("AppendComment: %v", err)
+	}
+	issue, err := LoadIssue(dir, 1)
+	if err != nil {
+		t.Fatalf("LoadIssue: %v", err)
+	}
+	if len(issue.Comments) != 1 || issue.Comments[0].Body != body {
+		t.Fatalf("comment body changed on load: %+v", issue.Comments)
+	}
+	if err := SaveIssueFromText(dir, 1, SerializeIssue(issue)); err != nil {
+		t.Fatalf("SaveIssueFromText: %v", err)
+	}
+	issue, err = LoadIssue(dir, 1)
+	if err != nil {
+		t.Fatalf("LoadIssue after save: %v", err)
+	}
+	if len(issue.Comments) != 1 || issue.Comments[0].Body != body {
+		t.Fatalf("comment body changed after editor round-trip: %+v", issue.Comments)
+	}
+}
+
+func TestSaveIssueFromText_AllowsCrossSourceRelationship(t *testing.T) {
+	dir := newIssueDir(t, 1, validMeta)
+	text := "+++\ntitle = \"example\"\nstatus = \"todo\"\npriority = \"medium\"\nparent = 99\n+++\nbody\n"
+	if err := SaveIssueFromText(dir, 1, text); err != nil {
+		t.Fatalf("SaveIssueFromText: %v", err)
+	}
+	issue, err := loadIssueMeta(dir, 1)
+	if err != nil {
+		t.Fatalf("loadIssueMeta: %v", err)
+	}
+	if issue.Parent == nil || *issue.Parent != 99 {
+		t.Fatalf("parent relationship was not preserved: %+v", issue)
+	}
+}
+
 func TestSaveIssueFromText_RejectsInvalid(t *testing.T) {
 	dir := newIssueDir(t, 1, validMeta)
 
@@ -297,6 +366,55 @@ func TestSaveIssueFromText_RejectsInvalid(t *testing.T) {
 	}
 }
 
+func TestSaveIssueFromText_AcceptsBOMAndCRLF(t *testing.T) {
+	dir := newIssueDir(t, 1, validMeta)
+	text := "\ufeff+++\r\ntitle = \"edited\"\r\nstatus = \"todo\"\r\npriority = \"low\"\r\n+++\r\nbody\r\n"
+	if err := SaveIssueFromText(dir, 1, text); err != nil {
+		t.Fatalf("SaveIssueFromText: %v", err)
+	}
+	issue, err := LoadIssue(dir, 1)
+	if err != nil {
+		t.Fatalf("LoadIssue: %v", err)
+	}
+	if issue.Title != "edited" || issue.Content != "body\n" {
+		t.Fatalf("saved issue = title %q content %q", issue.Title, issue.Content)
+	}
+}
+
+func TestSaveIssueFromText_PreservesExistingFileModes(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows does not expose Unix permission bits")
+	}
+	dir := newIssueDir(t, 1, validMeta)
+	paths := []string{
+		filepath.Join(dir, "1", "meta.toml"),
+		filepath.Join(dir, "1", "content.md"),
+		filepath.Join(dir, "1", "comments.md"),
+	}
+	if err := os.Chmod(paths[0], 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range paths[1:] {
+		if err := os.WriteFile(path, []byte("old\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	text := "+++\ntitle = \"edited\"\nstatus = \"todo\"\npriority = \"low\"\n+++\nbody\n"
+	if err := SaveIssueFromText(dir, 1, text); err != nil {
+		t.Fatalf("SaveIssueFromText: %v", err)
+	}
+	for _, path := range paths {
+		info, err := os.Stat(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := info.Mode().Perm(); got != 0o600 {
+			t.Errorf("%s mode = %o, want 600", path, got)
+		}
+	}
+}
+
 // meta.toml may carry comments from an older layout. The editable document does
 // not show them, so saving must not drop them.
 func TestSaveIssueFromText_PreservesLegacyMetaComments(t *testing.T) {
@@ -313,5 +431,85 @@ func TestSaveIssueFromText_PreservesLegacyMetaComments(t *testing.T) {
 	}
 	if !strings.Contains(string(raw), "legacy") {
 		t.Errorf("legacy meta comments dropped:\n%s", raw)
+	}
+}
+
+func TestConcurrentIssueWritesPreserveFieldsAndComments(t *testing.T) {
+	dir := newIssueDir(t, 1, validMeta)
+	var wg sync.WaitGroup
+	wg.Add(3)
+	go func() {
+		defer wg.Done()
+		if err := UpdateField(dir, 1, "status", "done"); err != nil {
+			t.Errorf("UpdateField: %v", err)
+		}
+	}()
+	go func() {
+		defer wg.Done()
+		if err := UpdateLabels(dir, 1, []string{"concurrent"}); err != nil {
+			t.Errorf("UpdateLabels: %v", err)
+		}
+	}()
+	go func() {
+		defer wg.Done()
+		if err := AppendComment(dir, 1, "concurrent comment"); err != nil {
+			t.Errorf("AppendComment: %v", err)
+		}
+	}()
+	wg.Wait()
+
+	issue, err := loadIssueMeta(dir, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if issue.Status != StatusDone || len(issue.Labels) != 1 || issue.Labels[0] != "concurrent" {
+		t.Fatalf("concurrent writes lost fields: %+v", issue)
+	}
+	comments, err := os.ReadFile(filepath.Join(dir, "1", "comments.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(comments), "concurrent comment") {
+		t.Fatalf("comment was lost: %s", comments)
+	}
+	if issue.Updated.IsZero() {
+		t.Fatal("comment/field writes did not stamp updated")
+	}
+}
+
+func TestSaveIssueFromText_PreservesDescriptionHeadingAndWhitespace(t *testing.T) {
+	dir := newIssueDir(t, 1, validMeta)
+	text := "+++\ntitle = \"example\"\nstatus = \"todo\"\npriority = \"medium\"\nlabels = []\n+++\n  leading\n## Comments\ntrailing content  \n"
+	if err := SaveIssueFromText(dir, 1, text); err != nil {
+		t.Fatalf("SaveIssueFromText: %v", err)
+	}
+	content, err := os.ReadFile(filepath.Join(dir, "1", "content.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(content) != "  leading\n## Comments\ntrailing content  \n" {
+		t.Errorf("description whitespace/heading changed: %q", content)
+	}
+}
+
+func TestSaveIssueFromText_PreservesDescriptionCommentLikeSection(t *testing.T) {
+	dir := newIssueDir(t, 1, validMeta)
+	text := "+++\ntitle = \"example\"\nstatus = \"todo\"\npriority = \"medium\"\nlabels = []\n+++\nDescription\n\n## Comments\n\n### 2025-01-01T00:00\nThis is still description text.\n"
+	if err := SaveIssueFromText(dir, 1, text); err != nil {
+		t.Fatalf("SaveIssueFromText: %v", err)
+	}
+	content, err := os.ReadFile(filepath.Join(dir, "1", "content.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(content) != "Description\n\n## Comments\n\n### 2025-01-01T00:00\nThis is still description text.\n" {
+		t.Errorf("description section was split: %q", content)
+	}
+	comments, err := os.ReadFile(filepath.Join(dir, "1", "comments.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(comments) != 0 {
+		t.Errorf("description text was moved to comments: %q", comments)
 	}
 }

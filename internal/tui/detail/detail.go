@@ -85,6 +85,12 @@ func (m Model) UpdateIssue(issue data.Issue, allIssues []data.Issue) Model {
 
 func (m Model) SetTheme(t common.Theme) Model {
 	m.theme = t
+	if m.ready {
+		content, clickLines, clickZones := renderIssue(m.issue, m.allIssues, m.width, t, m.worktreeNames)
+		m.viewport.SetContent(content)
+		m.clickLines = clickLines
+		m.clickZones = clickZones
+	}
 	return m
 }
 

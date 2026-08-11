@@ -130,6 +130,13 @@ func findIssuesDirDown(dir string) (string, error) {
 // Issue directories that fail to load are reported as problems and left out of
 // the returned slice.
 func LoadAllIssues(dir string) ([]Issue, []LoadProblem, error) {
+	return loadAllIssues(dir, true)
+}
+
+// loadAllIssues reads issue directories without optionally deriving reverse
+// relationships. Workspace loading merges several sources and rewires once
+// after that merge, so skipping the per-source pass avoids duplicate work.
+func loadAllIssues(dir string, wireRelationships bool) ([]Issue, []LoadProblem, error) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		return nil, nil, fmt.Errorf("reading %s: %w", dir, err)
@@ -137,8 +144,6 @@ func LoadAllIssues(dir string) ([]Issue, []LoadProblem, error) {
 
 	var issues []Issue
 	var problems []LoadProblem
-	childrenMap := make(map[int][]int) // parent ID → child IDs
-	blocksMap := make(map[int][]int)   // blocked ID → IDs it blocks
 
 	for _, e := range entries {
 		if !e.IsDir() {
@@ -154,30 +159,14 @@ func LoadAllIssues(dir string) ([]Issue, []LoadProblem, error) {
 			continue
 		}
 		issues = append(issues, issue)
-		if issue.Parent != nil {
-			childrenMap[*issue.Parent] = append(childrenMap[*issue.Parent], id)
-		}
-		for _, blockerID := range issue.BlockedBy {
-			blocksMap[blockerID] = append(blocksMap[blockerID], id)
-		}
 	}
 
-	// Wire up children and blocks
-	for i := range issues {
-		if kids, ok := childrenMap[issues[i].ID]; ok {
-			sort.Ints(kids)
-			issues[i].Children = kids
-		}
-		if blocked, ok := blocksMap[issues[i].ID]; ok {
-			sort.Ints(blocked)
-			issues[i].Blocks = blocked
-		}
+	if wireRelationships {
+		RewireRelationships(issues)
 	}
-
 	sort.Slice(issues, func(i, j int) bool {
 		return issues[i].ID < issues[j].ID
 	})
-
 	return issues, problems, nil
 }
 
@@ -185,18 +174,32 @@ func LoadAllIssues(dir string) ([]Issue, []LoadProblem, error) {
 // directory. Loading a named issue is what lets a worktree contribute only the
 // issues git says it changed, instead of its whole copy of the store.
 func LoadIssue(dir string, id int) (Issue, error) {
+	if id <= 0 {
+		return Issue{}, fmt.Errorf("issue ID must be positive: %d", id)
+	}
 	issue, err := loadIssueMeta(dir, id)
 	if err != nil {
 		return Issue{}, err
 	}
 	name := strconv.Itoa(id)
-	issue.Content = readFileOr(filepath.Join(dir, name, "content.md"), "")
-	issue.Comments = ParseComments(readFileOr(filepath.Join(dir, name, "comments.md"), ""))
+	content, err := readOptional(filepath.Join(dir, name, "content.md"))
+	if err != nil {
+		return Issue{}, fmt.Errorf("reading %s/%s/content.md: %w", dir, name, err)
+	}
+	comments, err := readOptional(filepath.Join(dir, name, "comments.md"))
+	if err != nil {
+		return Issue{}, fmt.Errorf("reading %s/%s/comments.md: %w", dir, name, err)
+	}
+	issue.Content = content
+	issue.Comments = ParseComments(comments)
 	issue.SourceDir = dir
 	return issue, nil
 }
 
 func loadIssueMeta(dir string, id int) (Issue, error) {
+	if id <= 0 {
+		return Issue{}, fmt.Errorf("issue ID must be positive: %d", id)
+	}
 	path := filepath.Join(dir, strconv.Itoa(id), "meta.toml")
 	raw, err := os.ReadFile(path)
 	if err != nil {
@@ -205,6 +208,9 @@ func loadIssueMeta(dir string, id int) (Issue, error) {
 	var m meta
 	if err := toml.Unmarshal(raw, &m); err != nil {
 		return Issue{}, fmt.Errorf("parsing %s: %w", path, err)
+	}
+	if validation := validateMeta(id, m); len(validation) != 0 {
+		return Issue{}, validation[0]
 	}
 
 	return Issue{
@@ -220,12 +226,17 @@ func loadIssueMeta(dir string, id int) (Issue, error) {
 	}, nil
 }
 
-func readFileOr(path, fallback string) string {
+func readOptional(path string) (string, error) {
+	if _, err := os.Lstat(path); os.IsNotExist(err) {
+		return "", nil
+	} else if err != nil {
+		return "", err
+	}
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return fallback
+		return "", err
 	}
-	return string(data)
+	return string(data), nil
 }
 
 // ProjectRoot returns the parent directory of a .grapes/ path.
@@ -233,11 +244,11 @@ func ProjectRoot(issuesDir string) string {
 	return filepath.Dir(issuesDir)
 }
 
-// maxIDInDir returns the highest numeric folder name in dir, or 0 if none.
-func maxIDInDir(dir string) int {
+// maxIDInDirErr returns the highest positive numeric folder name in dir.
+func maxIDInDirErr(dir string) (int, error) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
-		return 0
+		return 0, err
 	}
 	max := 0
 	for _, e := range entries {
@@ -245,13 +256,20 @@ func maxIDInDir(dir string) int {
 			continue
 		}
 		id, err := strconv.Atoi(e.Name())
-		if err != nil {
+		if err != nil || id <= 0 {
 			continue
 		}
 		if id > max {
 			max = id
 		}
 	}
+	return max, nil
+}
+
+// maxIDInDir returns the highest numeric folder name in dir, or 0 if none.
+// Kept for callers that only need a best-effort probe.
+func maxIDInDir(dir string) int {
+	max, _ := maxIDInDirErr(dir)
 	return max
 }
 
@@ -274,69 +292,100 @@ func FindMainProjectRoot(issuesDir string) string {
 }
 
 // NextID atomically reserves the next available issue ID across the main
-// project and all worktrees. It acquires an exclusive lock, scans all .grapes/
-// directories, creates the new issue directory locally, then releases the lock.
-// Extra worktree directories can be passed to scan beyond .claude/worktrees.
+// project and all worktrees. Extra directories are glob patterns scanned in
+// addition to Git-discovered checkouts.
 func NextID(issuesDir string, extraDirs ...string) (int, error) {
-	mainRoot := FindMainProjectRoot(issuesDir)
-	mainGrapes := filepath.Join(mainRoot, ".grapes")
+	var mainRoot, grapesRel string
+	if _, resolvedRoot, resolvedRel, err := resolveLayout(issuesDir); err == nil {
+		// resolveLayout already found the repository root and relative store
+		// path. Reuse them instead of resolving the Git layout a second time.
+		mainRoot = resolvedRoot
+		grapesRel = resolvedRel
+	} else {
+		mainRoot = FindMainProjectRoot(issuesDir)
+		grapesRel = ".grapes"
+	}
+	mainGrapes := filepath.Join(mainRoot, filepath.FromSlash(grapesRel))
+	lockRoot := mainGrapes
+	if info, err := os.Stat(lockRoot); err != nil || !info.IsDir() {
+		// A configured/nested store may be the only local store. Keep its
+		// reservation lock beside the store rather than scanning/creating an
+		// unrelated <project>/.grapes.
+		lockRoot = issuesDir
+	}
 
 	// Acquire exclusive lock. The lock file is deliberately left on disk:
 	// unlinking it while holding the lock lets a waiting process keep a lock on
-	// the orphaned inode while the next process locks a freshly created file,
-	// so two callers would scan for the max ID at the same time.
-	lockPath := filepath.Join(mainGrapes, ".lock")
+	// the orphaned inode while the next process locks a freshly created file.
+	lockPath := filepath.Join(lockRoot, ".lock")
 	lockFile, err := os.OpenFile(lockPath, os.O_CREATE|os.O_RDWR, 0o644)
 	if err != nil {
 		return 0, fmt.Errorf("opening lock file: %w", err)
 	}
 	defer lockFile.Close()
-
 	if err := flockExclusive(lockFile.Fd()); err != nil {
 		return 0, fmt.Errorf("acquiring lock: %w", err)
 	}
 	defer flockUnlock(lockFile.Fd())
 
-	// Every copy has to be scanned, unlike a normal load: an ID already used on
-	// some branch must not be handed out again, even when that branch has done
-	// nothing this workspace considers interesting. This runs under the lock and
-	// off the render path, so the full scan is affordable here.
+	// Every copy has to be scanned, unlike a normal load: an ID already used
+	// on some branch must not be handed out again. Include the local store
+	// explicitly so nested/non-git stores work too, and deduplicate the main
+	// checkout rather than scanning it twice.
 	scanDirs := make(map[string]bool)
-	if checkouts, err := Checkouts(mainRoot, ".grapes"); err == nil {
-		for _, co := range checkouts {
-			scanDirs[filepath.Clean(co.Dir)] = true
+	addDir := func(dir string) {
+		if dir != "" {
+			scanDirs[filepath.Clean(dir)] = true
 		}
 	}
+	addDir(issuesDir)
+	if info, err := os.Stat(mainGrapes); err == nil && info.IsDir() {
+		addDir(mainGrapes)
+	} else if err != nil && !os.IsNotExist(err) {
+		return 0, fmt.Errorf("scanning %s: %w", mainGrapes, err)
+	}
+	if checkouts, err := Checkouts(mainRoot, grapesRel); err == nil {
+		for _, co := range checkouts {
+			addDir(co.Dir)
+		}
+	} else if _, statErr := os.Stat(filepath.Join(mainRoot, ".git")); statErr == nil {
+		return 0, fmt.Errorf("discovering worktrees: %w", err)
+	}
 	for _, dir := range FindExternalIssuesDirs(mainRoot, extraDirs...) {
-		scanDirs[filepath.Clean(dir)] = true
+		addDir(dir)
 	}
 
-	// Find max ID across all sources
-	max := maxIDInDir(mainGrapes)
+	max := 0
 	for dir := range scanDirs {
-		if m := maxIDInDir(dir); m > max {
+		m, err := maxIDInDirErr(dir)
+		if err != nil {
+			if os.IsNotExist(err) {
+				continue // a removed worktree may race discovery
+			}
+			return 0, fmt.Errorf("scanning %s: %w", dir, err)
+		}
+		if m > max {
 			max = m
 		}
 	}
 
 	next := max + 1
-
-	// Create the directory in the local .grapes/
 	if err := os.MkdirAll(filepath.Join(issuesDir, strconv.Itoa(next)), 0o755); err != nil {
 		return 0, fmt.Errorf("creating issue directory: %w", err)
 	}
-
 	return next, nil
 }
 
 // FindExternalIssuesDirs resolves glob patterns to issue directories and returns
-// a map of display name → directory path. Relative patterns are resolved against
-// projectRoot. The display name is the parent directory of each matched path.
+// a map of unique display name → directory path. Relative patterns are resolved
+// against projectRoot. The display name is the parent directory of each match.
+// When names collide, a stable "#N" suffix preserves every configured source.
 //
 // These are stores outside this repository's history. Worktrees of this
 // repository are discovered through git instead, by Checkouts.
 func FindExternalIssuesDirs(projectRoot string, patterns ...string) map[string]string {
 	result := make(map[string]string)
+	seen := make(map[string]bool)
 	for _, pattern := range patterns {
 		if !filepath.IsAbs(pattern) {
 			pattern = filepath.Join(projectRoot, pattern)
@@ -350,10 +399,20 @@ func FindExternalIssuesDirs(projectRoot string, patterns ...string) map[string]s
 			if err != nil || !info.IsDir() {
 				continue
 			}
-			name := filepath.Base(filepath.Dir(match))
-			if _, exists := result[name]; !exists {
-				result[name] = match
+			match = filepath.Clean(match)
+			if seen[match] {
+				continue
 			}
+			seen[match] = true
+			name := filepath.Base(filepath.Dir(match))
+			base := name
+			for n := 2; ; n++ {
+				if _, exists := result[name]; !exists {
+					break
+				}
+				name = fmt.Sprintf("%s#%d", base, n)
+			}
+			result[name] = match
 		}
 	}
 	return result
@@ -376,14 +435,27 @@ func RewireRelationships(issues []Issue) {
 		issues[i].Children = nil
 		issues[i].Blocks = nil
 		if kids, ok := childrenMap[issues[i].ID]; ok {
-			sort.Ints(kids)
-			issues[i].Children = kids
+			issues[i].Children = sortUniqueInts(kids)
 		}
 		if blocked, ok := blocksMap[issues[i].ID]; ok {
-			sort.Ints(blocked)
-			issues[i].Blocks = blocked
+			issues[i].Blocks = sortUniqueInts(blocked)
 		}
 	}
+}
+
+func sortUniqueInts(values []int) []int {
+	if len(values) < 2 {
+		return values
+	}
+	sort.Ints(values)
+	n := 1
+	for _, value := range values[1:] {
+		if value != values[n-1] {
+			values[n] = value
+			n++
+		}
+	}
+	return values[:n]
 }
 
 // ParseComments parses comments.md using strict "### YYYY-MM-DD" headers.
@@ -395,27 +467,45 @@ func ParseComments(raw string) []Comment {
 		return nil
 	}
 
+	raw = strings.ReplaceAll(raw, "\r\n", "\n")
+	// The final newline terminates the Markdown file; remove only that
+	// delimiter so blank lines intentionally included in a body survive.
+	raw = strings.TrimSuffix(raw, "\n")
 	lines := strings.Split(raw, "\n")
 	var comments []Comment
 	current := &Comment{} // the dateless preamble, dropped below if empty
+	finish := func(separator bool) {
+		trim := 1 // the newline terminating the final body line
+		if separator {
+			trim++ // the blank line separating this comment from the next
+		}
+		for trim > 0 && strings.HasSuffix(current.Body, "\n") {
+			current.Body = current.Body[:len(current.Body)-1]
+			trim--
+		}
+		if current.Date != "" || current.Body != "" {
+			comments = append(comments, *current)
+		}
+	}
 
 	for _, line := range lines {
+		slashes := 0
+		for slashes < len(line) && line[slashes] == '\\' {
+			slashes++
+		}
+		if slashes > 0 && commentHeader.MatchString(line[slashes:]) {
+			// Remove one escape marker and keep any literal leading
+			// backslashes in the comment body.
+			current.Body += line[1:] + "\n"
+			continue
+		}
 		if m := commentHeader.FindStringSubmatch(line); m != nil {
-			// Save previous comment
-			current.Body = strings.TrimSpace(current.Body)
-			if current.Date != "" || current.Body != "" {
-				comments = append(comments, *current)
-			}
+			finish(true)
 			current = &Comment{Date: m[1]}
 		} else {
 			current.Body += line + "\n"
 		}
 	}
-	// Don't forget the last comment
-	current.Body = strings.TrimSpace(current.Body)
-	if current.Date != "" || current.Body != "" {
-		comments = append(comments, *current)
-	}
-
+	finish(false)
 	return comments
 }

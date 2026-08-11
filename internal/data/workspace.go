@@ -37,13 +37,20 @@ type WorktreeInfo struct {
 type Workspace struct {
 	Issues    []Issue
 	Worktrees []WorktreeInfo
+	// WatchDirs contains the canonical store, active worktree stores, and
+	// configured external stores. These roots are expanded to numeric issue
+	// directories by the TUI watcher.
 	WatchDirs []string
-	Problems  []LoadProblem
+	// WatchRoots contains one checkout root per repository worktree. They are
+	// intentionally not expanded: idle worktrees are discovered by the
+	// periodic workspace poll without an issue-directory watcher per copy.
+	WatchRoots []string
+	Problems   []LoadProblem
 
 	// AttributionErr says why worktree attribution is off, when it is. Being
 	// outside a git repository is the common, unremarkable case, so this is
-	// shown where a user would look for worktrees rather than reported as a
-	// problem on every load.
+	// shown where a user would look for worktrees rather than reported on every
+	// load.
 	AttributionErr error
 }
 
@@ -70,6 +77,10 @@ type WorkspaceLoader struct {
 	layout   *layout
 	branch   string
 	branchOf string // the override the cached branch was resolved for
+
+	activityMu    sync.Mutex
+	activityReady bool
+	activitySig   string
 }
 
 type layout struct {
@@ -109,6 +120,107 @@ func (wl *WorkspaceLoader) defaultBranchFor(mainRoot, override string) (string, 
 	return branch, nil
 }
 
+// ActivityChanged performs the cheap part of a workspace reload: it checks
+// worktree claims and checkout identities without reading every issue file.
+// A successful Load seeds the baseline; a fresh loader's first call establishes
+// one without requesting a redundant reload.
+func (wl *WorkspaceLoader) ActivityChanged(issuesDir string, opts WorkspaceOptions) (bool, error) {
+	lay := wl.layoutFor(issuesDir)
+	if lay.err != nil {
+		return false, nil
+	}
+	checkouts, err := Checkouts(lay.mainRoot, lay.grapesRel)
+	if err != nil {
+		return false, err
+	}
+	if len(checkouts) == 1 {
+		dirty, err := dirtyIssues(checkouts[0].Path, lay.grapesRel)
+		if err != nil {
+			return false, err
+		}
+		claim := Claim{Checkout: checkouts[0], Touched: make(map[int]Touch, len(dirty))}
+		for id, when := range dirty {
+			claim.Touched[id] = Touch{Changed: when, Dirty: true}
+		}
+		return wl.updateActivitySignature(activitySignature([]Claim{claim}, opts)), nil
+	}
+	branch, err := wl.defaultBranchFor(lay.mainRoot, opts.DefaultBranch)
+	if err != nil {
+		return false, err
+	}
+
+	wl.cache.prune(checkouts)
+	claims := GatherClaims(checkouts, lay.grapesRel, branch, wl.cache)
+	return wl.updateActivitySignature(activitySignature(claims, opts)), nil
+}
+
+func (wl *WorkspaceLoader) updateActivitySignature(sig string) bool {
+	wl.activityMu.Lock()
+	defer wl.activityMu.Unlock()
+	if !wl.activityReady {
+		wl.activityReady = true
+		wl.activitySig = sig
+		return false
+	}
+	if sig == wl.activitySig {
+		return false
+	}
+	wl.activitySig = sig
+	return true
+}
+
+func (wl *WorkspaceLoader) seedActivitySignature(sig string) {
+	wl.activityMu.Lock()
+	wl.activityReady = true
+	wl.activitySig = sig
+	wl.activityMu.Unlock()
+}
+
+// InvalidateActivity forces the next poll to establish a fresh baseline. It is
+// used after a failed full load so a transient Git/filesystem error is retried.
+func (wl *WorkspaceLoader) InvalidateActivity() {
+	wl.activityMu.Lock()
+	wl.activityReady = false
+	wl.activitySig = ""
+	wl.activityMu.Unlock()
+}
+
+func activitySignature(claims []Claim, opts WorkspaceOptions) string {
+	var b strings.Builder
+	b.WriteString(opts.DefaultBranch)
+	b.WriteByte(0)
+	for _, dir := range opts.ExtraDirs {
+		b.WriteString(dir)
+		b.WriteByte(0)
+	}
+	for _, cl := range claims {
+		b.WriteString(cl.Checkout.Path)
+		b.WriteByte(0)
+		b.WriteString(cl.Checkout.Head)
+		b.WriteByte(0)
+		b.WriteString(cl.Checkout.Branch)
+		b.WriteByte(0)
+		b.WriteString(cl.Base)
+		b.WriteByte(0)
+		if cl.Err != nil {
+			b.WriteString(cl.Err.Error())
+		}
+		b.WriteByte(0)
+		for _, id := range sortedIDs(cl.Touched) {
+			t := cl.Touched[id]
+			b.WriteString(strconv.Itoa(id))
+			b.WriteByte(':')
+			b.WriteString(strconv.FormatInt(t.Changed.UnixNano(), 10))
+			if t.Dirty {
+				b.WriteByte('d')
+			}
+			b.WriteByte(';')
+		}
+		b.WriteByte('\n')
+	}
+	return b.String()
+}
+
 // Load reads every issue that matters and decides which checkout owns each one.
 //
 // Only the main checkout is read in full. Worktrees contribute just the issues
@@ -146,9 +258,20 @@ func (wl *WorkspaceLoader) Load(issuesDir string, opts WorkspaceOptions) (Worksp
 
 	wl.cache.prune(checkouts)
 	claims := GatherClaims(checkouts, grapesRel, branch, wl.cache)
+	for _, cl := range claims {
+		if !cl.Checkout.IsMain() || cl.Err == nil {
+			continue
+		}
+		// Without the main claim, ownership timestamps are incomplete and
+		// successful worktree claims can produce a misleading merged view.
+		// Keep the error visible and load the un-attributed baseline instead.
+		ws.AttributionErr = cl.Err
+		ws.Problems = append(ws.Problems, LoadProblem{Dir: cl.Checkout.Path, Err: cl.Err})
+		return wl.loadFlat(mainDir, opts, ws)
+	}
 
 	// The main checkout is the baseline: every issue is read from it once.
-	mainIssues, problems, err := LoadAllIssues(mainDir)
+	mainIssues, problems, err := loadAllIssues(mainDir, false)
 	if err != nil {
 		return ws, err
 	}
@@ -158,7 +281,11 @@ func (wl *WorkspaceLoader) Load(issuesDir string, opts WorkspaceOptions) (Worksp
 	var mainTouched map[int]Touch
 	for _, cl := range claims {
 		if cl.Checkout.IsMain() {
-			mainTouched = cl.Touched
+			if cl.Err != nil {
+				ws.Problems = append(ws.Problems, LoadProblem{Dir: cl.Checkout.Path, Err: cl.Err})
+			} else {
+				mainTouched = cl.Touched
+			}
 		}
 	}
 	for _, iss := range mainIssues {
@@ -221,18 +348,37 @@ func (wl *WorkspaceLoader) Load(issuesDir string, opts WorkspaceOptions) (Worksp
 	for _, co := range checkouts {
 		knownDirs[filepath.Clean(co.Dir)] = true
 	}
+	externalDirs := externalDirs(mainRoot, opts.ExtraDirs, knownDirs)
 	ws.Problems = append(ws.Problems, wl.mergeExternal(byID, mainRoot, opts.ExtraDirs, knownDirs)...)
 
 	ws.Issues = resolveOwners(byID)
 	attributeOwnership(ws.Issues, &ws)
-	ws.WatchDirs = watchDirs(mainDir, ws.Worktrees)
+	ws.WatchDirs = watchDirs(mainDir, ws.Worktrees, externalDirs...)
+	ws.WatchRoots = worktreeWatchRoots(checkouts)
 	RewireRelationships(ws.Issues)
+	activityClaims := claims
+	if len(checkouts) == 1 {
+		claim := Claim{Checkout: checkouts[0], Touched: map[int]Touch{}}
+		if len(claims) > 0 {
+			for id, touch := range claims[0].Touched {
+				if touch.Dirty {
+					claim.Touched[id] = touch
+				}
+			}
+		}
+		activityClaims = []Claim{claim}
+	}
+	wl.seedActivitySignature(activitySignature(activityClaims, opts))
 	return ws, nil
 }
 
 // resolveLayout works out where the canonical issue directory lives and where
 // the issue directory sits inside any checkout of this repository.
 func resolveLayout(issuesDir string) (mainDir, mainRoot, grapesRel string, err error) {
+	issuesDir, err = filepath.Abs(issuesDir)
+	if err != nil {
+		return "", "", "", fmt.Errorf("resolving issue directory %s: %w", issuesDir, err)
+	}
 	local := ProjectRoot(issuesDir)
 	top, err := git(local, "rev-parse", "--show-toplevel")
 	if err != nil {
@@ -256,7 +402,7 @@ func resolveLayout(issuesDir string) (mainDir, mainRoot, grapesRel string, err e
 
 // loadFlat is the degraded path: one directory, no attribution.
 func (wl *WorkspaceLoader) loadFlat(dir string, opts WorkspaceOptions, ws Workspace) (Workspace, error) {
-	issues, problems, err := LoadAllIssues(dir)
+	issues, problems, err := loadAllIssues(dir, false)
 	if err != nil {
 		return ws, err
 	}
@@ -269,11 +415,12 @@ func (wl *WorkspaceLoader) loadFlat(dir string, opts WorkspaceOptions, ws Worksp
 		c.Sources = []IssueSource{sourceOf(iss, "", dir, Touch{})}
 		byID[iss.ID] = &c
 	}
+	externalDirs := externalDirs(ProjectRoot(dir), opts.ExtraDirs, map[string]bool{filepath.Clean(dir): true})
 	ws.Problems = append(ws.Problems, wl.mergeExternal(byID, ProjectRoot(dir), opts.ExtraDirs, map[string]bool{filepath.Clean(dir): true})...)
 
 	ws.Issues = resolveOwners(byID)
 	attributeOwnership(ws.Issues, &ws)
-	ws.WatchDirs = watchDirs(dir, ws.Worktrees)
+	ws.WatchDirs = watchDirs(dir, ws.Worktrees, externalDirs...)
 	RewireRelationships(ws.Issues)
 	return ws, nil
 }
@@ -285,7 +432,7 @@ func (wl *WorkspaceLoader) mergeExternal(byID map[int]*Issue, root string, patte
 		if known[filepath.Clean(dir)] {
 			continue // already covered as a checkout of this repository
 		}
-		issues, probs, err := LoadAllIssues(dir)
+		issues, probs, err := loadAllIssues(dir, false)
 		problems = append(problems, probs...)
 		if err != nil {
 			problems = append(problems, LoadProblem{Dir: dir, Err: err})
@@ -324,8 +471,15 @@ func resolveOwners(byID map[int]*Issue) []Issue {
 			return iss.Sources[i].Name < iss.Sources[j].Name
 		})
 		best := 0
-		for i := range iss.Sources {
-			if iss.Sources[i].Changed.After(iss.Sources[best].Changed) {
+		for i := 1; i < len(iss.Sources); i++ {
+			current, winner := iss.Sources[i], iss.Sources[best]
+			if current.Dirty != winner.Dirty {
+				if current.Dirty {
+					best = i
+				}
+				continue
+			}
+			if current.Changed.After(winner.Changed) {
 				best = i
 			}
 		}
@@ -350,16 +504,51 @@ func attributeOwnership(issues []Issue, ws *Workspace) {
 	sort.Slice(ws.Worktrees, func(i, j int) bool { return ws.Worktrees[i].Name < ws.Worktrees[j].Name })
 }
 
-// watchDirs lists the directories live reload needs to follow: the canonical
-// store, plus the worktrees that are actually working on something. Watching
-// every worktree would mean thousands of descriptors for copies that never
-// change.
-func watchDirs(mainDir string, worktrees []WorktreeInfo) []string {
+// watchDirs lists roots whose numeric issue directories should be watched:
+// the canonical store, active worktrees, and configured external stores.
+func watchDirs(mainDir string, worktrees []WorktreeInfo, extra ...string) []string {
 	dirs := []string{mainDir}
 	for _, wt := range worktrees {
 		dirs = append(dirs, wt.Dir)
 	}
-	return dirs
+	dirs = append(dirs, extra...)
+	return uniquePaths(dirs)
+}
+
+// worktreeWatchRoots keeps one cheap root watch per checkout. Idle worktrees
+// are not expanded into issue-directory watches; periodic claims detect edits.
+func worktreeWatchRoots(checkouts []Checkout) []string {
+	roots := make([]string, 0, len(checkouts))
+	for _, co := range checkouts {
+		if !co.IsMain() {
+			roots = append(roots, co.Path)
+		}
+	}
+	return uniquePaths(roots)
+}
+
+func externalDirs(root string, patterns []string, known map[string]bool) []string {
+	var dirs []string
+	for _, dir := range FindExternalIssuesDirs(root, patterns...) {
+		if !known[filepath.Clean(dir)] {
+			dirs = append(dirs, dir)
+		}
+	}
+	return uniquePaths(dirs)
+}
+
+func uniquePaths(paths []string) []string {
+	seen := make(map[string]bool, len(paths))
+	out := make([]string, 0, len(paths))
+	for _, path := range paths {
+		path = filepath.Clean(path)
+		if path == "." || seen[path] {
+			continue
+		}
+		seen[path] = true
+		out = append(out, path)
+	}
+	return out
 }
 
 func sourceOf(iss Issue, name, dir string, t Touch) IssueSource {
