@@ -3,7 +3,6 @@ package data
 import (
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -278,13 +277,11 @@ func maxIDInDir(dir string) int {
 // .git directory, then takes its parent. Falls back to ProjectRoot if git fails.
 func FindMainProjectRoot(issuesDir string) string {
 	projectRoot := ProjectRoot(issuesDir)
-	cmd := exec.Command("git", "rev-parse", "--git-common-dir")
-	cmd.Dir = projectRoot
-	out, err := cmd.Output()
+	out, err := git(projectRoot, "rev-parse", "--git-common-dir")
 	if err != nil {
 		return projectRoot
 	}
-	gitCommon := strings.TrimSpace(string(out))
+	gitCommon := strings.TrimSpace(out)
 	if !filepath.IsAbs(gitCommon) {
 		gitCommon = filepath.Join(projectRoot, gitCommon)
 	}

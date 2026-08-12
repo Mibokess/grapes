@@ -151,19 +151,18 @@ type navEntry struct {
 }
 
 type Model struct {
-	version     string
-	issues      []data.Issue
-	issuesDir   string
-	projectRoot string
-	width       int
-	height      int
-	screen      common.Screen
-	navStack    []navEntry
-	watcher     *fsnotify.Watcher
-	sortMode    data.SortMode
-	sortAsc     bool // ascending order (reversed from default)
-	theme       common.Theme
-	isDark      bool
+	version   string
+	issues    []data.Issue
+	issuesDir string
+	width     int
+	height    int
+	screen    common.Screen
+	navStack  []navEntry
+	watcher   *fsnotify.Watcher
+	sortMode  data.SortMode
+	sortAsc   bool // ascending order (reversed from default)
+	theme     common.Theme
+	isDark    bool
 
 	cfg      config.Config
 	filters  filter.FilterSet
@@ -204,7 +203,6 @@ func sourceConfigChanged(a, b config.SourcesConfig) bool {
 }
 
 func NewModel(ws data.Workspace, loader *data.WorkspaceLoader, issuesDir string, cfg config.Config, version string) Model {
-	projectRoot := data.ProjectRoot(issuesDir)
 	issues := ws.Issues
 
 	// Live reload is a headline feature, so a watcher that fails to start is
@@ -283,7 +281,6 @@ func NewModel(ws data.Workspace, loader *data.WorkspaceLoader, issuesDir string,
 		statusMsg:      statusMsg,
 		issues:         issues,
 		issuesDir:      issuesDir,
-		projectRoot:    projectRoot,
 		screen:         screen,
 		sortMode:       sortMode,
 		filters:        filters,

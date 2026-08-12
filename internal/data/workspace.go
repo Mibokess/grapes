@@ -69,10 +69,9 @@ func (w Workspace) WorktreeNames() []string {
 type WorkspaceLoader struct {
 	cache *claimCache
 
-	// Where the repository is and what its default branch is called cannot
-	// change while grapes is running, so they are resolved once. Repeating them
-	// costs several git processes on every reload, which is most of the fixed
-	// cost of a load in a project with no worktrees at all.
+	// The repository layout is resolved once. The comparison branch is also
+	// cached, but only repositories with linked worktrees need to resolve it.
+	// Repeating either lookup would add fixed Git-process cost to every reload.
 	mu       sync.Mutex
 	layout   *layout
 	branch   string
@@ -249,15 +248,21 @@ func (wl *WorkspaceLoader) Load(issuesDir string, opts WorkspaceOptions) (Worksp
 		ws.Problems = append(ws.Problems, LoadProblem{Dir: mainRoot, Err: err})
 		return wl.loadFlat(mainDir, opts, ws)
 	}
-	branch, err := wl.defaultBranchFor(mainRoot, opts.DefaultBranch)
-	if err != nil {
-		ws.AttributionErr = err
-		ws.Problems = append(ws.Problems, LoadProblem{Dir: mainRoot, Err: err})
-		return wl.loadFlat(mainDir, opts, ws)
-	}
-
 	wl.cache.prune(checkouts)
-	claims := GatherClaims(checkouts, grapesRel, branch, wl.cache)
+	var claims []Claim
+	if len(checkouts) == 1 {
+		// A repository with only its main checkout needs no comparison branch.
+		// Keep its committed and dirty change dates for source metadata.
+		claims = []Claim{mainClaim(checkouts[0], grapesRel, "")}
+	} else {
+		branch, err := wl.defaultBranchFor(mainRoot, opts.DefaultBranch)
+		if err != nil {
+			ws.AttributionErr = err
+			ws.Problems = append(ws.Problems, LoadProblem{Dir: mainRoot, Err: err})
+			return wl.loadFlat(mainDir, opts, ws)
+		}
+		claims = GatherClaims(checkouts, grapesRel, branch, wl.cache)
+	}
 	for _, cl := range claims {
 		if !cl.Checkout.IsMain() || cl.Err == nil {
 			continue

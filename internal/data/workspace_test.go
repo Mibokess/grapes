@@ -302,10 +302,33 @@ func TestWorkspace_NonGitDirectoryIsQuiet(t *testing.T) {
 	}
 }
 
+func TestWorkspace_SingleCheckoutDoesNotRequireDefaultBranch(t *testing.T) {
+	r := baseRepo(t)
+	r.git(r.Root, "branch", "-m", "trunk")
+
+	ws, err := NewWorkspaceLoader().Load(filepath.Join(r.Root, ".grapes"), WorkspaceOptions{})
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if ws.AttributionErr != nil {
+		t.Fatalf("single-checkout load reported an attribution error: %v", ws.AttributionErr)
+	}
+	if len(ws.Problems) != 0 {
+		t.Fatalf("single-checkout load reported problems: %v", ws.Problems)
+	}
+	if len(ws.Issues) != 3 {
+		t.Fatalf("loaded %d issues, want 3", len(ws.Issues))
+	}
+	if len(ws.Worktrees) != 0 {
+		t.Fatalf("worktrees = %v, want none", ws.WorktreeNames())
+	}
+}
+
 // A configured branch that does not exist is reported, because attribution
 // against the wrong base would quietly mis-assign every issue.
 func TestWorkspace_BadDefaultBranchIsReported(t *testing.T) {
 	r := baseRepo(t)
+	r.addWorktree("worker")
 
 	ws, err := NewWorkspaceLoader().Load(filepath.Join(r.Root, ".grapes"),
 		WorkspaceOptions{DefaultBranch: "does-not-exist"})
