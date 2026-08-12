@@ -31,8 +31,16 @@ func newTestRepo(t *testing.T) *testRepo {
 
 func (r *testRepo) git(dir string, args ...string) string {
 	r.t.Helper()
+	return r.gitEnv(dir, nil, args...)
+}
+
+func (r *testRepo) gitEnv(dir string, env []string, args ...string) string {
+	r.t.Helper()
 	cmd := exec.Command("git", args...)
 	cmd.Dir = dir
+	if len(env) > 0 {
+		cmd.Env = append(os.Environ(), env...)
+	}
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		r.t.Fatalf("git %v in %s: %v\n%s", args, dir, err, out)
@@ -64,6 +72,16 @@ func (r *testRepo) commit(dir, msg string) {
 	r.t.Helper()
 	r.git(dir, "add", "-A")
 	r.git(dir, "commit", "-q", "-m", msg)
+}
+
+func (r *testRepo) commitAt(dir, msg string, when time.Time) {
+	r.t.Helper()
+	r.git(dir, "add", "-A")
+	date := when.UTC().Format(time.RFC3339)
+	r.gitEnv(dir, []string{
+		"GIT_AUTHOR_DATE=" + date,
+		"GIT_COMMITTER_DATE=" + date,
+	}, "commit", "-q", "-m", msg)
 }
 
 // addWorktree creates a worktree on a new branch and returns its path.

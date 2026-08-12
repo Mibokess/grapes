@@ -49,6 +49,14 @@ type LabelPickerCancelMsg struct{}
 type LaunchEditorMsg struct{ ID int }
 type EditorFinishedMsg struct{ Err error }
 type LaunchEditMsg struct{ ID int }
+
+// Messages for tmux session lifecycle operations.
+type StartTmuxMsg struct{ IssueID int }
+type AttachTmuxMsg struct {
+	IssueID int
+	Target  string
+}
+type TmuxFinishedMsg struct{ Err error }
 type EditFinishedMsg struct{ Err error }
 type WriteErrMsg struct{ Err error }
 

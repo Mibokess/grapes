@@ -18,6 +18,7 @@ import (
 	"charm.land/lipgloss/v2"
 	"github.com/Mibokess/grapes/internal/config"
 	"github.com/Mibokess/grapes/internal/data"
+	"github.com/Mibokess/grapes/internal/tmux"
 	"github.com/Mibokess/grapes/internal/tui/board"
 	"github.com/Mibokess/grapes/internal/tui/common"
 	"github.com/Mibokess/grapes/internal/tui/detail"
@@ -36,6 +37,13 @@ type workspacePollMsg struct {
 	Changed bool
 	Err     error
 }
+type tmuxListMsg struct {
+	Sessions []tmux.Session
+	Err      error
+}
+type tmuxPollMsg struct{}
+
+const tmuxPollInterval = 5 * time.Second
 
 const workspacePollInterval = 5 * time.Second
 
@@ -151,18 +159,19 @@ type navEntry struct {
 }
 
 type Model struct {
-	version   string
-	issues    []data.Issue
-	issuesDir string
-	width     int
-	height    int
-	screen    common.Screen
-	navStack  []navEntry
-	watcher   *fsnotify.Watcher
-	sortMode  data.SortMode
-	sortAsc   bool // ascending order (reversed from default)
-	theme     common.Theme
-	isDark    bool
+	version     string
+	issues      []data.Issue
+	issuesDir   string
+	projectRoot string
+	width       int
+	height      int
+	screen      common.Screen
+	navStack    []navEntry
+	watcher     *fsnotify.Watcher
+	sortMode    data.SortMode
+	sortAsc     bool // ascending order (reversed from default)
+	theme       common.Theme
+	isDark      bool
 
 	cfg      config.Config
 	filters  filter.FilterSet
@@ -181,6 +190,7 @@ type Model struct {
 	loading        bool                  // a reload is in flight
 	refreshPending bool                  // a filesystem event arrived during a load
 	pollScheduled  bool                  // one periodic activity probe is outstanding
+	tmuxSessions   []tmux.Session
 
 	worktreeNames []string // sorted worktree names, for consistent color indexing
 
@@ -281,6 +291,7 @@ func NewModel(ws data.Workspace, loader *data.WorkspaceLoader, issuesDir string,
 		statusMsg:      statusMsg,
 		issues:         issues,
 		issuesDir:      issuesDir,
+		projectRoot:    data.FindMainProjectRoot(issuesDir),
 		screen:         screen,
 		sortMode:       sortMode,
 		filters:        filters,
@@ -504,9 +515,44 @@ func (m Model) pollCmd() tea.Cmd {
 		return workspacePollMsg{Changed: changed, Err: err}
 	})
 }
+func (m Model) listTmuxCmd() tea.Cmd {
+	projectRoot := m.projectRoot
+	return func() tea.Msg {
+		sessions, err := tmux.List(projectRoot)
+		return tmuxListMsg{Sessions: sessions, Err: err}
+	}
+}
+
+func (m Model) tmuxPollCmd() tea.Cmd {
+	return tea.Tick(tmuxPollInterval, func(time.Time) tea.Msg {
+		return tmuxPollMsg{}
+	})
+}
+
+func (m Model) startTmuxCmd(issue data.Issue) tea.Cmd {
+	projectRoot := m.projectRoot
+	sourceDir := issue.SourceDir
+	if sourceDir == "" {
+		sourceDir = m.issuesDir
+	}
+	cwd := data.ProjectRoot(sourceDir)
+	return func() tea.Msg {
+		session, err := tmux.Ensure(projectRoot, issue.ID, issue.Worktree, cwd)
+		if err != nil {
+			return common.TmuxFinishedMsg{Err: err}
+		}
+		return common.AttachTmuxMsg{IssueID: issue.ID, Target: session.Target}
+	}
+}
+
+func (m Model) attachTmuxCmd(target string) tea.Cmd {
+	return tea.ExecProcess(tmux.AttachCommand(target), func(err error) tea.Msg {
+		return common.TmuxFinishedMsg{Err: err}
+	})
+}
 
 func (m Model) Init() tea.Cmd {
-	return tea.Batch(m.board.Init(), m.list.Init(), m.watchCmd(), m.pollCmd(), tea.RequestBackgroundColor)
+	return tea.Batch(m.board.Init(), m.list.Init(), m.watchCmd(), m.pollCmd(), m.listTmuxCmd(), m.tmuxPollCmd(), tea.RequestBackgroundColor)
 }
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -678,11 +724,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if iss != nil {
 			m.navStack = append(m.navStack, navEntry{screen: m.screen, detail: m.detail})
 			m.screen = common.ScreenDetail
-			m.detail = detail.New(*iss, m.issues, m.width, m.contentHeight(), m.theme).SetTopOffset(m.topOffset()).SetWorktreeNames(m.worktreeNames)
+			m.detail = detail.New(*iss, m.issues, m.width, m.contentHeight(), m.theme).SetTopOffset(m.topOffset()).SetWorktreeNames(m.worktreeNames).SetTmuxSessions(m.tmuxSessions)
 			return m, m.detail.Init()
 		}
 		return m, nil
-
 	case common.SwitchSourceMsg:
 		for i := range m.issues {
 			if m.issues[i].ID == msg.IssueID {
@@ -692,7 +737,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.board = m.board.SetIssues(filtered)
 				m.list = m.list.SetIssues(filtered)
 				if m.screen == common.ScreenDetail {
-					m.detail = detail.New(m.issues[i], m.issues, m.width, m.contentHeight(), m.theme).SetTopOffset(m.topOffset()).SetWorktreeNames(m.worktreeNames)
+					m.detail = detail.New(m.issues[i], m.issues, m.width, m.contentHeight(), m.theme).SetTopOffset(m.topOffset()).SetWorktreeNames(m.worktreeNames).SetTmuxSessions(m.tmuxSessions)
 				}
 				break
 			}
@@ -795,6 +840,42 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.list = m.list.SetSortState(m.sortMode, m.sortAsc).SetIssues(filtered)
 		return m, nil
 
+	case tmuxPollMsg:
+		return m, tea.Batch(m.listTmuxCmd(), m.tmuxPollCmd())
+
+	case tmuxListMsg:
+		if msg.Err == nil {
+			m.tmuxSessions = msg.Sessions
+			m.detail = m.detail.SetTmuxSessions(m.tmuxSessions)
+		}
+		return m, nil
+
+	case common.StartTmuxMsg:
+		var issue *data.Issue
+		for i := range m.issues {
+			if m.issues[i].ID == msg.IssueID {
+				issue = &m.issues[i]
+				break
+			}
+		}
+		if issue == nil {
+			return m, nil
+		}
+		return m, m.startTmuxCmd(*issue)
+
+	case common.AttachTmuxMsg:
+		if msg.Target == "" {
+			return m, nil
+		}
+		return m, m.attachTmuxCmd(msg.Target)
+
+	case common.TmuxFinishedMsg:
+		if msg.Err != nil {
+			m.statusMsg = "Tmux error: " + msg.Err.Error()
+			return m, tea.Batch(func() tea.Msg { return common.RefreshMsg{} }, m.listTmuxCmd(), m.clearStatusAfter(3*time.Second))
+		}
+		return m, tea.Batch(func() tea.Msg { return common.RefreshMsg{} }, m.listTmuxCmd())
+
 	case workspacePollMsg:
 		m.pollScheduled = false
 		if msg.Err != nil {
@@ -855,7 +936,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				found := false
 				for _, iss := range issues {
 					if iss.ID == m.detail.IssueID() {
-						m.detail = m.detail.UpdateIssue(iss, m.issues).SetWorktreeNames(wtNames)
+						m.detail = m.detail.UpdateIssue(iss, m.issues).SetWorktreeNames(wtNames).SetTmuxSessions(m.tmuxSessions)
 						found = true
 						break
 					}
@@ -1286,6 +1367,7 @@ func (m Model) View() tea.View {
 			hint(k(dk.CyclePriority), "priority"),
 			hint(k(dk.Labels), "labels"),
 			hint(k(dk.AddComment), "comment"),
+			hint(k(dk.StartSession), "session"),
 			hint(k(dk.Back)+"/⌫", "back"),
 			hint(k(gk.Settings), "config"),
 			hint(k(gk.Quit), "quit"),

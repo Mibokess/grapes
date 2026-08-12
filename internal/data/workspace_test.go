@@ -196,12 +196,14 @@ func TestWorkspace_MainWinsWhenItChangedLast(t *testing.T) {
 	r := baseRepo(t)
 	wt := r.addWorktree("worker")
 
-	r.writeIssue(wt, 1, "branch version")
-	r.commit(wt, "branch edits 1")
+	branchCommit := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	mainCommit := branchCommit.Add(time.Minute)
 
-	time.Sleep(1100 * time.Millisecond) // commit dates have one-second resolution
+	r.writeIssue(wt, 1, "branch version")
+	r.commitAt(wt, "branch edits 1", branchCommit)
+
 	r.writeIssue(r.Root, 1, "main version")
-	r.commit(r.Root, "main edits 1")
+	r.commitAt(r.Root, "main edits 1", mainCommit)
 
 	ws := loadWS(t, r)
 

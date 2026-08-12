@@ -127,7 +127,7 @@ they are lost when that branch is deleted.
 - navigation history, global sorting, and filters;
 - picker and filter overlays;
 - configuration and theme state;
-- filesystem watching, external-editor sessions, writes, and status messages.
+- filesystem watching, external-editor sessions, tmux session discovery and terminal handoffs, writes, and status messages.
 
 Screens live in separate packages and implement local navigation and rendering.
 They communicate upward with the types in `internal/tui/common/messages.go`.
@@ -143,6 +143,8 @@ keyboard/mouse/fs event
   -> common.WorkspaceLoadedMsg
   -> refreshed child models
 ```
+
+Issue detail can create or reuse a Grapes-managed tmux session for the active issue source. The runtime association lives in tmux session options rather than tracked issue files. Attaching uses Bubble Tea's `tea.ExecProcess`, so tmux owns the real terminal while attached; detaching restores Grapes and schedules a normal workspace refresh.
 
 Cross-view behavior belongs in the root model. Screen-specific selection, layout,
 and rendering belong in the screen package. Shared message types, key maps, and theme

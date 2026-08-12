@@ -13,6 +13,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/Mibokess/grapes/internal/data"
+	"github.com/Mibokess/grapes/internal/tmux"
 	"github.com/Mibokess/grapes/internal/tui/common"
 	"github.com/charmbracelet/glamour"
 	"github.com/muesli/termenv"
@@ -23,12 +24,14 @@ type clickZone struct {
 	line   int    // content line number
 	xStart int    // start X position (inclusive, screen coordinates)
 	xEnd   int    // end X position (exclusive, screen coordinates)
-	field  string // "status", "priority", or "source:N"
+	field  string // "status", "priority", "source:N", or "tmux"
+	target string // tmux attach target for session rows
 }
 
 type Model struct {
 	issue         data.Issue
-	allIssues     []data.Issue // all issues for rendering relationships
+	allIssues     []data.Issue   // all issues for rendering relationships
+	tmuxSessions  []tmux.Session // runtime sessions associated with issues
 	viewport      viewport.Model
 	ready         bool
 	width         int
@@ -40,12 +43,22 @@ type Model struct {
 	theme         common.Theme
 }
 
-// SetWorktreeNames sets the sorted worktree names for color assignment.
-// Re-renders the view if the issue has multiple sources (to show colored pills).
+// SetWorktreeNames sets the sorted worktree names for color assignment and
+// re-renders the detail view.
 func (m Model) SetWorktreeNames(names []string) Model {
 	m.worktreeNames = names
-	if len(m.issue.Sources) > 1 {
-		content, clickLines, clickZones := renderIssue(m.issue, m.allIssues, m.width, m.theme, names)
+	return m.rerender()
+}
+
+// SetTmuxSessions updates the runtime sessions shown for the current issue.
+func (m Model) SetTmuxSessions(sessions []tmux.Session) Model {
+	m.tmuxSessions = sessions
+	return m.rerender()
+}
+
+func (m Model) rerender() Model {
+	if m.ready {
+		content, clickLines, clickZones := renderIssueWithSessions(m.issue, m.allIssues, m.width, m.theme, m.worktreeNames, m.tmuxSessions)
 		m.viewport.SetContent(content)
 		m.clickLines = clickLines
 		m.clickZones = clickZones
@@ -54,7 +67,7 @@ func (m Model) SetWorktreeNames(names []string) Model {
 }
 
 func New(issue data.Issue, allIssues []data.Issue, width, height int, theme common.Theme) Model {
-	content, clickLines, clickZones := renderIssue(issue, allIssues, width, theme, nil)
+	content, clickLines, clickZones := renderIssueWithSessions(issue, allIssues, width, theme, nil, nil)
 	vp := viewport.New(viewport.WithWidth(width), viewport.WithHeight(height))
 	vp.SetContent(content)
 
@@ -76,22 +89,12 @@ func New(issue data.Issue, allIssues []data.Issue, width, height int, theme comm
 func (m Model) UpdateIssue(issue data.Issue, allIssues []data.Issue) Model {
 	m.issue = issue
 	m.allIssues = allIssues
-	content, clickLines, clickZones := renderIssue(issue, allIssues, m.width, m.theme, m.worktreeNames)
-	m.viewport.SetContent(content)
-	m.clickLines = clickLines
-	m.clickZones = clickZones
-	return m
+	return m.rerender()
 }
 
 func (m Model) SetTheme(t common.Theme) Model {
 	m.theme = t
-	if m.ready {
-		content, clickLines, clickZones := renderIssue(m.issue, m.allIssues, m.width, t, m.worktreeNames)
-		m.viewport.SetContent(content)
-		m.clickLines = clickLines
-		m.clickZones = clickZones
-	}
-	return m
+	return m.rerender()
 }
 
 func (m Model) Init() tea.Cmd { return nil }
@@ -106,13 +109,7 @@ func (m Model) SetSize(w, h int) Model {
 	m.height = h
 	m.viewport.SetWidth(w)
 	m.viewport.SetHeight(h)
-	if m.ready {
-		content, clickLines, clickZones := renderIssue(m.issue, m.allIssues, w, m.theme, m.worktreeNames)
-		m.viewport.SetContent(content)
-		m.clickLines = clickLines
-		m.clickZones = clickZones
-	}
-	return m
+	return m.rerender()
 }
 
 func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
@@ -137,6 +134,10 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 			return m, func() tea.Msg {
 				return common.ShowLabelPickerMsg{IssueID: m.issue.ID}
 			}
+		case key.Matches(msg, common.DetailKeyMap.StartSession):
+			return m, func() tea.Msg {
+				return common.StartTmuxMsg{IssueID: m.issue.ID}
+			}
 		case key.Matches(msg, common.DetailKeyMap.EditIssue):
 			return m, func() tea.Msg {
 				return common.LaunchEditMsg{ID: m.issue.ID}
@@ -155,9 +156,16 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 			viewportY := mouse.Y - m.topOffset
 			if viewportY >= 0 && viewportY < m.viewport.Height() {
 				contentLine := m.viewport.YOffset() + viewportY
-				// Check click zones first (status/priority pickers, source switching)
+				// Check click zones first (status/priority pickers, source switching, sessions)
 				for _, zone := range m.clickZones {
 					if contentLine == zone.line && mouse.X >= zone.xStart && mouse.X < zone.xEnd {
+						if zone.field == "tmux" {
+							issueID := m.issue.ID
+							target := zone.target
+							return m, func() tea.Msg {
+								return common.AttachTmuxMsg{IssueID: issueID, Target: target}
+							}
+						}
 						field := zone.field
 						if strings.HasPrefix(field, "source:") {
 							idx, _ := strconv.Atoi(strings.TrimPrefix(field, "source:"))
@@ -197,6 +205,10 @@ func (m Model) View() string {
 }
 
 func renderIssue(issue data.Issue, allIssues []data.Issue, width int, theme common.Theme, wtNames []string) (string, map[int]int, []clickZone) {
+	return renderIssueWithSessions(issue, allIssues, width, theme, wtNames, nil)
+}
+
+func renderIssueWithSessions(issue data.Issue, allIssues []data.Issue, width int, theme common.Theme, wtNames []string, sessions []tmux.Session) (string, map[int]int, []clickZone) {
 	clickLines := make(map[int]int)
 	var zones []clickZone
 	var b strings.Builder
@@ -394,7 +406,50 @@ func renderIssue(issue data.Issue, allIssues []data.Issue, width int, theme comm
 
 	sectionUnderline := theme.StyleSectionHeader.Render(strings.Repeat("━", 2))
 
+	var issueSessions []tmux.Session
+	for _, session := range sessions {
+		if session.IssueID == issue.ID {
+			issueSessions = append(issueSessions, session)
+		}
+	}
+	if len(issueSessions) > 0 {
+		b.WriteString(" " + theme.StyleSectionHeader.Render("Sessions") + " " + sectionUnderline + "\n\n")
+		for _, session := range issueSessions {
+			agent := session.Agent
+			if agent == "" {
+				agent = "shell"
+			}
+			name := session.Name
+			if name == "" {
+				name = "session"
+			}
+			target := session.Target
+			if target == "" {
+				target = name
+			}
+			state := "detached"
+			if session.Attached {
+				state = "attached"
+			}
+			lineNum := strings.Count(b.String(), "\n")
+			row := fmt.Sprintf("  %s · %s · %s · %s", agent, name, target, state)
+			b.WriteString(row + "\n")
+			xEnd := width
+			if xEnd <= 1 {
+				xEnd = 2
+			}
+			zones = append(zones, clickZone{
+				line:   lineNum,
+				xStart: 0,
+				xEnd:   xEnd,
+				field:  "tmux",
+				target: target,
+			})
+		}
+		b.WriteString("\n")
+	}
 	if issue.Content != "" {
+
 		b.WriteString(" " + theme.StyleSectionHeader.Render("Description") + " " + sectionUnderline + "\n\n")
 		rendered := renderMarkdown(issue.Content, mdWidth, theme.GlamourStyle)
 		b.WriteString(rendered + "\n")

@@ -201,6 +201,7 @@ type DetailKeys struct {
 	Labels        key.Binding
 	AddComment    key.Binding
 	EditIssue     key.Binding
+	StartSession  key.Binding
 }
 
 var DetailKeyMap = DetailKeys{
@@ -235,6 +236,10 @@ var DetailKeyMap = DetailKeys{
 	EditIssue: key.NewBinding(
 		key.WithKeys("e"),
 		key.WithHelp("e", "edit"),
+	),
+	StartSession: key.NewBinding(
+		key.WithKeys("a"),
+		key.WithHelp("a", "session"),
 	),
 }
 

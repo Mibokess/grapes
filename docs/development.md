@@ -37,6 +37,7 @@ Help and version also reject trailing arguments.
 | Change validation | `internal/data/validate.go` | add focused data validation tests |
 | Change writes/editor format | `internal/data/writer.go` | writer tests plus `app_refresh_test.go` when routed by TUI |
 | Add a cross-screen action | `tui/common/messages.go`, `tui/app.go` | `app_refresh_test.go` and relevant interaction test |
+| Add issue-linked tmux sessions | `internal/tmux/`, `tui/detail/`, `tui/app.go` | tmux lifecycle tests and detail interaction tests |
 | Change one screen | its package under `internal/tui/` | package interaction tests and golden tests |
 | Change filter semantics | `internal/tui/filter/` | `filter_test.go`, picker/menu tests, then view tests |
 | Change keys | `config.go`, `common/keys.go`, affected view | config and interaction tests |
