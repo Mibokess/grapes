@@ -1,6 +1,8 @@
 package main
 
 import (
+	"fmt"
+	"strings"
 	"testing"
 )
 
@@ -43,5 +45,27 @@ func TestRunValidateRejectsNonPositiveIDs(t *testing.T) {
 		if got := runValidate(t.TempDir(), []string{arg}); got != 2 {
 			t.Fatalf("runValidate(%q) returned %d, want usage error 2", arg, got)
 		}
+	}
+}
+
+func TestWriteProgramErrorForMissingTTY(t *testing.T) {
+	var got strings.Builder
+	err := fmt.Errorf("%w: open /dev/tty", errInteractiveTerminalUnavailable)
+
+	writeProgramError(&got, err)
+
+	output := got.String()
+	for _, want := range []string{
+		"Error: bare `grapes` tried to launch the interactive TUI, but no interactive terminal is available.",
+		"USAGE:",
+		"grapes                    Launch the interactive TUI (needs a real terminal)",
+		"Automated/agent environments should use the subcommands above instead.",
+	} {
+		if !strings.Contains(output, want) {
+			t.Errorf("writeProgramError() missing %q in output:\n%s", want, output)
+		}
+	}
+	if strings.Contains(output, "bubbletea") {
+		t.Errorf("writeProgramError() leaked Bubble Tea implementation error:\n%s", output)
 	}
 }

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -109,12 +110,45 @@ func main() {
 	case len(problems) > 1:
 		model = model.WithStatus(fmt.Sprintf("Skipped %s (+%d more)", problems[0].Error(), len(problems)-1))
 	}
-	p := tea.NewProgram(model)
-
-	if _, err := p.Run(); err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+	if err := runTUI(model); err != nil {
+		writeProgramError(os.Stderr, err)
 		os.Exit(1)
 	}
+}
+
+var errInteractiveTerminalUnavailable = errors.New("interactive terminal unavailable")
+
+const interactiveTerminalMessage = "Error: bare `grapes` tried to launch the interactive TUI, but no interactive terminal is available."
+
+func runTUI(model tea.Model) error {
+	ttyIn, ttyOut, err := tea.OpenTTY()
+	if err != nil {
+		closeTTY(ttyIn, ttyOut)
+		return fmt.Errorf("%w: %v", errInteractiveTerminalUnavailable, err)
+	}
+	defer closeTTY(ttyIn, ttyOut)
+
+	_, err = tea.NewProgram(model, tea.WithInput(ttyIn), tea.WithOutput(ttyOut)).Run()
+	return err
+}
+
+func closeTTY(ttyIn, ttyOut *os.File) {
+	if ttyIn != nil {
+		_ = ttyIn.Close()
+	}
+	if ttyOut != nil && ttyOut != ttyIn {
+		_ = ttyOut.Close()
+	}
+}
+
+func writeProgramError(w io.Writer, err error) {
+	if errors.Is(err, errInteractiveTerminalUnavailable) {
+		fmt.Fprintln(w, interactiveTerminalMessage)
+		fmt.Fprintln(w)
+		writeHelp(w)
+		return
+	}
+	fmt.Fprintf(w, "Error: %v\n", err)
 }
 
 func validateCommandArgs(command string, args []string) error {
